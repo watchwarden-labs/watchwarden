@@ -1,0 +1,46 @@
+{
+	"name": "watchwarden-controller",
+	"version": "1.0.0",
+	"type": "module",
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"scripts": {
+		"dev": "tsx watch src/index.ts",
+		"build": "tsc",
+		"start": "node dist/index.js",
+		"test": "vitest",
+		"type-check": "tsc --noEmit",
+		"lint": "tsc --noEmit && biome check .",
+		"lint:fix": "biome check --fix .",
+		"format": "biome format --write ."
+	},
+	"dependencies": {
+		"@fastify/cookie": "^11.0.2",
+		"@fastify/cors": "^10.0.1",
+		"@fastify/rate-limit": "^10.3.0",
+		"@fastify/websocket": "^11.0.1",
+		"bcryptjs": "^2.4.3",
+		"fastify": "^5.1.0",
+		"jsonwebtoken": "^9.0.2",
+		"node-cron": "^3.0.3",
+		"pino-pretty": "^13.1.3",
+		"postgres": "^3.4.8",
+		"uuid": "^11.0.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.8",
+		"@testcontainers/postgresql": "^11.13.0",
+		"@types/bcryptjs": "^2.4.6",
+		"@types/jsonwebtoken": "^9.0.7",
+		"@types/node": "^22.10.0",
+		"@types/node-cron": "^3.0.11",
+		"@types/uuid": "^10.0.0",
+		"@types/ws": "^8.5.13",
+		"testcontainers": "^11.13.0",
+		"tsx": "^4.19.2",
+		"typescript": "^5.7.2",
+		"vitest": "^2.1.8",
+		"ws": "^8.18.0"
+	}
+}

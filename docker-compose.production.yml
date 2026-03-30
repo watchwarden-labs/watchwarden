@@ -1,0 +1,123 @@
+# WatchWarden — Production Setup
+#
+# Copy this file to any machine with Docker and run:
+#   docker compose -f docker-compose.production.yml up -d
+#
+# Dashboard: http://localhost:8080
+#
+# REQUIRED: Set these environment variables before running:
+#   export POSTGRES_PASSWORD=$(openssl rand -base64 32)
+#   export ADMIN_PASSWORD=$(openssl rand -base64 16)
+#   export JWT_SECRET=$(openssl rand -base64 32)
+#   export ENCRYPTION_KEY=$(openssl rand -base64 32)
+#   export ENCRYPTION_SALT=$(openssl rand -base64 32)
+#   export LOCAL_AGENT_TOKEN=$(openssl rand -base64 32)
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: watchwarden-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: watchwarden
+      POSTGRES_USER: watchwarden
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a random secret before deploying}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchwarden"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  controller:
+    image: alexneo/watchwarden-controller:latest
+    container_name: watchwarden-controller
+    restart: unless-stopped
+    # Controller port is NOT exposed — nginx proxies /api/ and /ws/
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://watchwarden:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/watchwarden
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD to a strong password before deploying}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a random secret before deploying}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY to a random 32+ char secret before deploying}
+      ENCRYPTION_SALT: ${ENCRYPTION_SALT:?Set ENCRYPTION_SALT to a unique random value before deploying}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      LOCAL_AGENT_TOKEN: ${LOCAL_AGENT_TOKEN:?Set LOCAL_AGENT_TOKEN to a random secret before deploying}
+      PORT: "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+  ui:
+    image: alexneo/watchwarden-ui:latest
+    container_name: watchwarden-ui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - controller
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+
+  agent:
+    image: alexneo/watchwarden-agent:latest
+    container_name: watchwarden-agent
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      CONTROLLER_URL: ws://controller:3000
+      AGENT_TOKEN: ${LOCAL_AGENT_TOKEN:?Set LOCAL_AGENT_TOKEN}
+      AGENT_NAME: local
+    depends_on:
+      - controller
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep watchwarden-agent || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:
+  frontend:

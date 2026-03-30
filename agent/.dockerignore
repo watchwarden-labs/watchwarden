@@ -1,0 +1,7 @@
+watchwarden-agent
+agent
+.git
+*_test.go
+*.md
+Dockerfile
+.dockerignore

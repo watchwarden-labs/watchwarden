@@ -1,0 +1,288 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_strategy:
+        description: 'Version increment strategy'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test-controller:
+    name: Controller Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: watchwarden_test
+          POSTGRES_USER: watchwarden
+          POSTGRES_PASSWORD: watchwarden
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U watchwarden"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: controller
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+        env:
+          DATABASE_URL: postgresql://watchwarden:watchwarden@localhost:5432/watchwarden_test
+
+  test-agent:
+    name: Agent Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+      - run: go vet ./...
+      - run: go test -race ./... -count=1
+
+  test-ui:
+    name: UI Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  release:
+    name: Build & Release
+    needs: [test-controller, test-agent, test-ui]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Calculate version
+        id: version
+        run: |
+          STRATEGY="${{ inputs.version_strategy }}"
+
+          # Get latest release tag (exclude pre-releases)
+          LATEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v '\-' | head -1)
+
+          if [ -z "$LATEST" ]; then
+            MAJOR=0; MINOR=1; PATCH=0
+          else
+            BASE=$(echo "$LATEST" | sed 's/^v//')
+            MAJOR=$(echo "$BASE" | cut -d. -f1)
+            MINOR=$(echo "$BASE" | cut -d. -f2)
+            PATCH=$(echo "$BASE" | cut -d. -f3)
+          fi
+
+          case "$STRATEGY" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "previous=${LATEST:-none}" >> $GITHUB_OUTPUT
+          echo "Release version: $NEW_VERSION (was: ${LATEST:-none}, strategy: $STRATEGY)"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV="${{ steps.version.outputs.previous }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          if [ "$PREV" = "none" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV}..HEAD"
+          fi
+
+          echo "## ${VERSION}" > /tmp/changelog-entry.md
+          echo "" >> /tmp/changelog-entry.md
+          echo "Released: $(date -u +%Y-%m-%d)" >> /tmp/changelog-entry.md
+          echo "" >> /tmp/changelog-entry.md
+
+          # Features
+          FEATS=$(git log "$RANGE" --pretty=format:'- %s (%h)' --grep='^feat' --no-merges 2>/dev/null || true)
+          if [ -n "$FEATS" ]; then
+            echo "### Features" >> /tmp/changelog-entry.md
+            echo "$FEATS" >> /tmp/changelog-entry.md
+            echo "" >> /tmp/changelog-entry.md
+          fi
+
+          # Bug fixes
+          FIXES=$(git log "$RANGE" --pretty=format:'- %s (%h)' --grep='^fix' --no-merges 2>/dev/null || true)
+          if [ -n "$FIXES" ]; then
+            echo "### Bug Fixes" >> /tmp/changelog-entry.md
+            echo "$FIXES" >> /tmp/changelog-entry.md
+            echo "" >> /tmp/changelog-entry.md
+          fi
+
+          # Other changes
+          OTHER=$(git log "$RANGE" --pretty=format:'- %s (%h)' --no-merges --invert-grep --grep='^feat' --grep='^fix' 2>/dev/null | head -20 || true)
+          if [ -n "$OTHER" ]; then
+            echo "### Other Changes" >> /tmp/changelog-entry.md
+            echo "$OTHER" >> /tmp/changelog-entry.md
+            echo "" >> /tmp/changelog-entry.md
+          fi
+
+          # Prepend to CHANGELOG.md
+          if [ -f CHANGELOG.md ]; then
+            cat /tmp/changelog-entry.md CHANGELOG.md > /tmp/changelog-full.md
+            mv /tmp/changelog-full.md CHANGELOG.md
+          else
+            echo "# Changelog" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            cat /tmp/changelog-entry.md >> CHANGELOG.md
+          fi
+
+          # Save release notes for GitHub release
+          cat /tmp/changelog-entry.md > /tmp/release-notes.md
+
+      - name: Commit changelog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "chore: update changelog for ${{ steps.version.outputs.version }}"
+          git push
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Controller
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
+        with:
+          context: ./controller
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-controller:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-controller:${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=controller
+          cache-to: type=gha,scope=controller,mode=max
+          sbom: true
+          provenance: mode=max
+
+      - name: Build and push Agent
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
+        with:
+          context: ./agent
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-agent:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-agent:${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=agent
+          cache-to: type=gha,scope=agent,mode=max
+          sbom: true
+          provenance: mode=max
+
+      - name: Build and push UI
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
+        with:
+          context: ./ui
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-ui:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-ui:${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=ui
+          cache-to: type=gha,scope=ui,mode=max
+          sbom: true
+          provenance: mode=max
+
+      - name: Scan Controller image
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
+        with:
+          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-controller:${{ steps.version.outputs.version }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Create git tag
+        run: |
+          git tag -a "${{ steps.version.outputs.version }}" -m "Release ${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.version }}"
+
+      - name: Create GitHub release
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require('fs');
+            const version = '${{ steps.version.outputs.version }}';
+            const user = '${{ secrets.DOCKERHUB_USERNAME }}';
+
+            let notes = '';
+            try {
+              notes = fs.readFileSync('/tmp/release-notes.md', 'utf8');
+            } catch {
+              notes = `Release ${version}`;
+            }
+
+            notes += `\n## Docker Images\n\n`;
+            notes += `| Service | Image |\n`;
+            notes += `|---------|-------|\n`;
+            notes += `| Controller | \`${user}/watchwarden-controller:${version}\` |\n`;
+            notes += `| Agent | \`${user}/watchwarden-agent:${version}\` |\n`;
+            notes += `| UI | \`${user}/watchwarden-ui:${version}\` |\n\n`;
+            notes += `All images are also tagged as \`latest\`.\n\n`;
+            notes += `### Quick deploy\n`;
+            notes += `\`\`\`bash\n`;
+            notes += `curl -O https://raw.githubusercontent.com/${context.repo.owner}/${context.repo.repo}/main/docker-compose.production.yml\n`;
+            notes += `docker compose -f docker-compose.production.yml up -d\n`;
+            notes += `\`\`\`\n`;
+
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: version,
+              name: version,
+              body: notes,
+              prerelease: false,
+            });

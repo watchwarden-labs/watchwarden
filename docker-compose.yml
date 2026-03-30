@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: watchwarden-postgres
+    restart: unless-stopped
+    # Port bound to localhost for local development only
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: watchwarden
+      POSTGRES_USER: watchwarden
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-watchwarden}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchwarden"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  controller:
+    image: ${DOCKERHUB_USERNAME:-watchwarden}/watchwarden-controller:${TAG:-latest}
+    build: ./controller
+    container_name: watchwarden-controller
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://watchwarden:${POSTGRES_PASSWORD:-watchwarden}@postgres:5432/watchwarden"
+      # Dev-only defaults — long enough to pass startup validation but NOT for production use
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env (min 8 chars, incl uppercase, lowercase, number)}"
+      JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in .env to a long random string}"
+      LOCAL_AGENT_TOKEN: "${LOCAL_AGENT_TOKEN:-dev-local-agent-token-do-not-use-in-prod}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env}"
+      ENCRYPTION_SALT: "${ENCRYPTION_SALT:?Set ENCRYPTION_SALT in .env}"
+      CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:8080}"
+      PORT: "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+      - frontend
+
+  ui:
+    image: ${DOCKERHUB_USERNAME:-watchwarden}/watchwarden-ui:${TAG:-latest}
+    build: ./ui
+    container_name: watchwarden-ui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      VITE_CONTROLLER_URL: "http://localhost:3000"
+    depends_on:
+      - controller
+    networks:
+      - frontend
+
+  agent:
+    image: ${DOCKERHUB_USERNAME:-watchwarden}/watchwarden-agent:${TAG:-latest}
+    build: ./agent
+    container_name: watchwarden-agent-local
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      CONTROLLER_URL: "ws://controller:3000"
+      AGENT_TOKEN: "${LOCAL_AGENT_TOKEN:-dev-local-agent-token-do-not-use-in-prod}"
+      AGENT_NAME: "local"
+      WATCHWARDEN_LABEL_ENABLE_ONLY: "${LABEL_ENABLE_ONLY:-false}"
+    depends_on:
+      - controller
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:
+  frontend:

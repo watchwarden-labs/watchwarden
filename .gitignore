@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+controller/dist/
+ui/dist/
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Go
+agent/agent
+agent/watchwarden-agent
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+
+# Plan
+PLAN.md
+
+# Local settings & config
+settings.local.json
+*.local.json
+skills-lock.json
+.claude/plans/
+.claude/projects/
+
+# Local-only scripts (not part of the project)
+publish.sh
+scripts/
