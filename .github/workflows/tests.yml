@@ -1,0 +1,241 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-controller:
+    name: Controller Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      passed: ${{ steps.results.outputs.passed }}
+      failed: ${{ steps.results.outputs.failed }}
+      exit_code: ${{ steps.results.outputs.exit_code }}
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: watchwarden_test
+          POSTGRES_USER: watchwarden
+          POSTGRES_PASSWORD: watchwarden
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U watchwarden"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: controller
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - name: Run tests
+        id: test
+        run: |
+          npm test 2>&1 | tee test-output.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        env:
+          DATABASE_URL: postgresql://watchwarden:watchwarden@localhost:5432/watchwarden_test
+        continue-on-error: true
+      - name: Parse results
+        id: results
+        if: always()
+        run: |
+          if [ -f test-output.log ]; then
+            PASSED=$(grep -oP '\d+(?= passed)' test-output.log | tail -1 || echo "0")
+            FAILED=$(grep -oP '\d+(?= failed)' test-output.log | tail -1 || echo "0")
+            echo "passed=${PASSED:-0}" >> $GITHUB_OUTPUT
+            echo "failed=${FAILED:-0}" >> $GITHUB_OUTPUT
+          else
+            echo "passed=0" >> $GITHUB_OUTPUT
+            echo "failed=0" >> $GITHUB_OUTPUT
+          fi
+          echo "exit_code=${{ steps.test.outputs.exit_code }}" >> $GITHUB_OUTPUT
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: controller-test-log
+          path: controller/test-output.log
+          retention-days: 7
+
+  test-agent:
+    name: Agent Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      passed: ${{ steps.results.outputs.passed }}
+      failed: ${{ steps.results.outputs.failed }}
+      exit_code: ${{ steps.results.outputs.exit_code }}
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+      - run: go vet ./...
+      - name: Run tests
+        id: test
+        run: |
+          go test -race -v -count=1 ./... 2>&1 | tee test-output.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+      - name: Parse results
+        id: results
+        if: always()
+        run: |
+          if [ -f test-output.log ]; then
+            PASSED=$(grep -c '^--- PASS' test-output.log || echo "0")
+            FAILED=$(grep -c '^--- FAIL' test-output.log || echo "0")
+            echo "passed=${PASSED}" >> $GITHUB_OUTPUT
+            echo "failed=${FAILED}" >> $GITHUB_OUTPUT
+          else
+            echo "passed=0" >> $GITHUB_OUTPUT
+            echo "failed=0" >> $GITHUB_OUTPUT
+          fi
+          echo "exit_code=${{ steps.test.outputs.exit_code }}" >> $GITHUB_OUTPUT
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: agent-test-log
+          path: agent/test-output.log
+          retention-days: 7
+
+  test-ui:
+    name: UI Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      passed: ${{ steps.results.outputs.passed }}
+      failed: ${{ steps.results.outputs.failed }}
+      exit_code: ${{ steps.results.outputs.exit_code }}
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - name: Run tests
+        id: test
+        run: |
+          npm test 2>&1 | tee test-output.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+      - name: Parse results
+        id: results
+        if: always()
+        run: |
+          if [ -f test-output.log ]; then
+            PASSED=$(grep -oP '\d+(?= passed)' test-output.log | tail -1 || echo "0")
+            FAILED=$(grep -oP '\d+(?= failed)' test-output.log | tail -1 || echo "0")
+            echo "passed=${PASSED:-0}" >> $GITHUB_OUTPUT
+            echo "failed=${FAILED:-0}" >> $GITHUB_OUTPUT
+          else
+            echo "passed=0" >> $GITHUB_OUTPUT
+            echo "failed=0" >> $GITHUB_OUTPUT
+          fi
+          echo "exit_code=${{ steps.test.outputs.exit_code }}" >> $GITHUB_OUTPUT
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: ui-test-log
+          path: ui/test-output.log
+          retention-days: 7
+
+  report:
+    name: Post Test Results
+    needs: [test-controller, test-agent, test-ui]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const controller = {
+              passed: parseInt('${{ needs.test-controller.outputs.passed }}') || 0,
+              failed: parseInt('${{ needs.test-controller.outputs.failed }}') || 0,
+              exit: '${{ needs.test-controller.outputs.exit_code }}',
+              status: '${{ needs.test-controller.result }}'
+            };
+            const agent = {
+              passed: parseInt('${{ needs.test-agent.outputs.passed }}') || 0,
+              failed: parseInt('${{ needs.test-agent.outputs.failed }}') || 0,
+              exit: '${{ needs.test-agent.outputs.exit_code }}',
+              status: '${{ needs.test-agent.result }}'
+            };
+            const ui = {
+              passed: parseInt('${{ needs.test-ui.outputs.passed }}') || 0,
+              failed: parseInt('${{ needs.test-ui.outputs.failed }}') || 0,
+              exit: '${{ needs.test-ui.outputs.exit_code }}',
+              status: '${{ needs.test-ui.result }}'
+            };
+
+            const allPassed = controller.exit === '0' && agent.exit === '0' && ui.exit === '0';
+            const statusIcon = allPassed ? '✅' : '❌';
+            const statusText = allPassed ? 'All tests passed' : 'Some tests failed';
+
+            const icon = (exit) => exit === '0' ? '✅' : '❌';
+            const totalPassed = controller.passed + agent.passed + ui.passed;
+            const totalFailed = controller.failed + agent.failed + ui.failed;
+
+            let body = `## 🧪 Test Results — ${statusIcon} ${statusText}\n\n`;
+            body += `| Component | Status | Passed | Failed |\n`;
+            body += `|-----------|--------|--------|--------|\n`;
+            body += `| Controller (TypeScript) | ${icon(controller.exit)} | ${controller.passed} | ${controller.failed} |\n`;
+            body += `| Agent (Go) | ${icon(agent.exit)} | ${agent.passed} | ${agent.failed} |\n`;
+            body += `| UI (React) | ${icon(ui.exit)} | ${ui.passed} | ${ui.failed} |\n`;
+            body += `| **Total** | ${statusIcon} | **${totalPassed}** | **${totalFailed}** |\n\n`;
+
+            body += `**Commit:** \`${context.sha.substring(0, 7)}\` | `;
+            body += `**Run:** [#${context.runNumber}](${context.payload.repository.html_url}/actions/runs/${context.runId})\n`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('🧪 Test Results')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+    outputs:
+      all_passed: ${{ needs.test-controller.result == 'success' && needs.test-agent.result == 'success' && needs.test-ui.result == 'success' }}

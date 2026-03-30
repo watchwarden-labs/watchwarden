@@ -1,0 +1,145 @@
+name: PR Beta Build
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  check-permissions:
+    name: Check Permissions
+    if: >-
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/pr-beta')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+      pr_number: ${{ github.event.issue.number }}
+      pr_ref: ${{ steps.pr.outputs.ref }}
+      pr_sha: ${{ steps.pr.outputs.sha }}
+    steps:
+      - name: Check admin permission
+        id: check
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.payload.comment.user.login,
+            });
+            const allowed = perm.permission === 'admin';
+            core.setOutput('allowed', allowed ? 'true' : 'false');
+
+            if (!allowed) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `⛔ @${context.payload.comment.user.login} — only repository admins can trigger \`/pr-beta\` builds.`
+              });
+            } else {
+              // React to the comment to acknowledge
+              await github.rest.reactions.createForIssueComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content: 'rocket'
+              });
+            }
+
+      - name: Get PR ref
+        id: pr
+        if: steps.check.outputs.allowed == 'true'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            core.setOutput('ref', pr.head.ref);
+            core.setOutput('sha', pr.head.sha);
+
+  build-and-push:
+    name: Build ${{ matrix.service }}
+    needs: check-permissions
+    if: needs.check-permissions.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - service: controller
+            context: ./controller
+          - service: agent
+            context: ./agent
+          - service: ui
+            context: ./ui
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.check-permissions.outputs.pr_ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-${{ matrix.service }}:pr-${{ needs.check-permissions.outputs.pr_number }}-beta
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-${{ matrix.service }}:sha-${{ needs.check-permissions.outputs.pr_sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}-pr
+          cache-to: type=gha,scope=${{ matrix.service }}-pr,mode=max
+
+  comment:
+    name: Post PR Comment
+    needs: [check-permissions, build-and-push]
+    if: needs.check-permissions.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const prNum = '${{ needs.check-permissions.outputs.pr_number }}';
+            const sha = '${{ needs.check-permissions.outputs.pr_sha }}'.substring(0, 7);
+            const user = '${{ secrets.DOCKERHUB_USERNAME }}';
+            const tag = `pr-${prNum}-beta`;
+
+            let body = `## 🐳 PR Beta Images Published\n\n`;
+            body += `| Service | Image |\n`;
+            body += `|---------|-------|\n`;
+            body += `| Controller | \`${user}/watchwarden-controller:${tag}\` |\n`;
+            body += `| Agent | \`${user}/watchwarden-agent:${tag}\` |\n`;
+            body += `| UI | \`${user}/watchwarden-ui:${tag}\` |\n\n`;
+            body += `**Commit:** \`${sha}\`\n\n`;
+            body += `### Quick test\n`;
+            body += `\`\`\`bash\n`;
+            body += `# Pull and run\n`;
+            body += `docker pull ${user}/watchwarden-controller:${tag}\n`;
+            body += `docker pull ${user}/watchwarden-agent:${tag}\n`;
+            body += `docker pull ${user}/watchwarden-ui:${tag}\n`;
+            body += `\`\`\`\n`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(prNum),
+              body
+            });
