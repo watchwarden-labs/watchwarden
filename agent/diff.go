@@ -172,9 +172,22 @@ func diffEnv(current, target map[string]string) (added, removed []string, change
 	return
 }
 
+// isMetadataLabel returns true for labels that are build metadata (change every
+// release but have no runtime impact). These are excluded from changeCount so
+// they don't inflate the diff with noise like version stamps and build dates.
+func isMetadataLabel(key string) bool {
+	return strings.HasPrefix(key, "org.opencontainers.image.") ||
+		strings.HasPrefix(key, "org.label-schema.") ||
+		key == "build_version" ||
+		key == "maintainer"
+}
+
 func diffLabels(current, target map[string]string) (added map[string]string, removed []string, changed []LabelChange) {
 	added = make(map[string]string)
 	for k, v := range target {
+		if isMetadataLabel(k) {
+			continue
+		}
 		if cv, ok := current[k]; !ok {
 			added[k] = v
 		} else if cv != v {
@@ -182,6 +195,9 @@ func diffLabels(current, target map[string]string) (added map[string]string, rem
 		}
 	}
 	for k := range current {
+		if isMetadataLabel(k) {
+			continue
+		}
 		if _, ok := target[k]; !ok {
 			removed = append(removed, k)
 		}

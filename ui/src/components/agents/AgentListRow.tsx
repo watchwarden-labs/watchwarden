@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
-import { Clock, RefreshCw, Trash2 } from "lucide-react";
+import { Clock, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { Agent } from "@/api/hooks/useAgents";
 import { StatusDot } from "@/components/common/StatusDot";
@@ -33,7 +33,11 @@ export function AgentListRow({
 					to={`/agents/${agent.id}`}
 					className="flex items-center gap-2 hover:text-primary transition-colors"
 				>
-					<StatusDot status={agent.status} />
+					{checking ? (
+						<Loader2 className="size-3.5 animate-spin text-primary shrink-0" />
+					) : (
+						<StatusDot status={agent.status} />
+					)}
 					<span className="font-medium">{agent.name}</span>
 				</Link>
 			</TableCell>

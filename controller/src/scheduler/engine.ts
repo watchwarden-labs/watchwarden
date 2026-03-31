@@ -16,21 +16,9 @@ export class Scheduler {
 	}
 
 	async init(): Promise<void> {
-		// Check if a scheduled run was missed during downtime
-		const lastRun = await getConfig("scheduler_last_run");
-		if (lastRun) {
-			const elapsed = Date.now() - Number(lastRun);
-			if (elapsed > 24 * 60 * 60 * 1000) {
-				log.info(
-					"scheduler",
-					"[scheduler] Missed scheduled check during downtime — triggering staggered catch-up",
-				);
-				// SCALE-02: stagger per-agent with 2s delay each so the catch-up after
-				// a long downtime doesn't blast all agents simultaneously and saturate
-				// Docker pull bandwidth + controller event processing.
-				setTimeout(() => this.runGlobalCheckStaggered(), 10000);
-			}
-		}
+		// Checks are triggered only by the cron schedule or manually from the UI.
+		// No automatic catch-up on startup — a restart shouldn't surprise operators
+		// with a flood of Docker pulls they didn't ask for.
 		const schedule = (await getConfig("global_schedule")) ?? "0 4 * * *";
 		if (!cron.validate(schedule)) {
 			log.warn(

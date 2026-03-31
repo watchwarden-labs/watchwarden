@@ -108,13 +108,19 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
 		if (onlineAgents.length === 0) {
 			return reply.code(200).send({ message: "No online agents", count: 0 });
 		}
-		expectCheckResults(onlineAgents.length);
+		// Only count agents we actually reached — DB status may be stale
+		let sent = 0;
 		for (const agent of onlineAgents) {
-			hub.sendToAgent(agent.id, { type: "CHECK", payload: {} });
+			if (hub.sendToAgent(agent.id, { type: "CHECK", payload: {} })) {
+				sent++;
+			}
+		}
+		if (sent > 0) {
+			expectCheckResults(sent);
 		}
 		return reply.code(202).send({
-			message: "Check initiated for all online agents",
-			count: onlineAgents.length,
+			message: `Check initiated for ${sent} online agent(s)`,
+			count: sent,
 		});
 	});
 
@@ -128,10 +134,13 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
 			if (agent.status !== "online") {
 				return reply.code(409).send({ error: "Agent is not online" });
 			}
-			hub.sendToAgent(request.params.id, {
+			const sent = hub.sendToAgent(request.params.id, {
 				type: "CHECK",
 				payload: { containerIds: request.body?.containerIds },
 			});
+			if (!sent) {
+				return reply.code(409).send({ error: "Agent is not connected" });
+			}
 			return reply.code(202).send({ message: "Check initiated" });
 		},
 	);
