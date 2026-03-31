@@ -1,0 +1,98 @@
+.terminal {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 20px rgba(36, 150, 237, 0.2);
+  border: 1px solid rgba(36, 150, 237, 0.15);
+}
+
+.terminalHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #1e1e1e;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.dotRed {
+  background: #ff5f56;
+}
+
+.dotYellow {
+  background: #ffbd2e;
+}
+
+.dotGreen {
+  background: #27c93f;
+}
+
+.terminalBody {
+  padding: 1.25rem;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  background: #0d1117;
+  color: #c9d1d9;
+  min-height: 200px;
+}
+
+.line {
+  white-space: pre-wrap;
+  margin-bottom: 0.2rem;
+}
+
+.cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1.1em;
+  background: var(--ifm-color-primary, #2496ed);
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.prompt {
+  color: #2496ed;
+}
+
+.info {
+  color: #58a6ff;
+}
+
+.action {
+  color: #f0883e;
+}
+
+.health {
+  color: #3fb950;
+}
+
+.done {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+/* Light mode overrides */
+[data-theme='light'] .terminal {
+  box-shadow: 0 0 20px rgba(36, 150, 237, 0.12);
+  border-color: rgba(36, 150, 237, 0.2);
+}
+
+[data-theme='light'] .terminalHeader {
+  background: #e8e8e8;
+}
+
+[data-theme='light'] .terminalBody {
+  background: #1e1e2e;
+  color: #d4d4d4;
+}

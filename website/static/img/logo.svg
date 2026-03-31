@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" fill="none">
+  <!-- Shield outline -->
+  <path d="M20 2 L36 10 L36 22 C36 30 28 37 20 38 C12 37 4 30 4 22 L4 10 Z" stroke="#2496ED" stroke-width="2" fill="none"/>
+  <!-- Container stack -->
+  <rect x="12" y="12" width="16" height="4" rx="1" fill="#2496ED" opacity="0.9"/>
+  <rect x="12" y="18" width="16" height="4" rx="1" fill="#2496ED" opacity="0.6"/>
+  <rect x="12" y="24" width="16" height="4" rx="1" fill="#2496ED" opacity="0.3"/>
+  <!-- Dots on containers -->
+  <circle cx="15" cy="14" r="1" fill="white"/>
+  <circle cx="15" cy="20" r="1" fill="white"/>
+  <circle cx="15" cy="26" r="1" fill="white"/>
+</svg>

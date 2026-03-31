@@ -1,0 +1,54 @@
+/* WatchWarden — Docker Blue + GitHub Dark theme */
+
+:root {
+  --ifm-color-primary: #2496ed;
+  --ifm-color-primary-dark: #1a85d9;
+  --ifm-color-primary-darker: #177dcc;
+  --ifm-color-primary-darkest: #1367a8;
+  --ifm-color-primary-light: #3ea5f0;
+  --ifm-color-primary-lighter: #4badf1;
+  --ifm-color-primary-lightest: #72c1f5;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(36, 150, 237, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #2496ed;
+  --ifm-color-primary-dark: #1a85d9;
+  --ifm-color-primary-darker: #177dcc;
+  --ifm-color-primary-darkest: #1367a8;
+  --ifm-color-primary-light: #3ea5f0;
+  --ifm-color-primary-lighter: #4badf1;
+  --ifm-color-primary-lightest: #72c1f5;
+  --ifm-background-color: #0d1117;
+  --ifm-background-surface-color: #161b22;
+  --ifm-navbar-background-color: #161b22;
+  --ifm-footer-background-color: #0d1117;
+  --ifm-card-background-color: #161b22;
+  --docusaurus-highlighted-code-line-bg: rgba(36, 150, 237, 0.15);
+}
+
+/* Navbar glass effect */
+.navbar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+}
+
+[data-theme='dark'] .navbar {
+  background-color: rgba(22, 27, 34, 0.85);
+}
+
+/* Footer subtle top border */
+.footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Code blocks */
+[data-theme='dark'] .prism-code {
+  background-color: #161b22 !important;
+}
+
+/* Sidebar active link */
+[data-theme='dark'] .menu__link--active {
+  color: var(--ifm-color-primary);
+}
