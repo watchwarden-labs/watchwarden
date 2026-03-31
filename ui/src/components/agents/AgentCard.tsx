@@ -1,4 +1,4 @@
-import { ArrowUpCircle, Clock, RefreshCw } from "lucide-react";
+import { ArrowUpCircle, Clock, Loader2, RefreshCw } from "lucide-react";
 import type { Agent } from "@/api/hooks/useAgents";
 import { StatusDot } from "@/components/common/StatusDot";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +23,12 @@ export function AgentCard({
 		agent.containers?.filter((c) => c.has_update)?.length ?? 0;
 
 	return (
-		<Card className="card-hover h-full flex flex-col">
+		<Card className="card-hover h-full flex flex-col relative overflow-hidden">
+			{checking && (
+				<div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px] rounded-xl">
+					<Loader2 className="size-8 animate-spin text-primary" />
+				</div>
+			)}
 			<CardHeader className="pb-2">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">

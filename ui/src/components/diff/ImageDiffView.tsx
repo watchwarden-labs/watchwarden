@@ -132,6 +132,28 @@ export function ImageDiffView({ diff, compact }: ImageDiffViewProps) {
 				</DiffSection>
 			)}
 
+			{/* Labels (only non-metadata — OCI build labels are filtered by the agent) */}
+			{(diff.labelsAdded && Object.keys(diff.labelsAdded).length > 0) ||
+			diff.labelsRemoved?.length ||
+			diff.labelsChanged?.length ? (
+				<DiffSection title="Labels">
+					{diff.labelsAdded &&
+						Object.entries(diff.labelsAdded).map(([k, v]) => (
+							<DiffLine key={k} type="added" text={`${k}=${v}`} />
+						))}
+					{diff.labelsRemoved?.map((k) => (
+						<DiffLine key={k} type="removed" text={k} />
+					))}
+					{diff.labelsChanged?.map((l) => (
+						<DiffLine
+							key={l.key}
+							type="changed"
+							text={`${l.key}: ${l.oldValue} → ${l.newValue}`}
+						/>
+					))}
+				</DiffSection>
+			) : null}
+
 			{/* Volumes */}
 			{diff.volumesAdded?.length || diff.volumesRemoved?.length ? (
 				<DiffSection title="Volumes">

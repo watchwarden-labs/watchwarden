@@ -18,7 +18,11 @@ import {
 } from "@/api/hooks/useAgents";
 import { ContainerLogsDialog } from "@/components/agents/ContainerLogsDialog";
 import { DigestBadge } from "@/components/common/DigestBadge";
-import { DiffBadge, type ImageDiff } from "@/components/diff/ImageDiffView";
+import {
+	DiffBadge,
+	ImageDiffView,
+	type ImageDiff,
+} from "@/components/diff/ImageDiffView";
 import { VersionPickerModal } from "@/components/rollback/VersionPickerModal";
 import {
 	AlertDialog,
@@ -33,6 +37,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "@/components/ui/dialog";
 import {
 	Tooltip,
 	TooltipContent,
@@ -218,7 +230,25 @@ export function ContainerRow({
 								const diff = JSON.parse(
 									container.last_diff,
 								) as ImageDiff;
-								return <DiffBadge diff={diff} />;
+								if (diff.changeCount === 0) return null;
+								return (
+									<Dialog>
+										<DialogTrigger render={<button type="button" className="cursor-pointer" />}>
+										<DiffBadge diff={diff} />
+									</DialogTrigger>
+										<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+											<DialogHeader>
+												<DialogTitle>
+													Image Diff — {container.name}
+												</DialogTitle>
+												<DialogDescription>
+													Changes between current and latest image
+												</DialogDescription>
+											</DialogHeader>
+											<ImageDiffView diff={diff} />
+										</DialogContent>
+									</Dialog>
+								);
 							} catch {
 								return null;
 							}

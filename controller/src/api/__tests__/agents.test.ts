@@ -279,11 +279,140 @@ describe("POST /api/agents/check-all", () => {
 	});
 });
 
+describe("sendToAgent return value guards", () => {
+	let app: FastifyInstance;
+	let token: string;
+	let mockHub: {
+		sendToAgent: ReturnType<typeof vi.fn>;
+		getOnlineAgentIds: ReturnType<typeof vi.fn>;
+		broadcastToAllAgents: ReturnType<typeof vi.fn>;
+		handleConnection: ReturnType<typeof vi.fn>;
+		dispose: ReturnType<typeof vi.fn>;
+	};
+
+	async function buildAppWithHub(): Promise<FastifyInstance> {
+		const hash = await bcrypt.hash("testpassword", 10);
+		await setConfig("admin_password_hash", hash);
+		await setConfig("jwt_secret", "test-jwt-secret");
+
+		const fastifyApp = Fastify({ logger: false });
+		mockHub = {
+			sendToAgent: vi.fn().mockReturnValue(true),
+			getOnlineAgentIds: vi.fn().mockReturnValue([]),
+			broadcastToAllAgents: vi.fn(),
+			handleConnection: vi.fn(),
+			dispose: vi.fn(),
+		};
+		(fastifyApp as unknown as { hub: typeof mockHub }).hub = mockHub;
+		await fastifyApp.register(cookie);
+		await fastifyApp.register(rateLimit, { global: false });
+		const { default: authRoutes } = await import("../routes/auth.js");
+		const { default: agentsRoutes } = await import("../routes/agents.js");
+		await fastifyApp.register(authRoutes);
+		await fastifyApp.register(agentsRoutes);
+		return fastifyApp;
+	}
+
+	const authHeaders = () => ({ authorization: `Bearer ${token}` });
+
+	beforeAll(async () => {
+		await truncateAll();
+		app = await buildAppWithHub();
+		token = await getAuthToken(app);
+	}, 60000);
+
+	afterAll(async () => {
+		await app.close();
+		await truncateAll();
+	});
+
+	it("POST /:id/check returns 409 when agent WS is disconnected", async () => {
+		await insertAgent({
+			id: "check-disc-1",
+			name: "Disconnected",
+			hostname: "srv",
+			token_hash: "$2a$10$hash-check-disc-1",
+		});
+		await updateAgentStatus("check-disc-1", "online", Date.now());
+
+		// sendToAgent returns false → agent has DB status "online" but no WS socket
+		mockHub.sendToAgent.mockReturnValue(false);
+
+		const res = await app.inject({
+			method: "POST",
+			url: "/api/agents/check-disc-1/check",
+			headers: authHeaders(),
+		});
+
+		expect(res.statusCode).toBe(409);
+		expect(JSON.parse(res.body).error).toContain("not connected");
+	});
+
+	it("POST /:id/check returns 202 when agent WS is connected", async () => {
+		mockHub.sendToAgent.mockReturnValue(true);
+
+		const res = await app.inject({
+			method: "POST",
+			url: "/api/agents/check-disc-1/check",
+			headers: authHeaders(),
+		});
+
+		expect(res.statusCode).toBe(202);
+	});
+
+	it("POST /check-all only counts agents where sendToAgent succeeded", async () => {
+		await insertAgent({
+			id: "check-all-a",
+			name: "Agent A",
+			hostname: "srv-a",
+			token_hash: "$2a$10$hash-check-all-a",
+		});
+		await insertAgent({
+			id: "check-all-b",
+			name: "Agent B",
+			hostname: "srv-b",
+			token_hash: "$2a$10$hash-check-all-b",
+		});
+		await updateAgentStatus("check-all-a", "online", Date.now());
+		await updateAgentStatus("check-all-b", "online", Date.now());
+
+		// Agent A is reachable, Agent B is a ghost (DB online, WS gone)
+		mockHub.sendToAgent.mockImplementation((id: string) => id === "check-all-a");
+
+		const res = await app.inject({
+			method: "POST",
+			url: "/api/agents/check-all",
+			headers: authHeaders(),
+		});
+
+		expect(res.statusCode).toBe(202);
+		const body = JSON.parse(res.body);
+		expect(body.count).toBe(1);
+	});
+
+	it("POST /:id/check returns 409 when agent status is offline", async () => {
+		await updateAgentStatus("check-disc-1", "offline", Date.now());
+
+		const res = await app.inject({
+			method: "POST",
+			url: "/api/agents/check-disc-1/check",
+			headers: authHeaders(),
+		});
+
+		expect(res.statusCode).toBe(409);
+		expect(JSON.parse(res.body).error).toContain("not online");
+	});
+});
+
 describe("BUG-05: Manual update rejects when update already in flight", () => {
 	let app: FastifyInstance;
 	let token: string;
 
 	async function buildAppWithMockHub(): Promise<FastifyInstance> {
+		const hash = await bcrypt.hash("testpassword", 10);
+		await setConfig("admin_password_hash", hash);
+		await setConfig("jwt_secret", "test-jwt-secret");
+
 		const fastifyApp = Fastify({ logger: false });
 		const mockHub = {
 			sendToAgent: vi.fn().mockReturnValue(true),
