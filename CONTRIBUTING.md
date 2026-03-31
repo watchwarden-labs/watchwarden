@@ -118,7 +118,13 @@ watchwarden/
 │   ├── notifications/        # Telegram/Slack/Webhook senders
 │   └── lib/                  # Crypto, registry client
 ├── agent/                    # Go agent
-│   ├── main.go               # Entry + WS message handlers
+│   ├── main.go               # Entry point (shared init + mode branch)
+│   ├── config.go             # Centralized config from env vars
+│   ├── compat.go             # Watchtower env var compatibility
+│   ├── managed.go            # Managed mode (WebSocket + controller)
+│   ├── solo.go               # Solo mode (standalone scheduler + notify)
+│   ├── notify.go             # Notification senders (Telegram, Slack, Webhook)
+│   ├── httpserver.go         # HTTP status server (/health, /api/*)
 │   ├── docker.go             # Docker SDK wrapper
 │   ├── updater.go            # Atomic update/rollback
 │   ├── ws.go                 # WebSocket client

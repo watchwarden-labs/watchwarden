@@ -9,6 +9,14 @@
 
 ## Features
 
+### Solo Mode (Watchtower replacement)
+- **Zero-config standalone** — runs without Controller/UI, just mount docker.sock
+- **Watchtower drop-in** — supports all standard `WATCHTOWER_*` environment variables
+- **Cron & interval scheduling** — `WW_SCHEDULE="@every 6h"` or `WW_SCHEDULE="0 4 * * *"`
+- **Built-in notifications** — Telegram, Slack, and generic webhooks via env vars
+- **HTTP status API** — `/health`, `/api/containers`, `/api/events` for monitoring
+- **All advanced features** — blue-green updates, crash recovery, auto-rollback work in Solo Mode
+
 ### Dashboard & Monitoring
 - **Real-time dashboard** — WebSocket-powered live progress for check, update, and rollback operations
 - **Grid & list views** — switch between card and table layouts for agents
@@ -48,11 +56,13 @@
 
 ## WatchWarden vs Watchtower
 
-WatchWarden is a modern alternative to [Watchtower](https://github.com/containrrr/watchtower) with multi-host management and a real-time dashboard.
+WatchWarden is a modern alternative to [Watchtower](https://github.com/containrrr/watchtower). Use it as a drop-in replacement (Solo Mode) or scale to multi-host with the Controller + UI.
 
 | Feature | WatchWarden | Watchtower |
 |---------|:-----------:|:----------:|
-| Web Dashboard | ✅ Real-time UI | ❌ CLI only |
+| Standalone Mode | ✅ Solo + Managed | ✅ Standalone only |
+| Watchtower Env Var Compat | ✅ Drop-in replacement | — |
+| Web Dashboard | ✅ Real-time UI (Managed Mode) | ❌ CLI only |
 | Multi-host Management | ✅ Central controller + agents | ❌ Single host |
 | Rollback | ✅ Any version + version picker | ❌ None |
 | Update Groups / Dependencies | ✅ Label-based ordering | ❌ None |
@@ -104,6 +114,48 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 ```
 
 ## Quick Start
+
+### Solo Mode (Watchtower replacement)
+
+Run the agent standalone — no controller, no database, no UI required:
+
+```bash
+docker run -d \
+  --name watchwarden \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e WW_SCHEDULE="@every 1h" \
+  -e WW_AUTO_UPDATE=true \
+  --restart unless-stopped \
+  alexneo/watchwarden-agent:latest
+```
+
+Add notifications:
+```bash
+docker run -d \
+  --name watchwarden \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e WW_SCHEDULE="@every 6h" \
+  -e WW_AUTO_UPDATE=true \
+  -e WW_TELEGRAM_TOKEN=123456:ABC-DEF \
+  -e WW_TELEGRAM_CHAT_ID=-100123456 \
+  --restart unless-stopped \
+  alexneo/watchwarden-agent:latest
+```
+
+Drop-in Watchtower replacement (same env vars):
+```bash
+docker run -d \
+  --name watchwarden \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e WATCHTOWER_POLL_INTERVAL=3600 \
+  -e WATCHTOWER_CLEANUP=true \
+  -e WATCHTOWER_NOTIFICATION_TELEGRAM_TOKEN=123456:ABC-DEF \
+  -e WATCHTOWER_NOTIFICATION_TELEGRAM_CHAT_ID=-100123456 \
+  --restart unless-stopped \
+  alexneo/watchwarden-agent:latest
+```
+
+### Multi-host deploy (Controller + UI + Agents)
 
 ### One-command deploy
 
@@ -196,17 +248,64 @@ docker run -d \
 | `HOST` | No | `0.0.0.0` | Bind address |
 | `NODE_ENV` | No | `development` | Set to `production` to enforce CORS_ORIGIN and enable secure cookies |
 
-### Agent
+### Agent — Managed Mode
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `CONTROLLER_URL` | **Yes** | — | WebSocket URL (e.g. `ws://controller:3000`) |
+| `CONTROLLER_URL` | **Yes** | — | WebSocket URL (e.g. `ws://controller:3000`). If unset, agent runs in Solo Mode. |
 | `AGENT_TOKEN` | **Yes** | — | Authentication token (must match a registered agent) |
 | `AGENT_NAME` | No | hostname | Display name in dashboard |
-| `WATCHWARDEN_LABEL_ENABLE_ONLY` | No | `false` | Only monitor containers with `com.watchwarden.enable=true` |
-| `REQUIRE_SIGNED_IMAGES` | No | `false` | Block updates if image signature fails cosign verification |
-| `COSIGN_PUBLIC_KEY` | No | — | PEM-encoded cosign public key for signature verification |
-| `LOCAL_SCHEDULE` | No | — | Cron expression for offline fallback checks when controller is unreachable |
+
+### Agent — Solo Mode
+
+When `CONTROLLER_URL` is not set, the agent runs autonomously.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WW_SCHEDULE` | `@every 24h` | Check schedule (cron expression or `@every` interval) |
+| `WW_AUTO_UPDATE` | `false` | Automatically apply updates (set `true` to enable) |
+| `WW_MONITOR_ONLY` | `false` | Check only, never update |
+| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` (stop-first) or `start-first` (blue-green zero-downtime) |
+| `WW_PRUNE` | `false` | Remove old images after update |
+| `WW_STOP_TIMEOUT` | `10` | Container stop timeout in seconds |
+| `WW_TELEGRAM_TOKEN` | — | Telegram bot token for notifications |
+| `WW_TELEGRAM_CHAT_ID` | — | Telegram chat ID (comma-separated for multiple) |
+| `WW_SLACK_WEBHOOK` | — | Slack incoming webhook URL |
+| `WW_WEBHOOK_URL` | — | Generic HTTP POST webhook |
+| `WW_WEBHOOK_HEADERS` | — | JSON object of extra headers for webhook |
+| `WW_NOTIFICATION_URL` | — | Space-separated shoutrrr URLs (`telegram://...`, `slack://...`) |
+| `WW_HTTP_PORT` | `8080` | HTTP status server port |
+| `WW_HTTP_TOKEN` | — | Bearer token for HTTP API (optional) |
+| `WW_DOCKER_USERNAME` | — | Registry username |
+| `WW_DOCKER_PASSWORD` | — | Registry password |
+| `WW_DOCKER_SERVER` | `index.docker.io` | Registry server |
+
+### Agent — Shared (both modes)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_NAME` | hostname | Display name |
+| `WATCHWARDEN_LABEL_ENABLE_ONLY` | `false` | Only monitor containers with `com.watchwarden.enable=true` |
+| `REQUIRE_SIGNED_IMAGES` | `false` | Block updates if image signature fails cosign verification |
+| `COSIGN_PUBLIC_KEY` | — | PEM-encoded cosign public key |
+
+### Watchtower Compatibility
+
+All standard Watchtower environment variables are automatically mapped to WatchWarden equivalents:
+
+| Watchtower Variable | WatchWarden Equivalent |
+|---|---|
+| `WATCHTOWER_POLL_INTERVAL` | `WW_SCHEDULE` (converted to `@every Ns`) |
+| `WATCHTOWER_SCHEDULE` | `WW_SCHEDULE` |
+| `WATCHTOWER_CLEANUP` | `WW_PRUNE` |
+| `WATCHTOWER_MONITOR_ONLY` | `WW_MONITOR_ONLY` |
+| `WATCHTOWER_LABEL_ENABLE` | `WATCHWARDEN_LABEL_ENABLE_ONLY` |
+| `WATCHTOWER_ROLLING_RESTART` | `WW_UPDATE_STRATEGY=start-first` |
+| `WATCHTOWER_HTTP_API_TOKEN` | `WW_HTTP_TOKEN` |
+| `WATCHTOWER_NOTIFICATION_TELEGRAM_TOKEN` | `WW_TELEGRAM_TOKEN` |
+| `WATCHTOWER_NOTIFICATION_TELEGRAM_CHAT_ID` | `WW_TELEGRAM_CHAT_ID` |
+| `WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL` | `WW_SLACK_WEBHOOK` |
+| `REPO_USER` / `REPO_PASS` | `WW_DOCKER_USERNAME` / `WW_DOCKER_PASSWORD` |
 
 ### Container Labels
 
@@ -257,7 +356,7 @@ npm run dev
 # Controller — 115 tests (needs Docker for testcontainers)
 cd controller && npm test
 
-# Agent — 63 tests (use -race for race detection)
+# Agent — 98 tests (use -race for race detection)
 cd agent && go test -race ./... -count=1
 
 # UI — 50 tests

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"log"
+	"os"
 	"strings"
 	"sync"
 )
@@ -28,6 +31,46 @@ func (s *CredStore) Set(creds []RegistryCredential) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.creds = creds
+}
+
+// Add appends a single credential, replacing any existing entry for the same registry.
+func (s *CredStore) Add(cred RegistryCredential) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, existing := range s.creds {
+		if existing.Registry == cred.Registry {
+			s.creds[i] = cred
+			return
+		}
+	}
+	s.creds = append(s.creds, cred)
+}
+
+// LoadFromEnv reads registry credentials from WW_DOCKER_* env vars
+// and WW_REGISTRY_AUTH (JSON array) into the store.
+func (s *CredStore) LoadFromEnv() {
+	username := os.Getenv("WW_DOCKER_USERNAME")
+	password := os.Getenv("WW_DOCKER_PASSWORD")
+	if username != "" && password != "" {
+		server := os.Getenv("WW_DOCKER_SERVER")
+		if server == "" {
+			server = "index.docker.io"
+		}
+		s.Add(RegistryCredential{Registry: server, Username: username, Password: password})
+		log.Printf("[credstore] Loaded credentials for %s from env", server)
+	}
+
+	if authJSON := os.Getenv("WW_REGISTRY_AUTH"); authJSON != "" {
+		var creds []RegistryCredential
+		if err := json.Unmarshal([]byte(authJSON), &creds); err != nil {
+			log.Printf("[credstore] Failed to parse WW_REGISTRY_AUTH: %v", err)
+		} else {
+			for _, c := range creds {
+				s.Add(c)
+			}
+			log.Printf("[credstore] Loaded %d registries from WW_REGISTRY_AUTH", len(creds))
+		}
+	}
 }
 
 // GetForImage returns credentials matching the image's registry, or nil.

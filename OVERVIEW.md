@@ -2,26 +2,30 @@
 
 ## What It Is
 
-WatchWarden is a distributed Docker container update manager — a modern, multi-host alternative to Watchtower. It consists of a central **Controller** (Node.js), lightweight **Agents** (Go) deployed on each Docker host, and a real-time **Web UI** (React). All communication happens over WebSocket, with PostgreSQL for persistence.
+WatchWarden is a Docker container update manager that works in two modes:
+
+- **Solo Mode** — drop-in Watchtower replacement. Single binary, no dependencies. Mount docker.sock and go.
+- **Managed Mode** — multi-host management with a central Controller (Node.js), lightweight Agents (Go), and a real-time Web UI (React).
 
 ```
-               Web UI (React)
-                    |  WebSocket
-              Controller (Node.js)
-              /    |    \  WebSocket
-          Agent   Agent   Agent
-          (Go)    (Go)    (Go)
-           |       |       |
-         Docker  Docker  Docker
+Solo Mode:                          Managed Mode:
+
+  Agent (Go)                           Web UI (React)
+     |                                      |  WebSocket
+  Docker API                          Controller (Node.js)
+     |                                /    |    \  WebSocket
+  Containers                      Agent   Agent   Agent
+                                   |       |       |
+                                 Docker  Docker  Docker
 ```
 
 ## Project Scale
 
 | Metric | Count |
 |--------|-------|
-| Source code | 15,307 LOC |
-| Test code | 5,900 LOC |
-| Test cases | 228 (63 Go + 115 TS + 50 React) |
+| Source code | ~17,000 LOC |
+| Test code | ~7,500 LOC |
+| Test cases | 263 (98 Go + 115 TS + 50 React) |
 | API endpoints | 39 REST |
 | WebSocket message types | 22 (9 inbound, 13 outbound) |
 | DB migrations | 10 |

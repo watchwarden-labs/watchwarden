@@ -72,7 +72,13 @@ watchwarden/
 │       ├── ws/          # WebSocket hub + UI broadcaster
 │       └── scheduler/   # Cron engine
 ├── agent/               # Go lightweight agent
-│   ├── main.go          # Entry point
+│   ├── main.go          # Entry point (shared init + mode branch)
+│   ├── config.go        # Centralized config from env vars
+│   ├── compat.go        # Watchtower env var compatibility layer
+│   ├── managed.go       # Managed mode (WebSocket + controller)
+│   ├── solo.go          # Solo mode (standalone scheduler + notify)
+│   ├── notify.go        # Notification senders (Telegram, Slack, Webhook)
+│   ├── httpserver.go    # HTTP status server (/health, /api/*)
 │   ├── interfaces.go    # Interfaces for testability
 │   ├── docker.go        # Docker API client
 │   ├── updater.go       # Atomic update/rollback
@@ -124,10 +130,16 @@ Write tests before implementation for every module.
 ### Agent
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CONTROLLER_URL` | — | WebSocket URL to controller (ws:// or wss://) |
-| `AGENT_TOKEN` | — | Pre-shared auth token |
+| `CONTROLLER_URL` | — | If set: Managed Mode. If unset: Solo Mode |
+| `AGENT_TOKEN` | — | Pre-shared auth token (Managed Mode) |
 | `AGENT_NAME` | hostname | Display name |
-| `LOCAL_SCHEDULE` | — | Cron for offline fallback |
+| `WW_SCHEDULE` | `@every 24h` | Check schedule (Solo Mode) |
+| `WW_AUTO_UPDATE` | `false` | Auto-apply updates (Solo Mode) |
+| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` or `start-first` (blue-green) |
+| `WW_TELEGRAM_TOKEN` | — | Telegram bot token (Solo Mode notifications) |
+| `WW_TELEGRAM_CHAT_ID` | — | Telegram chat ID |
+| `WW_SLACK_WEBHOOK` | — | Slack webhook URL |
+| `WW_HTTP_PORT` | `8080` | HTTP status server port |
 | `WATCHWARDEN_LABEL_ENABLE_ONLY` | `false` | Only monitor containers with enable label |
 
 ### UI
