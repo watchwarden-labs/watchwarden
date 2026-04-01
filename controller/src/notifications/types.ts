@@ -1,1 +1,1 @@
-export type { NotificationEvent } from "@watchwarden/types";
+export type { NotificationEvent } from '@watchwarden/types';

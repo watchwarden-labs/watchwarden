@@ -7,9 +7,13 @@
 		"ui"
 	],
 	"scripts": {
+		"prepare": "git config core.hooksPath .githooks",
 		"build:packages": "npm -w @watchwarden/types run build && npm -w @watchwarden/sdk run build",
 		"build": "npm run build:packages && npm -w watchwarden-controller run build && npm -w ui run build",
 		"test": "npm -w watchwarden-controller run test && npm -w ui run test",
+		"lint": "npm -w watchwarden-controller run lint && npm -w ui run lint",
+		"lint:fix": "npm -w watchwarden-controller run lint:fix && npm -w ui run lint:fix",
+		"format": "npm -w watchwarden-controller run format && npm -w ui run format",
 		"type-check": "npm -w @watchwarden/types run build && npm -w @watchwarden/sdk run build && npm -w watchwarden-controller run type-check && npm -w ui run type-check",
 		"docker": "docker compose build && docker compose up",
 		"docker:d": "npm run docker:build && npm run docker:up",

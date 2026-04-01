@@ -1,0 +1,32 @@
+#!/bin/sh
+# Pre-commit hook: format and lint staged files with Biome
+
+# Get staged files (only added/modified, not deleted)
+STAGED_CONTROLLER=$(git diff --cached --name-only --diff-filter=ACM -- 'controller/src/**/*.ts' 'controller/src/**/*.tsx')
+STAGED_UI=$(git diff --cached --name-only --diff-filter=ACM -- 'ui/src/**/*.ts' 'ui/src/**/*.tsx' 'ui/src/**/*.css')
+
+EXIT_CODE=0
+
+if [ -n "$STAGED_CONTROLLER" ]; then
+  echo "🔍 Linting controller files..."
+  npx @biomejs/biome check --config-path . --write --staged $STAGED_CONTROLLER
+  if [ $? -ne 0 ]; then
+    echo "❌ Controller lint failed"
+    EXIT_CODE=1
+  else
+    git add $STAGED_CONTROLLER
+  fi
+fi
+
+if [ -n "$STAGED_UI" ]; then
+  echo "🔍 Linting UI files..."
+  npx @biomejs/biome check --config-path . --write --staged $STAGED_UI
+  if [ $? -ne 0 ]; then
+    echo "❌ UI lint failed"
+    EXIT_CODE=1
+  else
+    git add $STAGED_UI
+  fi
+fi
+
+exit $EXIT_CODE
