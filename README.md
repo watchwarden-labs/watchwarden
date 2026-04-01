@@ -34,10 +34,12 @@
 - **Blue-green updates** — start new container first, verify health, then stop old (zero-downtime)
 - **Rollback** — roll back to any previous version or pick a specific tag from the registry
 - **Update groups** — label-based dependency ordering (`com.watchwarden.group`, `com.watchwarden.depends_on`)
-- **Pinned version detection** — blocks accidental updates for containers with explicit version tags (e.g. `postgres:18-alpine`)
+- **Pinned version detection** — blocks accidental updates for containers with explicit version tags (e.g. `postgres:16.2-alpine`), while correctly treating floating tags (`alpine`, `lts`, `stable`) as updatable
+- **Config-only change detection** — detects image updates even when only entrypoint/env/labels changed (same manifest digest, different image ID)
 - **Image diff preview** — shows env, port, entrypoint, and volume changes before updating
-- **Health-based auto-rollback** — rolls back automatically if a container becomes unhealthy after update
-- **Crash-loop detection** — detects and rolls back containers stuck in restart loops
+- **Health-based auto-rollback** — rolls back automatically if a container becomes unhealthy after update, respects healthcheck `start_period` for slow-starting containers
+- **Crash-loop detection** — detects and rolls back containers stuck in restart loops (requires 3+ restarts in 60s to avoid false positives)
+- **AutoRemove container support** — safely updates `--rm` containers by handling Docker API 409/404 during removal
 - **Volume pre-flight check** — verifies all bind mount sources exist before attempting an update
 
 ### Security & Compliance
@@ -74,7 +76,9 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 | Vulnerability Scanning | ✅ Trivy-based CVE scanning | ❌ None |
 | Image Signing (Cosign) | ✅ Verify before pull | ❌ None |
 | Image Diff Preview | ✅ Before update | ❌ None |
-| Pinned Version Detection | ✅ Blocks updates for explicit tags | ❌ None |
+| Pinned Version Detection | ✅ Blocks explicit tags, allows floating | ❌ None |
+| Config-only Change Detection | ✅ Detects entrypoint/env changes | ❌ None |
+| AutoRemove (`--rm`) Support | ✅ Handles 409/404 gracefully | ❌ Breaks |
 | Update Scheduling | ✅ Global + per-agent cron | ✅ Cron schedule |
 | Audit Log | ✅ Full audit trail | ❌ None |
 | Auto-update | ✅ Per-agent or global | ✅ Global |
@@ -248,6 +252,12 @@ docker run -d \
 | `HOST` | No | `0.0.0.0` | Bind address |
 | `NODE_ENV` | No | `development` | Set to `production` to enforce CORS_ORIGIN and enable secure cookies |
 
+> **Database config keys** (set via Settings UI or `PUT /api/config`):
+>
+> | Key | Default | Description |
+> |-----|---------|-------------|
+> | `check_on_startup` | `false` | Run a catch-up check on startup if last scheduled check was >24h ago |
+
 ### Agent — Managed Mode
 
 | Variable | Required | Default | Description |
@@ -316,6 +326,7 @@ All standard Watchtower environment variables are automatically mapped to WatchW
 | `com.watchwarden.group` | `backend` | Assign container to an update group |
 | `com.watchwarden.priority` | `10` | Update priority within a group (lower = first) |
 | `com.watchwarden.depends_on` | `db,cache` | Wait for these containers to update successfully first |
+| `com.watchwarden.pinned` | `true` | Force-pin a floating tag (skip update checks) |
 
 ## Development
 
@@ -353,13 +364,13 @@ npm run dev
 ### Running Tests
 
 ```bash
-# Controller — 115 tests (needs Docker for testcontainers)
+# Controller — 124 tests (needs Docker for testcontainers)
 cd controller && npm test
 
-# Agent — 98 tests (use -race for race detection)
+# Agent — 122 tests (use -race for race detection)
 cd agent && go test -race ./... -count=1
 
-# UI — 50 tests
+# UI — 29 tests
 cd ui && npm test
 ```
 

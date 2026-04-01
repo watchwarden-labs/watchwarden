@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -55,8 +56,13 @@ func NewDockerClientWithAPI(api DockerAPI) *DockerClient {
 	return &DockerClient{cli: api}
 }
 
-// isPinnedVersion returns true if the image tag is a specific version (not "latest", not empty).
-// Examples: "postgres:18-alpine" → true, "nginx:latest" → false, "myapp" → false, "nginx:1.28.2" → true
+// semverish matches tags containing at least major.minor version (e.g. "16.2", "1.25.3-alpine", "20.11")
+var semverish = regexp.MustCompile(`\d+\.\d+`)
+
+// isPinnedVersion returns true if the image tag is a specific version (not "latest", not empty,
+// and not a floating alias like "alpine", "lts", "slim", "jammy", "22-slim").
+// A tag is considered pinned only if it contains a major.minor version pattern (e.g. "16.2").
+// Tags like "22-slim" with only a major version are floating (they track the latest minor).
 func isPinnedVersion(image string) bool {
 	// No tag or digest → not pinned (uses :latest implicitly)
 	if !strings.Contains(image, ":") {
@@ -72,7 +78,11 @@ func isPinnedVersion(image string) bool {
 		return false
 	}
 	tag := parts[1]
-	return tag != "latest" && tag != ""
+	if tag == "" || tag == "latest" {
+		return false
+	}
+	// Pinned only if tag contains a semver-ish pattern (major.minor)
+	return semverish.MatchString(tag)
 }
 
 // friendlyImageName returns a short, readable image name.

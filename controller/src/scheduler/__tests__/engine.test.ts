@@ -161,6 +161,58 @@ describe("Scheduler", () => {
 		expectSpy.mockRestore();
 	});
 
+	it("L2: does NOT run catch-up when check_on_startup is unset", async () => {
+		// Set scheduler_last_run to 48h ago — stale enough for catch-up
+		await setConfig("scheduler_last_run", String(Date.now() - 48 * 60 * 60 * 1000));
+
+		await scheduler.init();
+
+		// Wait to see if a catch-up fires
+		await new Promise((r) => setTimeout(r, 1500));
+
+		// No CHECK should have been sent (check_on_startup defaults to off)
+		const checkMessages = mockHub.sentMessages.filter(
+			(m) => (m.message as { type: string }).type === "CHECK",
+		);
+		expect(checkMessages).toHaveLength(0);
+	});
+
+	it("L2: runs catch-up when check_on_startup is true and last run is stale", async () => {
+		await setConfig("check_on_startup", "true");
+		await setConfig("scheduler_last_run", String(Date.now() - 48 * 60 * 60 * 1000));
+
+		// Reset sent messages
+		mockHub.sentMessages.length = 0;
+
+		await scheduler.init();
+
+		// The catch-up has a 10s setTimeout, so we need to wait for it
+		// Use a faster approach: spy on setTimeout
+		await new Promise((r) => setTimeout(r, 12000));
+
+		const checkMessages = mockHub.sentMessages.filter(
+			(m) => (m.message as { type: string }).type === "CHECK",
+		);
+		expect(checkMessages.length).toBeGreaterThanOrEqual(1);
+	}, 20000);
+
+	it("L2: does NOT run catch-up when last run is recent", async () => {
+		await setConfig("check_on_startup", "true");
+		await setConfig("scheduler_last_run", String(Date.now() - 3600000)); // 1h ago
+
+		mockHub.sentMessages.length = 0;
+
+		await scheduler.init();
+
+		await new Promise((r) => setTimeout(r, 1500));
+
+		// No catch-up — last run was recent (within 24h)
+		const checkMessages = mockHub.sentMessages.filter(
+			(m) => (m.message as { type: string }).type === "CHECK",
+		);
+		expect(checkMessages).toHaveLength(0);
+	});
+
 	it("DB failure during setConfig does not crash scheduler (OBS-03)", async () => {
 		const setConfigSpy = vi.spyOn(
 			await import("../../db/queries.js"),

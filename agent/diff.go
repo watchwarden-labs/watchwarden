@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/go-connections/nat"
 )
 
@@ -55,7 +55,7 @@ type StringSliceDiff struct {
 }
 
 // DiffImages compares two Docker image inspections and returns the differences.
-func DiffImages(current, target types.ImageInspect) ImageDiff {
+func DiffImages(current, target image.InspectResponse) ImageDiff {
 	diff := ImageDiff{}
 
 	if current.Config == nil || target.Config == nil {
