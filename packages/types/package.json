@@ -1,0 +1,23 @@
+{
+  "name": "@watchwarden/types",
+  "version": "0.1.0",
+  "description": "Shared TypeScript types for WatchWarden",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.0"
+  },
+  "license": "BSL-1.1"
+}

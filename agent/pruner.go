@@ -10,10 +10,10 @@ import (
 
 // PruneResult holds the outcome of an image prune operation.
 type PruneResult struct {
-	ImagesRemoved  int              `json:"imagesRemoved"`
-	SpaceReclaimed int64            `json:"spaceReclaimed"`
-	Details        []PrunedImage    `json:"details"`
-	Errors         []string         `json:"errors"`
+	ImagesRemoved  int           `json:"imagesRemoved"`
+	SpaceReclaimed int64         `json:"spaceReclaimed"`
+	Details        []PrunedImage `json:"details"`
+	Errors         []string      `json:"errors"`
 }
 
 // PrunedImage describes a single removed image.

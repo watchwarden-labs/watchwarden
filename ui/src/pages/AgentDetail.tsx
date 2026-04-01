@@ -35,12 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import {
-	Tabs,
-	TabsContent,
-	TabsList,
-	TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useStore } from "@/store/useStore";
 
 export function AgentDetail() {
@@ -58,7 +53,9 @@ export function AgentDetail() {
 	const isChecking = agent ? checkingAgents.has(agent.id) : false;
 	const [pruneKeep, setPruneKeep] = useState(1);
 	const [pruneConfirmOpen, setPruneConfirmOpen] = useState(false);
-	const [showStopped, setShowStopped] = useState(() => localStorage.getItem("showStopped") === "true");
+	const [showStopped, setShowStopped] = useState(
+		() => localStorage.getItem("showStopped") === "true",
+	);
 	const [containerPage, setContainerPage] = useState(0);
 	const CONTAINER_PAGE_SIZE = 15;
 
@@ -147,9 +144,23 @@ export function AgentDetail() {
 							<div className="flex items-center gap-2">
 								<Switch
 									checked={showStopped}
-									onCheckedChange={(v) => { setShowStopped(v); localStorage.setItem("showStopped", String(v)); setContainerPage(0); }}
+									onCheckedChange={(v) => {
+										setShowStopped(v);
+										localStorage.setItem("showStopped", String(v));
+										setContainerPage(0);
+									}}
 								/>
-								<Label className="text-xs text-muted-foreground cursor-pointer" onClick={() => { setShowStopped((v) => { const next = !v; localStorage.setItem("showStopped", String(next)); return next; }); setContainerPage(0); }}>
+								<Label
+									className="text-xs text-muted-foreground cursor-pointer"
+									onClick={() => {
+										setShowStopped((v) => {
+											const next = !v;
+											localStorage.setItem("showStopped", String(next));
+											return next;
+										});
+										setContainerPage(0);
+									}}
+								>
 									Show stopped
 								</Label>
 							</div>
@@ -161,7 +172,11 @@ export function AgentDetail() {
 								onClick={() => {
 									setAgentChecking(agent.id, true);
 									checkAgent.mutate(agent.id, {
-										onSuccess: () => addToast({ type: "info", message: "Checking for updates..." }),
+										onSuccess: () =>
+											addToast({
+												type: "info",
+												message: "Checking for updates...",
+											}),
 										onError: () => {
 											setAgentChecking(agent.id, false);
 											addToast({ type: "error", message: "Check failed" });
@@ -178,7 +193,15 @@ export function AgentDetail() {
 							</Button>
 							<Button
 								size="sm"
-								onClick={() => updateAgent.mutate({ id: agent.id }, { onError: () => addToast({ type: "error", message: "Update failed" }) })}
+								onClick={() =>
+									updateAgent.mutate(
+										{ id: agent.id },
+										{
+											onError: () =>
+												addToast({ type: "error", message: "Update failed" }),
+										},
+									)
+								}
 							>
 								Update All
 							</Button>
@@ -213,10 +236,19 @@ export function AgentDetail() {
 													agentId={agent.id}
 													container={ct}
 													onUpdate={() =>
-														updateAgent.mutate({
-															id: agent.id,
-															containerIds: [ct.docker_id],
-														}, { onError: () => addToast({ type: "error", message: "Update failed" }) })
+														updateAgent.mutate(
+															{
+																id: agent.id,
+																containerIds: [ct.docker_id],
+															},
+															{
+																onError: () =>
+																	addToast({
+																		type: "error",
+																		message: "Update failed",
+																	}),
+															},
+														)
 													}
 												/>
 											))}
@@ -335,8 +367,8 @@ export function AgentDetail() {
 						</CardHeader>
 						<CardContent className="space-y-4">
 							<p className="text-xs text-muted-foreground">
-								Remove old images from this agent, keeping the specified number of
-								previous versions per container for rollback capability.
+								Remove old images from this agent, keeping the specified number
+								of previous versions per container for rollback capability.
 							</p>
 							<div className="flex items-end gap-3">
 								<div className="space-y-1">
@@ -381,7 +413,9 @@ export function AgentDetail() {
 										render={
 											<Button
 												size="sm"
-												disabled={agent.status !== "online" || pruneAgent.isPending}
+												disabled={
+													agent.status !== "online" || pruneAgent.isPending
+												}
 											>
 												<Scissors size={14} /> Prune Images
 											</Button>
@@ -395,10 +429,11 @@ export function AgentDetail() {
 											<AlertDialogDescription>
 												This will permanently remove old Docker images, keeping{" "}
 												<strong>
-													{pruneKeep} previous version{pruneKeep !== 1 ? "s" : ""}
+													{pruneKeep} previous version
+													{pruneKeep !== 1 ? "s" : ""}
 												</strong>{" "}
-												per container for rollback. Images currently in use will not
-												be removed.
+												per container for rollback. Images currently in use will
+												not be removed.
 											</AlertDialogDescription>
 										</AlertDialogHeader>
 										<AlertDialogFooter>

@@ -37,6 +37,9 @@ const mockAgent: Agent = {
 			last_diff: null,
 			last_checked: null,
 			last_updated: null,
+			policy: null,
+			tag_pattern: null,
+			update_level: null,
 		},
 		{
 			id: "c-2",
@@ -58,6 +61,9 @@ const mockAgent: Agent = {
 			last_diff: null,
 			last_checked: null,
 			last_updated: null,
+			policy: null,
+			tag_pattern: null,
+			update_level: null,
 		},
 	],
 };

@@ -41,10 +41,10 @@ func startHTTPServer(cfg *AgentConfig, docker *DockerClient, eventLog *EventLog,
 			mode = "solo"
 		}
 		status := map[string]interface{}{
-			"mode":      mode,
-			"agentName": cfg.AgentName,
-			"uptime":    time.Since(startTime).Round(time.Second).String(),
-			"schedule":  cfg.Schedule,
+			"mode":       mode,
+			"agentName":  cfg.AgentName,
+			"uptime":     time.Since(startTime).Round(time.Second).String(),
+			"schedule":   cfg.Schedule,
 			"autoUpdate": cfg.AutoUpdate,
 		}
 		if dockerVer != nil {

@@ -36,7 +36,7 @@ Single binary, no external dependencies. The agent handles everything locally.
 **Components:**
 - **Scheduler** — cron or interval-based check triggers
 - **Updater** — atomic update/rollback with per-container mutex
-- **Notifier** — Telegram, Slack, Webhook notifications
+- **Notifier** — Telegram, Slack, Webhook, ntfy notifications with custom templates
 - **HTTP Server** — health check + status API
 - **Docker Client** — Docker SDK operations
 
@@ -105,3 +105,7 @@ On agent restart, `RecoverOrphans` checks all persisted snapshots against runnin
 ### Per-Container Mutex
 
 Every container operation (check, update, rollback) serializes on a per-container lock keyed by canonical name. The lock is released during image pull (which can take minutes) to avoid blocking health monitors and rollbacks.
+
+### TypeScript SDK
+
+The `@watchwarden/types` and `@watchwarden/sdk` packages provide typed API access for external integrations. See [TypeScript SDK](/docs/integrations/sdk).

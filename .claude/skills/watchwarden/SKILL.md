@@ -18,13 +18,23 @@ description: >
 │  (Go)    │       │ (Node/TS)  │       │ (React) │
 └────┬────┘       └─────┬──────┘       └─────────┘
      │                  │
-  Docker             SQLite
+  Docker           PostgreSQL
   Socket
 ```
 
-- **Controller** (`controller/`): Node.js 20, Fastify 5, TypeScript strict, better-sqlite3, WebSocket hub
-- **Agent** (`agent/`): Go 1.26, Docker SDK, gorilla/websocket, robfig/cron
+- **Controller** (`controller/`): Node.js 22, Fastify 5, TypeScript strict, PostgreSQL (postgres.js), WebSocket hub
+- **Agent** (`agent/`): Go 1.25+, Docker SDK, gorilla/websocket, robfig/cron
 - **UI** (`ui/`): React 19, Vite 8, TanStack Query v5, Zustand, shadcn/ui v4, Tailwind v4
+- **Shared types** (`packages/types/`): `@watchwarden/types` — canonical type definitions
+- **SDK** (`packages/sdk/`): `@watchwarden/sdk` — typed API client
+
+## Monorepo
+
+npm workspaces configured in root `package.json`. Import shared types via package name:
+```typescript
+import type { Agent, Container } from "@watchwarden/types";
+```
+NOT relative paths. Build packages before controller/UI: `npm run build:packages`.
 
 ## Critical Conventions
 
@@ -121,22 +131,27 @@ After every code change, run verification before declaring done:
 3. **UI**: `cd ui && npm run lint && npm test`
 4. **Docker** (if deploying): `docker compose build`
 
-Current test counts: ~72 controller, ~34 agent, ~26 UI (132+ total).
+Current test counts: ~139 controller, ~154 agent, ~29 UI (322+ total).
 
 ## Project Structure
 
 ```
 watchwarden/
+├── packages/
+│   ├── types/                # @watchwarden/types — shared TypeScript types
+│   │   └── src/index.ts      # All domain types, WS messages, DB entities
+│   └── sdk/                  # @watchwarden/sdk — typed API client
+│       └── src/client.ts     # WatchWardenClient class
 ├── controller/src/
 │   ├── index.ts              # Entry point, boot sequence
-│   ├── types.ts              # Shared types, WS message unions
+│   ├── types.ts              # Re-exports from @watchwarden/types
 │   ├── db/
-│   │   ├── schema.ts         # SQLite schema + migrations
+│   │   ├── schema.ts         # PostgreSQL migrations (numbered SQL files)
 │   │   └── queries.ts        # All DB access
 │   ├── api/routes/
 │   │   ├── agents.ts         # Agent CRUD + check/update/rollback
 │   │   ├── auth.ts           # JWT login
-│   │   ├── config.ts         # Global config
+│   │   ├── config.ts         # Global config + update policies
 │   │   ├── history.ts        # Update log
 │   │   ├── notifications.ts  # Notification channels CRUD
 │   │   └── registries.ts     # Registry credentials CRUD
@@ -144,41 +159,55 @@ watchwarden/
 │   │   ├── hub.ts            # Agent WS hub (auth, messages, auto-update)
 │   │   └── ui-broadcaster.ts # UI WS push (no auth)
 │   ├── scheduler/engine.ts   # Cron scheduler (global + per-agent)
-│   ├── notifications/        # Telegram/Slack/Webhook senders + session batcher
+│   ├── notifications/
+│   │   ├── notifier.ts       # Dispatch to channels (Telegram/Slack/Webhook/ntfy)
+│   │   ├── senders/          # telegram.ts, slack.ts, webhook.ts, ntfy.ts
+│   │   ├── session-batcher.ts # Batch check results across agents
+│   │   └── template-helpers.ts # {{var}} interpolation + link templates
 │   └── lib/
 │       ├── crypto.ts         # AES-256-GCM encrypt/decrypt
 │       └── registry-client.ts # Docker Hub/V2 tag fetching
 ├── agent/
 │   ├── main.go               # Entry point, WS message handlers
 │   ├── interfaces.go         # DockerAPI interface, types
-│   ├── docker.go             # Docker SDK wrapper
+│   ├── docker.go             # Docker SDK wrapper + label reading
 │   ├── updater.go            # Atomic update/rollback with progress
 │   ├── ws.go                 # WebSocket client with reconnection
 │   ├── scheduler.go          # Local cron fallback
-│   └── credstore.go          # Registry credential store
+│   ├── credstore.go          # Registry credentials + cloud auth (ECR/GCR/ACR)
+│   ├── healthmon.go          # Health monitoring + crash loop detection
+│   ├── registry.go           # Registry tag listing + semver filtering
+│   ├── notify.go             # Telegram/Slack/Webhook/ntfy senders
+│   ├── diff.go               # Image config diff (env, ports, entrypoint)
+│   └── solo.go               # Solo mode (standalone, no controller)
 ├── ui/src/
 │   ├── App.tsx               # Router, QueryClient, WS hook
 │   ├── store/useStore.ts     # Zustand (auth, WS state, toasts, progress)
 │   ├── ws/useSocket.ts       # WebSocket hook → store + query invalidation
 │   ├── api/
 │   │   ├── client.ts         # fetch wrapper (auto 401→logout)
-│   │   └── hooks/            # TanStack Query hooks per domain
+│   │   └── hooks/            # TanStack Query hooks (types from @watchwarden/types)
 │   ├── components/
-│   │   ├── ui/               # shadcn/ui generated components
-│   │   ├── layout/           # Sidebar, TopBar
+│   │   ├── ui/               # shadcn/ui v4 (base-ui, NOT Radix)
 │   │   ├── agents/           # AgentCard, AgentListRow, ContainerRow
-│   │   ├── common/           # StatusDot, DigestBadge, CronPicker, Toaster
 │   │   ├── notifications/    # NotificationsTab, ChannelCard, AddChannelModal
 │   │   ├── registries/       # RegistriesTab, RegistryModal
+│   │   ├── diff/             # ImageDiffView, DiffBadge
 │   │   └── rollback/         # VersionPickerModal
-│   └── pages/                # Dashboard, Agents, AgentDetail, History, Settings, Login
+│   └── pages/                # Dashboard, Agents, AgentDetail, History, Settings, AuditLog, Login
+├── examples/                 # Ready-to-use compose configs
+│   ├── solo-mode/
+│   ├── multi-host/
+│   ├── private-registry/
+│   ├── reverse-proxy/
+│   └── update-groups/
 └── docker-compose.yml
 ```
 
 ## Testing Approach (TDD)
 
 ### Controller Tests (`vitest`)
-- In-memory SQLite (`:memory:`) for DB tests
+- Testcontainers PostgreSQL for DB tests
 - Fastify `inject()` for API tests (no real HTTP)
 - `ws` client library for WebSocket tests
 - Tests in `src/**/__tests__/*.test.ts`
@@ -233,7 +262,27 @@ Update/rollback progress uses the **original** (stale) container ID for WS messa
 `notifiedUpdates` set prevents re-notifying about the same container+image. Cleared only when a new digest appears, not after updates. Auto-update skips "updates available" notification.
 
 ### DB Migrations
-New columns added via `PRAGMA table_info` check in `schema.ts` `runMigrations()`. Example: `excluded` and `exclude_reason` columns were added after initial schema.
+Numbered SQL files in `controller/src/db/migrations/` (001 through 014). Applied sequentially via `schema.ts` `runMigrations()`. Use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for idempotency.
+
+### Notification Channels
+4 built-in types: `telegram`, `slack`, `webhook`, `ntfy`. Each supports custom templates (`template` field) and link templates (`link_template` field) for changelogs/tag pages.
+
+### Container Labels
+| Label | Values | Description |
+|-------|--------|-------------|
+| `com.watchwarden.enable` | `true`/`false` | Include/exclude from monitoring |
+| `com.watchwarden.group` | string | Update group name |
+| `com.watchwarden.priority` | number | Update priority within group |
+| `com.watchwarden.depends_on` | CSV | Dependencies (wait for these first) |
+| `com.watchwarden.policy` | `auto`/`notify`/`manual` | Per-container update policy |
+| `com.watchwarden.tag_pattern` | regex | Filter tags for update checks |
+| `com.watchwarden.update_level` | `major`/`minor`/`patch`/`all` | Semver level filter for updates |
+
+## Observability
+
+- **Prometheus**: Controller exposes `/metrics` (no auth) with container counts, update stats, agent status
+- **Audit log**: Full trail of all actions via `/api/audit` and UI
+- **Health status**: Real-time via WebSocket HEALTH_STATUS messages
 
 ## Security Rules
 
@@ -379,3 +428,10 @@ if err := json.Unmarshal(payload, &cmd); err != nil {
 | `WATCHWARDEN_LABEL_ENABLE_ONLY` | Agent | No (`false`) | Only monitor containers with `com.watchwarden.enable=true` |
 | `REQUIRE_SIGNED_IMAGES` | Agent | No (`false`) | Block updates if cosign signature fails |
 | `COSIGN_PUBLIC_KEY` | Agent | No | PEM public key for cosign verification |
+| `WW_SCHEDULE` | Agent (Solo) | No (`@every 24h`) | Check schedule |
+| `WW_AUTO_UPDATE` | Agent (Solo) | No (`false`) | Auto-apply updates |
+| `WW_NTFY_URL` | Agent (Solo) | No | ntfy server URL |
+| `WW_NTFY_TOPIC` | Agent (Solo) | No | ntfy topic name |
+| `WW_NTFY_PRIORITY` | Agent (Solo) | No (`default`) | ntfy priority |
+| `WW_NOTIFICATION_TEMPLATE` | Agent (Solo) | No | Go text/template for notifications |
+| `DOCKER_SOCKET` | Compose | No | Docker socket path (for rootless) |

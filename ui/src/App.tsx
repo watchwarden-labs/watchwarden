@@ -50,7 +50,9 @@ function AuthenticatedApp() {
 function AppContent() {
 	const authToken = useStore((s) => s.authToken);
 	const setAuthToken = useStore((s) => s.setAuthToken);
-	const [checking, setChecking] = useState(() => !!localStorage.getItem("watchwarden_auth"));
+	const [checking, setChecking] = useState(
+		() => !!localStorage.getItem("watchwarden_auth"),
+	);
 
 	// On mount, verify the httpOnly cookie is still valid
 	useEffect(() => {

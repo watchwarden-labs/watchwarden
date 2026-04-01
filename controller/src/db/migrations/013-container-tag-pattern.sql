@@ -1,0 +1,1 @@
+ALTER TABLE containers ADD COLUMN IF NOT EXISTS tag_pattern TEXT;

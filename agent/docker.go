@@ -1,8 +1,8 @@
 package main
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -169,6 +169,10 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 			}
 		}
 
+		policy := c.Labels["com.watchwarden.policy"]
+		tagPattern := c.Labels["com.watchwarden.tag_pattern"]
+		updateLevel := c.Labels["com.watchwarden.update_level"]
+
 		result = append(result, ContainerInfo{
 			ID:            c.ID[:12],
 			DockerID:      c.ID,
@@ -182,6 +186,9 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 			Group:         group,
 			Priority:      priority,
 			DependsOn:     dependsOn,
+			Policy:        policy,
+			TagPattern:    tagPattern,
+			UpdateLevel:   updateLevel,
 		})
 	}
 	return result, nil

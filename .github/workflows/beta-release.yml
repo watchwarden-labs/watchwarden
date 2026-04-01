@@ -84,6 +84,36 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+  publish-packages-beta:
+    name: Publish npm Packages (Beta)
+    needs: [test-controller, test-agent, test-ui]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.branch }}
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Set beta version
+        run: |
+          BETA_VERSION="0.0.0-beta.$(date +%Y%m%d%H%M%S)"
+          cd packages/types && npm version "$BETA_VERSION" --no-git-tag-version --allow-same-version
+          cd ../sdk && npm version "$BETA_VERSION" --no-git-tag-version --allow-same-version
+          cd ../sdk && npm pkg set "dependencies.@watchwarden/types=$BETA_VERSION"
+
+      - name: Build and publish
+        run: |
+          cd packages/types && npm install && npm run build && npm publish --provenance --access public --tag beta
+          cd ../sdk && npm install && npm run build && npm publish --provenance --access public --tag beta
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   release:
     name: Build & Release Beta
     needs: [test-controller, test-agent, test-ui]

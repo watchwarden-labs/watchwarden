@@ -34,6 +34,8 @@
 - **Blue-green updates** — start new container first, verify health, then stop old (zero-downtime)
 - **Rollback** — roll back to any previous version or pick a specific tag from the registry
 - **Update groups** — label-based dependency ordering (`com.watchwarden.group`, `com.watchwarden.depends_on`)
+- **Per-container policies** — label-driven control: `com.watchwarden.policy=auto|notify|manual` per container
+- **Tag pattern matching** — filter registry tags by regex via `com.watchwarden.tag_pattern` label
 - **Pinned version detection** — blocks accidental updates for containers with explicit version tags (e.g. `postgres:16.2-alpine`), while correctly treating floating tags (`alpine`, `lts`, `stable`) as updatable
 - **Config-only change detection** — detects image updates even when only entrypoint/env/labels changed (same manifest digest, different image ID)
 - **Image diff preview** — shows env, port, entrypoint, and volume changes before updating
@@ -43,13 +45,19 @@
 - **Volume pre-flight check** — verifies all bind mount sources exist before attempting an update
 
 ### Security & Compliance
-- **Private registry support** — encrypted credential storage, auto-synced to agents
+- **Private registry support** — encrypted credential storage with ECR/GCR/ACR cloud auth, auto-synced to agents
 - **Vulnerability scanning** — Trivy-based CVE scanning per container image, results stored and broadcast to dashboard
 - **Image signing** — optional cosign signature verification before pulling (`REQUIRE_SIGNED_IMAGES=true`)
 - **Audit log** — full trail of every check, update, rollback, config change, and agent event
+- **Container hardening** — production compose uses `read_only`, `no-new-privileges`, and `tmpfs` for controller and UI services
+
+### Observability
+- **Prometheus metrics** — `/metrics` endpoint on the controller exposes container counts, update status, and agent health in standard Prometheus format
 
 ### Notifications
-- **Telegram, Slack, Webhook** — configurable channels with batched, deduplicated messages
+- **Telegram, Slack, Webhook, ntfy** — configurable channels with batched, deduplicated messages
+- **Notification templates** — customize message format with Go text/template (`WW_NOTIFICATION_TEMPLATE`)
+- **Link templates** — auto-generated links to Docker Hub, GHCR, or Quay.io tag pages in notifications
 - **Auto-rollback alerts** — notifies when a container is automatically rolled back
 
 ### Resource Management
@@ -83,6 +91,13 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 | Audit Log | ✅ Full audit trail | ❌ None |
 | Auto-update | ✅ Per-agent or global | ✅ Global |
 | Image Pruning | ✅ Keeps N-1 for rollback | ✅ Cleanup flag |
+| ntfy Notifications | ✅ Dedicated sender | ❌ None |
+| Notification Templates | ✅ Customizable | ❌ Fixed format |
+| Per-container Policies | ✅ Label-driven | ❌ Global only |
+| Tag Pattern Matching | ✅ Regex-based | ❌ None |
+| Prometheus Metrics | ✅ /metrics endpoint | ❌ None |
+| Cloud Registry Auth | ✅ ECR/GCR/ACR | ❌ Basic only |
+| TypeScript SDK | ✅ @watchwarden/sdk | ❌ None |
 | Docker Version Reporting | ✅ Per-agent in dashboard | ❌ None |
 | REST API | ✅ Full CRUD | ❌ None |
 | WebSocket Real-time | ✅ Live progress | ❌ None |
@@ -186,6 +201,15 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+### Examples
+
+See the `examples/` directory for ready-to-use configurations:
+- **[Solo Mode](examples/solo-mode/)** — standalone agent with notifications
+- **[Multi-host](examples/multi-host/)** — controller + remote agents
+- **[Private Registry](examples/private-registry/)** — Docker Hub, GHCR, custom registry auth
+- **[Reverse Proxy](examples/reverse-proxy/)** — Traefik with automatic TLS
+- **[Update Groups](examples/update-groups/)** — dependency-ordered updates
+
 ### Docker socket permissions
 
 The agent runs as a non-root `warden` user for security but needs access to `/var/run/docker.sock`. The agent's entrypoint script **automatically detects** the socket's group ID at runtime and adds the `warden` user to the appropriate group. No manual `DOCKER_GID` configuration is needed.
@@ -200,6 +224,41 @@ This works across all platforms:
 | Windows (Docker Desktop / WSL2) | `0` (root) | Same as macOS Docker Desktop |
 
 > **Security note**: Docker socket access (`/var/run/docker.sock`) grants effective root-equivalent access on the host. The agent needs this to manage containers. If you require stronger isolation, consider using a [Docker socket proxy](https://github.com/Tecnativa/docker-socket-proxy) to restrict API access to only the endpoints the agent needs (`CONTAINERS=1`, `IMAGES=1`, `NETWORKS=1`).
+
+### Rootless Docker & Podman
+
+WatchWarden supports rootless Docker and Podman out of the box. The agent uses `client.FromEnv`, which respects the `DOCKER_HOST` environment variable.
+
+**Rootless Docker:**
+```bash
+docker run -d \
+  --name watchwarden-agent \
+  -v $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock \
+  -e CONTROLLER_URL=ws://controller:3000 \
+  -e AGENT_TOKEN=your-token \
+  alexneo/watchwarden-agent:latest
+```
+
+**Podman:**
+```bash
+podman run -d \
+  --name watchwarden-agent \
+  -v $XDG_RUNTIME_DIR/podman/podman.sock:/var/run/docker.sock \
+  -e CONTROLLER_URL=ws://controller:3000 \
+  -e AGENT_TOKEN=your-token \
+  alexneo/watchwarden-agent:latest
+```
+
+**Docker Compose (rootless):**
+Set `DOCKER_SOCKET` in your `.env` file:
+```bash
+DOCKER_SOCKET=/run/user/1000/docker.sock
+```
+
+Or pass it on the command line:
+```bash
+DOCKER_SOCKET=$XDG_RUNTIME_DIR/docker.sock docker compose up -d
+```
 
 ### Adding a remote agent
 
@@ -289,6 +348,10 @@ When `CONTROLLER_URL` is not set, the agent runs autonomously.
 | `WW_DOCKER_USERNAME` | — | Registry username |
 | `WW_DOCKER_PASSWORD` | — | Registry password |
 | `WW_DOCKER_SERVER` | `index.docker.io` | Registry server |
+| `WW_NTFY_URL` | — | ntfy server URL (e.g. `https://ntfy.sh`) |
+| `WW_NTFY_TOPIC` | — | ntfy topic name |
+| `WW_NTFY_PRIORITY` | `default` | ntfy priority: `low`, `default`, `high`, `urgent` |
+| `WW_NOTIFICATION_TEMPLATE` | — | Go text/template for custom notification formatting |
 
 ### Agent — Shared (both modes)
 
@@ -326,6 +389,9 @@ All standard Watchtower environment variables are automatically mapped to WatchW
 | `com.watchwarden.group` | `backend` | Assign container to an update group |
 | `com.watchwarden.priority` | `10` | Update priority within a group (lower = first) |
 | `com.watchwarden.depends_on` | `db,cache` | Wait for these containers to update successfully first |
+| `com.watchwarden.policy` | `auto` / `notify` / `manual` | Per-container update policy |
+| `com.watchwarden.tag_pattern` | `^v3\.\d+$` | Filter tags by regex for update checks |
+| `com.watchwarden.update_level` | `major` / `minor` / `patch` / `all` | Semver level filter for updates (requires `tag_pattern`) |
 | `com.watchwarden.pinned` | `true` | Force-pin a floating tag (skip update checks) |
 
 ## Development
@@ -364,10 +430,10 @@ npm run dev
 ### Running Tests
 
 ```bash
-# Controller — 124 tests (needs Docker for testcontainers)
+# Controller — 141 tests (needs Docker for testcontainers)
 cd controller && npm test
 
-# Agent — 122 tests (use -race for race detection)
+# Agent — 160 tests (use -race for race detection)
 cd agent && go test -race ./... -count=1
 
 # UI — 29 tests
@@ -382,6 +448,7 @@ cd ui && npm test
 - **UI**: React 19, Vite, TanStack Query, Zustand, shadcn/ui, Tailwind CSS v4
 - **Linting**: Biome (TypeScript), gofmt (Go)
 - **Testing**: Vitest + testcontainers (controller), Go testing + testify (agent), Vitest + React Testing Library (UI)
+- **SDK**: `@watchwarden/types` + `@watchwarden/sdk` (TypeScript, in `packages/`)
 
 ## Contributing
 

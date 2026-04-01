@@ -92,7 +92,10 @@ const CHECK_BATCH_MAX_WAIT_MS = 30_000; // max wait when expecting multiple agen
 
 function flushCheckBatch(): void {
 	if (!pendingCheckBatch || pendingCheckBatch.agents.length === 0) {
-		log.info("notify", `flush: no pending results (received ${pendingCheckBatch?.receivedAgentIds.size ?? 0}/${pendingCheckBatch?.expectedAgentCount ?? 0} agents)`);
+		log.info(
+			"notify",
+			`flush: no pending results (received ${pendingCheckBatch?.receivedAgentIds.size ?? 0}/${pendingCheckBatch?.expectedAgentCount ?? 0} agents)`,
+		);
 		pendingCheckBatch = null;
 		return;
 	}
@@ -103,11 +106,17 @@ function flushCheckBatch(): void {
 	const received = pendingCheckBatch.receivedAgentIds.size;
 	const expected = pendingCheckBatch.expectedAgentCount;
 	if (agents.length === 0) {
-		log.info("notify", `flush: all updates deduped (received ${received}/${expected} agents)`);
+		log.info(
+			"notify",
+			`flush: all updates deduped (received ${received}/${expected} agents)`,
+		);
 		pendingCheckBatch = null;
 		return;
 	}
-	log.info("notify", `flush: dispatching update_available for ${agents.length} agent(s) (received ${received}/${expected} expected)`);
+	log.info(
+		"notify",
+		`flush: dispatching update_available for ${agents.length} agent(s) (received ${received}/${expected} expected)`,
+	);
 	notifier
 		.dispatch({
 			type: "update_available",
@@ -126,7 +135,10 @@ export function expectCheckResults(count: number): void {
 	if (pendingCheckBatch) {
 		clearTimeout(pendingCheckBatch.timer);
 	}
-	log.info("notify", `expecting check results from ${count} agent(s), batch window ${CHECK_BATCH_MAX_WAIT_MS / 1000}s`);
+	log.info(
+		"notify",
+		`expecting check results from ${count} agent(s), batch window ${CHECK_BATCH_MAX_WAIT_MS / 1000}s`,
+	);
 	pendingCheckBatch = {
 		agents: [],
 		receivedAgentIds: new Set(),
@@ -182,7 +194,10 @@ export function dispatchCheckResults(
 		pendingCheckBatch.agents.push({ agentName, containers: newContainers });
 	}
 
-	log.info("notify", `agent ${agentName} reported ${newContainers.length} new update(s) (${pendingCheckBatch.receivedAgentIds.size}/${pendingCheckBatch.expectedAgentCount} agents received)`);
+	log.info(
+		"notify",
+		`agent ${agentName} reported ${newContainers.length} new update(s) (${pendingCheckBatch.receivedAgentIds.size}/${pendingCheckBatch.expectedAgentCount} agents received)`,
+	);
 
 	// If we've heard from all expected agents, flush immediately
 	if (

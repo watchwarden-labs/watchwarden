@@ -26,7 +26,9 @@ const FILTERS = ["All", "Online", "Offline", "Updating"] as const;
 
 export function Agents() {
 	const { data: unsortedAgents = [], isLoading } = useAgents();
-	const agents = [...unsortedAgents].sort((a, b) => a.name.localeCompare(b.name));
+	const agents = [...unsortedAgents].sort((a, b) =>
+		a.name.localeCompare(b.name),
+	);
 	const [filter, setFilter] = useState<string>("All");
 	const [registerOpen, setRegisterOpen] = useState(false);
 	const checkAgent = useCheckAgent();
@@ -151,7 +153,15 @@ export function Agents() {
 									agent={agent}
 									checking={checkingAgents.has(agent.id)}
 									onCheck={() => handleCheck(agent.id)}
-									onUpdate={() => updateAgent.mutate({ id: agent.id }, { onError: () => addToast({ type: "error", message: "Update failed" }) })}
+									onUpdate={() =>
+										updateAgent.mutate(
+											{ id: agent.id },
+											{
+												onError: () =>
+													addToast({ type: "error", message: "Update failed" }),
+											},
+										)
+									}
 								/>
 							</Link>
 							{agent.status === "offline" && (
@@ -187,7 +197,15 @@ export function Agents() {
 									agent={agent}
 									checking={checkingAgents.has(agent.id)}
 									onCheck={() => handleCheck(agent.id)}
-									onUpdate={() => updateAgent.mutate({ id: agent.id }, { onError: () => addToast({ type: "error", message: "Update failed" }) })}
+									onUpdate={() =>
+										updateAgent.mutate(
+											{ id: agent.id },
+											{
+												onError: () =>
+													addToast({ type: "error", message: "Update failed" }),
+											},
+										)
+									}
 									onDelete={
 										agent.status === "offline"
 											? (e) => handleDelete(e, agent.id, agent.name)

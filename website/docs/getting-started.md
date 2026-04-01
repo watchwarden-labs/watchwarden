@@ -39,6 +39,20 @@ docker run -d \
   alexneo/watchwarden-agent:latest
 ```
 
+With ntfy notifications:
+
+```bash
+docker run -d \
+  --name watchwarden \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e WW_SCHEDULE="@every 6h" \
+  -e WW_AUTO_UPDATE=true \
+  -e WW_NTFY_URL=https://ntfy.sh \
+  -e WW_NTFY_TOPIC=my-updates \
+  --restart unless-stopped \
+  alexneo/watchwarden-agent:latest
+```
+
 **Key Solo Mode variables:**
 
 | Variable | Default | Description |

@@ -56,6 +56,8 @@ describe("notifier (Finding 6.2)", () => {
 			config: "this-is-not-encrypted-at-all",
 			enabled: true,
 			events: JSON.stringify(["update_success"]),
+			template: null,
+			link_template: null,
 		});
 
 		// Channel 2: valid encrypted config
@@ -69,6 +71,8 @@ describe("notifier (Finding 6.2)", () => {
 			config: validConfig,
 			enabled: true,
 			events: JSON.stringify(["update_success"]),
+			template: null,
+			link_template: null,
 		});
 
 		const event: NotificationEvent = {

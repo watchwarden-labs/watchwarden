@@ -10,13 +10,21 @@ interface PaginationProps {
 	label?: string;
 }
 
-export function Pagination({ page, total, pageSize, onPageChange, label }: PaginationProps) {
+export function Pagination({
+	page,
+	total,
+	pageSize,
+	onPageChange,
+	label,
+}: PaginationProps) {
 	const totalPages = Math.ceil(total / pageSize);
 	if (totalPages <= 1) return null;
 
 	return (
 		<div className="flex items-center justify-between mt-4 px-4">
-			<p className="text-sm text-muted-foreground">{label ?? `${total} item${total !== 1 ? "s" : ""}`}</p>
+			<p className="text-sm text-muted-foreground">
+				{label ?? `${total} item${total !== 1 ? "s" : ""}`}
+			</p>
 			<div className="flex items-center gap-2">
 				<Button
 					variant="outline"

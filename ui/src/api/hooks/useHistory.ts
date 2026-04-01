@@ -1,29 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import type { HistoryStats, UpdateLog } from "@watchwarden/types";
 import { apiRequest } from "../client";
 
-export interface UpdateLogEntry {
-	id: number;
-	agent_id: string;
-	container_id: string;
-	container_name: string;
-	old_digest: string | null;
-	new_digest: string | null;
-	status: string;
-	error: string | null;
-	duration_ms: number | null;
-	created_at: number;
-}
-
-export interface HistoryStats {
-	totalUpdates: number;
-	successRate: number;
-	lastWeek: Array<{
-		date: string;
-		count: number;
-		success: number;
-		failed: number;
-	}>;
-}
+export type UpdateLogEntry = UpdateLog;
+export type { HistoryStats };
 
 export function useHistory(filters?: {
 	agentId?: string;

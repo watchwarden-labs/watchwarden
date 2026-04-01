@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseRegistry(t *testing.T) {
@@ -69,4 +70,32 @@ func TestCredStore_Set(t *testing.T) {
 	// Replace with empty
 	store.Set(nil)
 	assert.Nil(t, store.GetForImage("nginx"))
+}
+
+func TestCredStore_AuthType(t *testing.T) {
+	cs := NewCredStore()
+	cs.Set([]RegistryCredential{
+		{Registry: "123456.dkr.ecr.us-east-1.amazonaws.com", Username: "AWS", Password: "old-token", AuthType: "ecr"},
+		{Registry: "ghcr.io", Username: "user", Password: "pass", AuthType: "basic"},
+	})
+
+	ecr := cs.GetForImage("123456.dkr.ecr.us-east-1.amazonaws.com/myapp:latest")
+	require.NotNil(t, ecr)
+	assert.Equal(t, "ecr", ecr.AuthType)
+
+	basic := cs.GetForImage("ghcr.io/myorg/myapp:latest")
+	require.NotNil(t, basic)
+	assert.Equal(t, "basic", basic.AuthType)
+}
+
+func TestCredStore_GCRJsonKey(t *testing.T) {
+	cs := NewCredStore()
+	cs.Set([]RegistryCredential{
+		{Registry: "gcr.io", Username: "_json_key", Password: `{"type":"service_account"}`, AuthType: "gcr"},
+	})
+
+	cred := cs.GetForImage("gcr.io/myproject/myimage:latest")
+	require.NotNil(t, cred)
+	assert.Equal(t, "_json_key", cred.Username)
+	assert.Equal(t, "gcr", cred.AuthType)
 }

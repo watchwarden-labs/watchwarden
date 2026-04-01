@@ -1,0 +1,65 @@
+services:
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/certs/acme.json"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/certs
+
+  controller:
+    image: alexneo/watchwarden-controller:latest
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ww-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`, `/ws`)"
+      - "traefik.http.routers.ww-api.entrypoints=websecure"
+      - "traefik.http.routers.ww-api.tls.certresolver=le"
+      - "traefik.http.services.ww-api.loadbalancer.server.port=3000"
+    environment:
+      DATABASE_URL: "postgresql://watchwarden:${POSTGRES_PASSWORD}@postgres:5432/watchwarden"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY}"
+      ENCRYPTION_SALT: "${ENCRYPTION_SALT}"
+      CORS_ORIGIN: "https://${DOMAIN}"
+      NODE_ENV: production
+
+  ui:
+    image: alexneo/watchwarden-ui:latest
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ww-ui.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.ww-ui.entrypoints=websecure"
+      - "traefik.http.routers.ww-ui.tls.certresolver=le"
+      - "traefik.http.services.ww-ui.loadbalancer.server.port=8080"
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: watchwarden
+      POSTGRES_USER: watchwarden
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchwarden"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  traefik_certs:

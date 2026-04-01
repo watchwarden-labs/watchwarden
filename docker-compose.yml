@@ -22,7 +22,9 @@ services:
 
   controller:
     image: ${DOCKERHUB_USERNAME:-watchwarden}/watchwarden-controller:${TAG:-latest}
-    build: ./controller
+    build:
+      context: .
+      dockerfile: controller/Dockerfile
     container_name: watchwarden-controller
     restart: unless-stopped
     ports:
@@ -47,7 +49,9 @@ services:
 
   ui:
     image: ${DOCKERHUB_USERNAME:-watchwarden}/watchwarden-ui:${TAG:-latest}
-    build: ./ui
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
     container_name: watchwarden-ui
     restart: unless-stopped
     ports:
@@ -67,12 +71,16 @@ services:
     ports:
       - "9090:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     environment:
       CONTROLLER_URL: "ws://controller:3000"
       AGENT_TOKEN: "${LOCAL_AGENT_TOKEN:-dev-local-agent-token-do-not-use-in-prod}"
       AGENT_NAME: "local"
       WATCHWARDEN_LABEL_ENABLE_ONLY: "${LABEL_ENABLE_ONLY:-false}"
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
     depends_on:
       - controller
     networks:

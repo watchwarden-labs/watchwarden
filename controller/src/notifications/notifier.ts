@@ -3,10 +3,11 @@ import {
 	listNotificationChannels,
 } from "../db/queries.js";
 import { decrypt } from "../lib/crypto.js";
+import { log } from "../lib/logger.js";
+import { sendNtfy } from "./senders/ntfy.js";
 import { sendSlack } from "./senders/slack.js";
 import { sendTelegram } from "./senders/telegram.js";
 import { sendWebhook } from "./senders/webhook.js";
-import { log } from "../lib/logger.js";
 import type { NotificationEvent } from "./types.js";
 
 // Rate limiting: track last dispatch time per channel+event.
@@ -77,7 +78,12 @@ class Notifier {
 	}
 
 	private async sendToChannel(
-		channel: { type: string; config: string },
+		channel: {
+			type: string;
+			config: string;
+			template?: string | null;
+			link_template?: string | null;
+		},
 		event: NotificationEvent,
 	): Promise<void> {
 		// FIX-6.2: decrypt inside try-catch so a single corrupted/re-keyed channel
@@ -91,15 +97,22 @@ class Notifier {
 				`Failed to decrypt channel config: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
+		const formatOptions = {
+			template: channel.template ?? undefined,
+			linkTemplate: channel.link_template ?? undefined,
+		};
 		switch (channel.type) {
 			case "telegram":
-				await sendTelegram(config, event);
+				await sendTelegram(config, event, formatOptions);
 				break;
 			case "slack":
-				await sendSlack(config, event);
+				await sendSlack(config, event, formatOptions);
 				break;
 			case "webhook":
-				await sendWebhook(config, event);
+				await sendWebhook(config, event, formatOptions);
+				break;
+			case "ntfy":
+				await sendNtfy(config, event, formatOptions);
 				break;
 		}
 	}

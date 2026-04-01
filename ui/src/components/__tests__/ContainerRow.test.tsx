@@ -25,6 +25,9 @@ const baseContainer: Container = {
 	last_diff: null,
 	last_checked: null,
 	last_updated: null,
+	policy: null,
+	tag_pattern: null,
+	update_level: null,
 };
 
 const queryClient = new QueryClient({
@@ -33,9 +36,7 @@ const queryClient = new QueryClient({
 
 function renderInTable(ui: React.ReactElement) {
 	return render(
-		<QueryClientProvider client={queryClient}>
-			{ui}
-		</QueryClientProvider>,
+		<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
 	);
 }
 
@@ -58,12 +59,16 @@ describe("ContainerRow", () => {
 
 	it("hides Update button when hasUpdate is false", () => {
 		renderInTable(<ContainerRow agentId="agent-1" container={baseContainer} />);
-		expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Update" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("shows Rollback button for non-pinned container", () => {
 		renderInTable(<ContainerRow agentId="agent-1" container={baseContainer} />);
-		expect(screen.getByRole("button", { name: "Rollback" })).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Rollback" }),
+		).toBeInTheDocument();
 	});
 
 	it("hides Rollback button for pinned container but shows Stop", () => {
@@ -73,7 +78,9 @@ describe("ContainerRow", () => {
 				container={{ ...baseContainer, pinned_version: 1 }}
 			/>,
 		);
-		expect(screen.queryByRole("button", { name: "Rollback" })).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Rollback" }),
+		).not.toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
 	});
 

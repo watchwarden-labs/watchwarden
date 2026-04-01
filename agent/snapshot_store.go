@@ -11,12 +11,12 @@ const defaultSnapshotDir = "/var/lib/watchwarden/snapshots"
 
 // snapshotOnDisk is a JSON-serializable wrapper for ContainerSnapshot.
 type snapshotOnDisk struct {
-	Name        string                 `json:"name"`
-	ImageRef    string                 `json:"imageRef"`
-	ImageDigest string                 `json:"imageDigest"`
-	Config      json.RawMessage        `json:"config"`
-	HostConfig  json.RawMessage        `json:"hostConfig"`
-	Networks    json.RawMessage        `json:"networks"`
+	Name        string          `json:"name"`
+	ImageRef    string          `json:"imageRef"`
+	ImageDigest string          `json:"imageDigest"`
+	Config      json.RawMessage `json:"config"`
+	HostConfig  json.RawMessage `json:"hostConfig"`
+	Networks    json.RawMessage `json:"networks"`
 }
 
 func snapshotDir() string {

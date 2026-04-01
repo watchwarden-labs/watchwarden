@@ -11,7 +11,12 @@ export function TopBar() {
 
 	return (
 		<header className="bg-card border-b border-border px-6 py-3 flex items-center justify-between">
-			<Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Toggle sidebar">
+			<Button
+				variant="ghost"
+				size="icon"
+				onClick={toggleSidebar}
+				aria-label="Toggle sidebar"
+			>
 				<Menu size={18} />
 			</Button>
 

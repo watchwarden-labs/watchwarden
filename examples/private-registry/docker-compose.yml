@@ -1,0 +1,15 @@
+services:
+  watchwarden:
+    image: alexneo/watchwarden-agent:latest
+    container_name: watchwarden
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WW_SCHEDULE: "@every 12h"
+      WW_AUTO_UPDATE: "false"
+      # Docker Hub private images
+      WW_DOCKER_USERNAME: "${DOCKER_USERNAME}"
+      WW_DOCKER_PASSWORD: "${DOCKER_PASSWORD}"
+      # Multiple registries (JSON array)
+      # WW_REGISTRY_AUTH: '[{"registry":"ghcr.io","username":"user","password":"ghp_xxx"},{"registry":"registry.example.com","username":"admin","password":"secret"}]'

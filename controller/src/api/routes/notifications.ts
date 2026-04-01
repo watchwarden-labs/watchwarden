@@ -67,9 +67,12 @@ const notificationRoutes: FastifyPluginAsync = async (fastify) => {
 			config: Record<string, unknown>;
 			events: string[];
 			enabled?: boolean;
+			template?: string | null;
+			link_template?: string | null;
 		};
 	}>("/api/notifications", async (request, reply) => {
-		const { type, name, config, events, enabled } = request.body;
+		const { type, name, config, events, enabled, template, link_template } =
+			request.body;
 		if (!type || !name || !config || !events) {
 			return reply
 				.code(400)
@@ -83,6 +86,8 @@ const notificationRoutes: FastifyPluginAsync = async (fastify) => {
 			config: encrypt(JSON.stringify(config)),
 			enabled: enabled !== false,
 			events: JSON.stringify(events),
+			template: template ?? null,
+			link_template: link_template ?? null,
 		});
 		return reply.code(201).send({ id, type, name, events });
 	});
@@ -94,13 +99,16 @@ const notificationRoutes: FastifyPluginAsync = async (fastify) => {
 			config?: Record<string, unknown>;
 			events?: string[];
 			enabled?: boolean;
+			template?: string | null;
+			link_template?: string | null;
 		};
 	}>("/api/notifications/:id", async (request, reply) => {
 		const existing = await getNotificationChannel(request.params.id);
 		if (!existing) {
 			return reply.code(404).send({ error: "Channel not found" });
 		}
-		const { name, config, events, enabled } = request.body;
+		const { name, config, events, enabled, template, link_template } =
+			request.body;
 		await updateNotificationChannel(request.params.id, {
 			...(name !== undefined ? { name } : {}),
 			...(config !== undefined
@@ -108,6 +116,8 @@ const notificationRoutes: FastifyPluginAsync = async (fastify) => {
 				: {}),
 			...(events !== undefined ? { events: JSON.stringify(events) } : {}),
 			...(enabled !== undefined ? { enabled: !!enabled } : {}),
+			...(template !== undefined ? { template } : {}),
+			...(link_template !== undefined ? { link_template } : {}),
 		});
 		return { message: "Updated" };
 	});

@@ -4,6 +4,7 @@ const sidebars = {
     'getting-started',
     'comparison',
     'architecture',
+    'examples',
     {
       type: 'category',
       label: 'Configuration',
@@ -13,6 +14,22 @@ const sidebars = {
         'configuration/labels',
       ],
     },
+    {
+      type: 'category',
+      label: 'Operations',
+      items: [
+        'operations/security',
+        'operations/metrics',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Integrations',
+      items: [
+        'integrations/sdk',
+      ],
+    },
+    'design-decisions',
   ],
 };
 

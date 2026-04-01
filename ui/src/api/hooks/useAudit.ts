@@ -1,17 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import type { AuditLogEntry } from "@watchwarden/types";
 import { apiRequest } from "../client";
 
-export interface AuditLogEntry {
-	id: number;
-	actor: string;
-	action: string;
-	target_type: string;
-	target_id: string | null;
-	agent_id: string | null;
-	details: string | null;
-	ip_address: string | null;
-	created_at: number;
-}
+export type { AuditLogEntry };
 
 interface AuditResponse {
 	logs: AuditLogEntry[];

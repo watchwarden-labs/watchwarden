@@ -51,7 +51,9 @@ function AgentCardSkeleton() {
 
 export function Dashboard() {
 	const { data: unsortedAgents = [], isLoading } = useAgents();
-	const agents = [...unsortedAgents].sort((a, b) => a.name.localeCompare(b.name));
+	const agents = [...unsortedAgents].sort((a, b) =>
+		a.name.localeCompare(b.name),
+	);
 	const { data: config } = useConfig();
 	const { data: history } = useHistory({ limit: 10 });
 	const checkAgent = useCheckAgent();
@@ -125,12 +127,21 @@ export function Dashboard() {
 					<Button
 						variant="outline"
 						onClick={() => {
-							agents.filter((a) => a.status === "online").forEach((a) => setAgentChecking(a.id, true));
+							agents
+								.filter((a) => a.status === "online")
+								.forEach((a) => setAgentChecking(a.id, true));
 							checkAllAgents.mutate(undefined, {
-								onSuccess: () => addToast({ type: "info", message: "Checking all agents for updates..." }),
+								onSuccess: () =>
+									addToast({
+										type: "info",
+										message: "Checking all agents for updates...",
+									}),
 								onError: () => {
 									agents.forEach((a) => setAgentChecking(a.id, false));
-									addToast({ type: "error", message: "Failed to initiate check" });
+									addToast({
+										type: "error",
+										message: "Failed to initiate check",
+									});
 								},
 							});
 						}}
@@ -143,9 +154,17 @@ export function Dashboard() {
 						{isCheckingAll ? "Checking..." : "Check All"}
 					</Button>
 					<Button
-						onClick={() =>
-							{ agents.forEach((a) => { updateAgent.mutate({ id: a.id }, { onError: () => addToast({ type: "error", message: "Update failed" }) }); }); }
-						}
+						onClick={() => {
+							agents.forEach((a) => {
+								updateAgent.mutate(
+									{ id: a.id },
+									{
+										onError: () =>
+											addToast({ type: "error", message: "Update failed" }),
+									},
+								);
+							});
+						}}
 					>
 						<ArrowUpCircle size={16} /> Update All
 					</Button>

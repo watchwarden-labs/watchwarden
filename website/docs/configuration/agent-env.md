@@ -44,6 +44,37 @@ title: Agent Environment Variables
 | `WW_WEBHOOK_URL` | — | Generic HTTP POST webhook endpoint |
 | `WW_WEBHOOK_HEADERS` | — | JSON object of extra headers: `'{"X-Secret":"abc"}'` |
 
+#### ntfy
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WW_NTFY_URL` | — | ntfy server URL (e.g., `https://ntfy.sh` or self-hosted) |
+| `WW_NTFY_TOPIC` | — | Topic name for notifications |
+| `WW_NTFY_PRIORITY` | `default` | Message priority: `low`, `default`, `high`, `urgent` |
+
+```bash
+docker run -d \
+  --name watchwarden \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e WW_SCHEDULE="@every 6h" \
+  -e WW_NTFY_URL=https://ntfy.sh \
+  -e WW_NTFY_TOPIC=watchwarden-updates \
+  alexneo/watchwarden-agent:latest
+```
+
+### Notification Templates
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WW_NOTIFICATION_TEMPLATE` | — | Go [text/template](https://pkg.go.dev/text/template) for custom message formatting |
+
+Available variables: `{{.AgentName}}`, `{{.ContainerName}}`, `{{.Image}}`, `{{.OldDigest}}`, `{{.NewDigest}}`, `{{.Duration}}`, `{{.Error}}`, `{{.EventType}}`
+
+Example:
+```bash
+WW_NOTIFICATION_TEMPLATE='{{.ContainerName}} {{.EventType}}\nImage: {{.Image}} ({{.Duration}})'
+```
+
 ### HTTP Status Server
 
 | Variable | Default | Description |
@@ -83,6 +114,7 @@ WW_REGISTRY_AUTH='[
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket path (for rootless Docker/Podman setups) |
 | `WATCHWARDEN_LABEL_ENABLE_ONLY` | `false` | Only monitor containers with `com.watchwarden.enable=true` |
 | `REQUIRE_SIGNED_IMAGES` | `false` | Block updates if cosign signature verification fails |
 | `COSIGN_PUBLIC_KEY` | — | PEM-encoded public key for cosign verification |

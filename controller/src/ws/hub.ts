@@ -1,7 +1,6 @@
-import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 import type { WebSocket } from "ws";
-import { log } from "../lib/logger.js";
 import {
 	getAgent,
 	getConfig,
@@ -22,6 +21,7 @@ import {
 	upsertContainers,
 } from "../db/queries.js";
 import { decrypt } from "../lib/crypto.js";
+import { log } from "../lib/logger.js";
 import {
 	addUpdateResult,
 	dispatchCheckResults,
@@ -323,9 +323,30 @@ export class AgentHub {
 								this.autoUpdateInFlight.add(agentId);
 								// Auto-update path: send UPDATE, skip "updates available" notification
 								// (update_success/failed notification will follow from UPDATE_RESULT).
+								// Fetch container data to check per-container policies
+								const agentContainersForUpdate =
+									await getContainersByAgent(agentId);
 								const containerIds = payload.results
-									.filter((r) => r.hasUpdate)
+									.filter((r) => {
+										if (!r.hasUpdate) return false;
+										const dbContainer = agentContainersForUpdate.find(
+											(c) =>
+												c.docker_id === r.containerId || c.id === r.containerId,
+										);
+										// Per-container policy overrides: "manual" and "notify" skip auto-update
+										if (
+											dbContainer?.policy === "manual" ||
+											dbContainer?.policy === "notify"
+										)
+											return false;
+										return true;
+									})
 									.map((r) => r.containerId);
+								// Only send UPDATE if there are eligible containers
+								if (containerIds.length === 0) {
+									this.autoUpdateInFlight.delete(agentId);
+									break;
+								}
 								const policy = await getEffectivePolicy(agentId);
 								this.sendToAgent(agentId, {
 									type: "UPDATE",
@@ -630,14 +651,9 @@ export class AgentHub {
 			// handler throws persistently (e.g. DB down, malformed state).
 			if (agentId) {
 				const prev = this.agentQueues.get(agentId) ?? Promise.resolve();
-				const next = prev
-					.then(process)
-					.catch((err) => {
-						log.error(
-							"hub",
-							`Agent ${agentId} message handler failed: ${err}`,
-						);
-					});
+				const next = prev.then(process).catch((err) => {
+					log.error("hub", `Agent ${agentId} message handler failed: ${err}`);
+				});
 				this.agentQueues.set(agentId, next);
 			} else {
 				void process();
@@ -815,6 +831,7 @@ export class AgentHub {
 				registry: c.registry,
 				username: c.username,
 				password: decrypt(c.password_encrypted),
+				auth_type: c.auth_type ?? "basic",
 			}));
 			this.sendToAgent(agentId, {
 				type: "CREDENTIALS_SYNC",

@@ -1,0 +1,29 @@
+# Example: Database must update before API, API before frontend
+services:
+  database:
+    image: postgres:18-alpine
+    labels:
+      - "com.watchwarden.group=backend"
+      - "com.watchwarden.priority=10"
+
+  api:
+    image: myapp/api:latest
+    labels:
+      - "com.watchwarden.group=backend"
+      - "com.watchwarden.priority=20"
+      - "com.watchwarden.depends_on=database"
+
+  frontend:
+    image: myapp/frontend:latest
+    labels:
+      - "com.watchwarden.group=frontend"
+      - "com.watchwarden.priority=10"
+      - "com.watchwarden.depends_on=api"
+
+  watchwarden:
+    image: alexneo/watchwarden-agent:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WW_SCHEDULE: "0 4 * * *"
+      WW_AUTO_UPDATE: "true"

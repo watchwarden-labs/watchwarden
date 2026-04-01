@@ -102,10 +102,7 @@ export function ContainerLogsDialog({
 					<div className="flex items-center gap-4">
 						{/* Auto-refresh toggle */}
 						<div className="flex items-center gap-1.5">
-							<Switch
-								checked={autoRefresh}
-								onCheckedChange={setAutoRefresh}
-							/>
+							<Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
 							<Label className="text-xs text-muted-foreground">
 								Auto-refresh
 							</Label>
