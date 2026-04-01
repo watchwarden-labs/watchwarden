@@ -7,7 +7,7 @@
     "ui"
   ],
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "build:packages": "npm -w @watchwarden/types run build && npm -w @watchwarden/sdk run build",
     "build": "npm run build:packages && npm -w watchwarden-controller run build && npm -w ui run build",
     "test": "npm -w watchwarden-controller run test && npm -w ui run test",
