@@ -7,9 +7,9 @@
 		"dev": "vite",
 		"build": "tsc -b && vite build",
 		"type-check": "tsc --noEmit",
-		"lint": "tsc --noEmit && biome check .",
-		"lint:fix": "biome check --fix .",
-		"format": "biome format --write .",
+		"lint": "tsc --noEmit && biome check --config-path .. src/",
+		"lint:fix": "biome check --config-path .. --fix src/",
+		"format": "biome format --config-path .. --write src/",
 		"test": "vitest",
 		"preview": "vite preview"
 	},
