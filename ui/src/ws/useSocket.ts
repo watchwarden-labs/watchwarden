@@ -59,9 +59,12 @@ export function useSocket() {
 					if (typeof msg.type !== "string") return;
 					// HEALTH_STATUS: update container health in-place without a network refetch
 					if (msg.type === "HEALTH_STATUS") {
-						const agentId = typeof msg.agentId === "string" ? msg.agentId : undefined;
-						const containerId = typeof msg.containerId === "string" ? msg.containerId : undefined;
-						const status = typeof msg.status === "string" ? msg.status : undefined;
+						const agentId =
+							typeof msg.agentId === "string" ? msg.agentId : undefined;
+						const containerId =
+							typeof msg.containerId === "string" ? msg.containerId : undefined;
+						const status =
+							typeof msg.status === "string" ? msg.status : undefined;
 						if (agentId && containerId && status) {
 							queryClient.setQueryData(
 								["agents", agentId],

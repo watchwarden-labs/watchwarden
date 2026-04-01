@@ -1,0 +1,16 @@
+services:
+  watchwarden:
+    image: alexneo/watchwarden-agent:latest
+    container_name: watchwarden
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WW_SCHEDULE: "@every 6h"
+      WW_AUTO_UPDATE: "true"
+      # Notifications (uncomment one):
+      # WW_TELEGRAM_TOKEN: "123456:ABC-DEF"
+      # WW_TELEGRAM_CHAT_ID: "-100123456"
+      # WW_NTFY_URL: "https://ntfy.sh"
+      # WW_NTFY_TOPIC: "watchwarden"
+      # WW_SLACK_WEBHOOK: "https://hooks.slack.com/services/..."

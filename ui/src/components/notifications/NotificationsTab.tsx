@@ -1,5 +1,12 @@
 import { formatDistanceToNow } from "date-fns";
-import { Bell, CheckCircle, Plus, XCircle } from "lucide-react";
+import {
+	Bell,
+	CheckCircle,
+	LayoutGrid,
+	List,
+	Plus,
+	XCircle,
+} from "lucide-react";
 import { useState } from "react";
 import type { NotificationChannel } from "@/api/hooks/useNotifications";
 import { Pagination } from "@/components/common/Pagination";
@@ -29,7 +36,17 @@ export function NotificationsTab() {
 		null,
 	);
 	const [logPage, setLogPage] = useState(0);
+	const [viewMode, setViewMode] = useState<"grid" | "list">(
+		() =>
+			(localStorage.getItem("watchwarden_notif_view") as "grid" | "list") ??
+			"grid",
+	);
 	const LOG_PAGE_SIZE = 20;
+
+	const handleViewChange = (mode: "grid" | "list") => {
+		setViewMode(mode);
+		localStorage.setItem("watchwarden_notif_view", mode);
+	};
 
 	return (
 		<div className="space-y-6">
@@ -40,9 +57,31 @@ export function NotificationsTab() {
 						Get notified when container updates are available or complete.
 					</p>
 				</div>
-				<Button onClick={() => setAddOpen(true)}>
-					<Plus size={16} /> Add Channel
-				</Button>
+				<div className="flex items-center gap-2">
+					<div className="flex gap-0.5 bg-secondary rounded-lg p-0.5">
+						<Button
+							variant={viewMode === "grid" ? "default" : "ghost"}
+							size="icon"
+							className="h-7 w-7"
+							onClick={() => handleViewChange("grid")}
+							aria-label="Grid view"
+						>
+							<LayoutGrid size={14} />
+						</Button>
+						<Button
+							variant={viewMode === "list" ? "default" : "ghost"}
+							size="icon"
+							className="h-7 w-7"
+							onClick={() => handleViewChange("list")}
+							aria-label="List view"
+						>
+							<List size={14} />
+						</Button>
+					</div>
+					<Button onClick={() => setAddOpen(true)}>
+						<Plus size={16} /> Add Channel
+					</Button>
+				</div>
 			</div>
 
 			{channels.length === 0 && (
@@ -63,18 +102,36 @@ export function NotificationsTab() {
 				</Card>
 			)}
 
-			<div className="space-y-3">
-				{channels.map((ch) => (
-					<ChannelCard
-						key={ch.id}
-						channel={ch}
-						onEdit={() => {
-							setEditChannel(ch);
-							setAddOpen(true);
-						}}
-					/>
-				))}
-			</div>
+			{channels.length > 0 && viewMode === "grid" && (
+				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+					{channels.map((ch) => (
+						<ChannelCard
+							key={ch.id}
+							channel={ch}
+							compact
+							onEdit={() => {
+								setEditChannel(ch);
+								setAddOpen(true);
+							}}
+						/>
+					))}
+				</div>
+			)}
+
+			{channels.length > 0 && viewMode === "list" && (
+				<div className="space-y-2">
+					{channels.map((ch) => (
+						<ChannelCard
+							key={ch.id}
+							channel={ch}
+							onEdit={() => {
+								setEditChannel(ch);
+								setAddOpen(true);
+							}}
+						/>
+					))}
+				</div>
+			)}
 
 			{/* Delivery Logs */}
 			{logs.length > 0 && (
@@ -92,33 +149,37 @@ export function NotificationsTab() {
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{logs.slice(logPage * LOG_PAGE_SIZE, (logPage + 1) * LOG_PAGE_SIZE).map((log) => (
-								<TableRow key={log.id}>
-									<TableCell className="text-sm">{log.channel_name}</TableCell>
-									<TableCell>
-										<Badge variant="outline" className="text-xs">
-											{log.event_type.replace("_", " ")}
-										</Badge>
-									</TableCell>
-									<TableCell>
-										{log.status === "success" ? (
-											<span className="flex items-center gap-1 text-xs text-success">
-												<CheckCircle size={12} /> Sent
-											</span>
-										) : (
-											<span
-												className="flex items-center gap-1 text-xs text-destructive"
-												title={log.error ?? ""}
-											>
-												<XCircle size={12} /> Failed
-											</span>
-										)}
-									</TableCell>
-									<TableCell className="text-xs text-muted-foreground">
-										{formatDistanceToNow(log.created_at, { addSuffix: true })}
-									</TableCell>
-								</TableRow>
-							))}
+							{logs
+								.slice(logPage * LOG_PAGE_SIZE, (logPage + 1) * LOG_PAGE_SIZE)
+								.map((log) => (
+									<TableRow key={log.id}>
+										<TableCell className="text-sm">
+											{log.channel_name}
+										</TableCell>
+										<TableCell>
+											<Badge variant="outline" className="text-xs">
+												{log.event_type.replace("_", " ")}
+											</Badge>
+										</TableCell>
+										<TableCell>
+											{log.status === "success" ? (
+												<span className="flex items-center gap-1 text-xs text-success">
+													<CheckCircle size={12} /> Sent
+												</span>
+											) : (
+												<span
+													className="flex items-center gap-1 text-xs text-destructive"
+													title={log.error ?? ""}
+												>
+													<XCircle size={12} /> Failed
+												</span>
+											)}
+										</TableCell>
+										<TableCell className="text-xs text-muted-foreground">
+											{formatDistanceToNow(log.created_at, { addSuffix: true })}
+										</TableCell>
+									</TableRow>
+								))}
 						</TableBody>
 					</Table>
 					<Pagination

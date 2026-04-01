@@ -1,5 +1,8 @@
 import {
+	Bell,
 	Check,
+	ChevronDown,
+	ChevronRight,
 	ExternalLink,
 	Hash,
 	Loader2,
@@ -57,6 +60,12 @@ const TYPES = [
 		icon: Webhook,
 		desc: "POST JSON to any HTTP endpoint",
 	},
+	{
+		value: "ntfy",
+		label: "ntfy",
+		icon: Bell,
+		desc: "Push to ntfy.sh or self-hosted ntfy",
+	},
 ] as const;
 
 const EVENTS = [
@@ -100,6 +109,13 @@ export function AddChannelModal({
 	const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>(
 		[],
 	);
+	const [customTemplate, setCustomTemplate] = useState(
+		editChannel?.template ?? "",
+	);
+	const [linkTemplate, setLinkTemplate] = useState(
+		editChannel?.link_template ?? "",
+	);
+	const [showAdvanced, setShowAdvanced] = useState(false);
 	const [saveState, setSaveState] = useState<
 		"idle" | "saving" | "success" | "error"
 	>("idle");
@@ -137,6 +153,11 @@ export function AddChannelModal({
 			} catch {
 				/* keep default */
 			}
+			if (channelDetail.template) setCustomTemplate(channelDetail.template);
+			if (channelDetail.link_template)
+				setLinkTemplate(channelDetail.link_template);
+			if (channelDetail.template || channelDetail.link_template)
+				setShowAdvanced(true);
 			setStep(2); // Skip type selection on edit
 		}
 	}, [channelDetail, editChannel]);
@@ -147,6 +168,9 @@ export function AddChannelModal({
 		setConfig({});
 		setEvents(["update_available", "update_success", "update_failed"]);
 		setHeaders([]);
+		setCustomTemplate("");
+		setLinkTemplate("");
+		setShowAdvanced(false);
 		setSaveState("idle");
 		setErrorMsg("");
 		onOpenChange(false);
@@ -178,6 +202,7 @@ export function AddChannelModal({
 		if (type === "telegram") return !!config.botToken && !!config.chatId;
 		if (type === "slack") return !!config.webhookUrl;
 		if (type === "webhook") return !!config.url;
+		if (type === "ntfy") return !!config.topic;
 		return false;
 	};
 
@@ -185,7 +210,14 @@ export function AddChannelModal({
 
 	const handleSave = () => {
 		setSaveState("saving");
-		const payload = { type, name, config: buildConfigPayload(), events };
+		const payload = {
+			type,
+			name,
+			config: buildConfigPayload(),
+			events,
+			template: customTemplate || null,
+			link_template: linkTemplate || null,
+		};
 		const onError = (err: Error) => {
 			setSaveState("error");
 			setErrorMsg(err.message ?? "Failed to save");
@@ -401,6 +433,135 @@ export function AddChannelModal({
 									</Button>
 								</div>
 							</>
+						)}
+
+						{type === "ntfy" && (
+							<>
+								<div className="space-y-1.5">
+									<div className="flex items-center justify-between">
+										<Label>Server</Label>
+										<a
+											href="https://ntfy.sh"
+											target="_blank"
+											rel="noreferrer"
+											className="text-xs text-primary flex items-center gap-1"
+										>
+											ntfy.sh <ExternalLink size={10} />
+										</a>
+									</div>
+									<Input
+										value={config.server ?? "https://ntfy.sh"}
+										onChange={(e) => setConfigField("server", e.target.value)}
+										placeholder="https://ntfy.sh"
+									/>
+								</div>
+								<div className="space-y-1.5">
+									<Label>Topic</Label>
+									<Input
+										value={config.topic ?? ""}
+										onChange={(e) => setConfigField("topic", e.target.value)}
+										placeholder="watchwarden"
+									/>
+								</div>
+								<div className="space-y-1.5">
+									<Label>Priority (optional)</Label>
+									<Input
+										value={config.priority ?? ""}
+										onChange={(e) => setConfigField("priority", e.target.value)}
+										placeholder="default, low, high, urgent"
+									/>
+								</div>
+								<div className="space-y-1.5">
+									<Label>Access Token (optional)</Label>
+									<Input
+										value={config.token ?? ""}
+										onChange={(e) => setConfigField("token", e.target.value)}
+										placeholder="tk_..."
+										type="password"
+									/>
+								</div>
+							</>
+						)}
+
+						{/* Advanced: Template & Link Template */}
+						<button
+							type="button"
+							className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors pt-2"
+							onClick={() => setShowAdvanced(!showAdvanced)}
+						>
+							{showAdvanced ? (
+								<ChevronDown size={14} />
+							) : (
+								<ChevronRight size={14} />
+							)}
+							Advanced
+						</button>
+						{showAdvanced && (
+							<div className="space-y-3 pl-1 border-l-2 border-secondary ml-1">
+								<div className="space-y-1.5 pl-3">
+									<Label>Custom Template</Label>
+									<textarea
+										className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+										value={customTemplate}
+										onChange={(e) => setCustomTemplate(e.target.value)}
+										placeholder={
+											"Available: {{eventType}}, {{agentName}}, {{containers}}, {{count}}"
+										}
+										rows={3}
+									/>
+									<p className="text-xs text-muted-foreground">
+										Use {"{{variable}}"} placeholders. Leave empty for default
+										formatting.
+									</p>
+								</div>
+								<div className="space-y-1.5 pl-3">
+									<Label>Link Template</Label>
+									<div className="flex flex-wrap gap-1.5 mb-1.5">
+										{[
+											{ label: "None", value: "" },
+											{ label: "Auto", value: "auto" },
+											{
+												label: "Docker Hub",
+												value:
+													"https://hub.docker.com/r/{{repository}}/tags?name={{tag}}",
+											},
+											{
+												label: "GHCR",
+												value:
+													"https://github.com/{{owner}}/{{name}}/pkgs/container/{{name}}",
+											},
+											{
+												label: "Quay.io",
+												value:
+													"https://quay.io/repository/{{repository}}?tab=tags",
+											},
+										].map((opt) => (
+											<button
+												key={opt.label}
+												type="button"
+												className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+													linkTemplate === opt.value
+														? "border-primary bg-primary/10 text-primary"
+														: "border-secondary hover:border-muted-foreground/30"
+												}`}
+												onClick={() => setLinkTemplate(opt.value)}
+											>
+												{opt.label}
+											</button>
+										))}
+									</div>
+									<Input
+										value={linkTemplate}
+										onChange={(e) => setLinkTemplate(e.target.value)}
+										placeholder="Custom: https://example.com/{{repository}}/{{tag}}"
+									/>
+									<p className="text-xs text-muted-foreground">
+										Appends image links to notifications. Available:{" "}
+										{"{{registry}}"}, {"{{repository}}"}, {"{{tag}}"},{" "}
+										{"{{owner}}"}, {"{{name}}"}
+									</p>
+								</div>
+							</div>
 						)}
 					</div>
 				)}

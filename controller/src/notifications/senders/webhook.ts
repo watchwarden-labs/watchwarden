@@ -1,7 +1,9 @@
 import dns from "node:dns/promises";
 import https from "node:https";
 import http from "node:http";
+import { renderImageLink } from "../template-helpers.js";
 import type { NotificationEvent } from "../types.js";
+import type { FormatOptions } from "./telegram.js";
 
 const BLOCKED_URL_PATTERN =
 	/^https?:\/\/(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[::1\])/i;
@@ -33,6 +35,7 @@ function validateCustomHeaders(
 export async function sendWebhook(
 	config: { url: string; method?: string; headers?: Record<string, string> },
 	event: NotificationEvent,
+	options?: FormatOptions,
 ): Promise<void> {
 	// Fast path: block obvious private URL strings.
 	if (BLOCKED_URL_PATTERN.test(config.url)) {
@@ -75,7 +78,35 @@ export async function sendWebhook(
 			? 443
 			: 80;
 	const path = parsed.pathname + (parsed.search ?? "");
-	const body = JSON.stringify(event);
+
+	// Enrich event with image links when a link template is configured
+	let payload: unknown = event;
+	const linkTpl = options?.linkTemplate ?? null;
+	if (linkTpl) {
+		if (event.type === "update_available") {
+			payload = {
+				...event,
+				agents: event.agents.map((a) => ({
+					...a,
+					containers: a.containers.map((c) => ({
+						...c,
+						link: renderImageLink(c.image, linkTpl),
+					})),
+				})),
+			};
+		} else if (event.type === "update_success") {
+			payload = {
+				...event,
+				containers: event.containers.map((c) => ({
+					...c,
+					link: renderImageLink(c.image, linkTpl),
+				})),
+			};
+		} else {
+			payload = event;
+		}
+	}
+	const body = JSON.stringify(payload);
 
 	const safeHeaders = validateCustomHeaders(config.headers ?? {});
 
@@ -83,7 +114,7 @@ export async function sendWebhook(
 	// hosting and TLS SNI use the original hostname (required for certificate
 	// validation and correct routing through CDN/reverse-proxies).
 	await new Promise<void>((resolve, reject) => {
-		const options: https.RequestOptions = {
+		const reqOptions: https.RequestOptions = {
 			method: config.method ?? "POST",
 			hostname: resolvedAddress, // IP — no second DNS lookup
 			port,
@@ -100,7 +131,7 @@ export async function sendWebhook(
 
 		// N01: 10-second timeout via socket-level deadline.
 		const reqModule = isHttps ? https : http;
-		const req = reqModule.request(options, (res) => {
+		const req = reqModule.request(reqOptions, (res) => {
 			// Drain the response body to free the socket
 			res.resume();
 			res.on("end", () => {

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 )
 
@@ -18,6 +19,26 @@ type Notifier struct {
 	cooldown    map[string]time.Time
 	cooldownMu  sync.Mutex
 	cooldownTTL time.Duration
+	template    string // user-provided Go text/template
+}
+
+// renderNotificationTemplate renders a Go text/template with the given variables.
+// If the template is empty or invalid, returns the fallback string.
+func renderNotificationTemplate(tmpl string, vars map[string]string, fallback string) string {
+	if tmpl == "" {
+		return fallback
+	}
+	t, err := template.New("notification").Parse(tmpl)
+	if err != nil {
+		log.Printf("[notify] invalid template, using default: %v", err)
+		return fallback
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, vars); err != nil {
+		log.Printf("[notify] template execution failed, using default: %v", err)
+		return fallback
+	}
+	return buf.String()
 }
 
 // Sender is the interface for a notification channel.
@@ -59,6 +80,15 @@ func NewNotifier(cfg *AgentConfig) *Notifier {
 		})
 	}
 
+	if cfg.NtfyURL != "" && cfg.NtfyTopic != "" {
+		senders = append(senders, &NtfySender{
+			server:   cfg.NtfyURL,
+			topic:    cfg.NtfyTopic,
+			priority: cfg.NtfyPriority,
+			client:   &http.Client{Timeout: 10 * time.Second},
+		})
+	}
+
 	// Parse shoutrrr-style notification URLs
 	for _, rawURL := range cfg.NotificationURLs {
 		if s := parseShoutrrrURL(rawURL); s != nil {
@@ -70,6 +100,7 @@ func NewNotifier(cfg *AgentConfig) *Notifier {
 		senders:     senders,
 		cooldown:    make(map[string]time.Time),
 		cooldownTTL: 5 * time.Minute,
+		template:    cfg.NotificationTemplate,
 	}
 }
 
@@ -118,6 +149,28 @@ func (n *Notifier) NotifyAvailable(agentName string, updates []CheckResult) {
 	}
 	body := strings.Join(lines, "\n")
 
+	if n.template != "" {
+		// Build container list as a single string for template use
+		var names []string
+		for _, u := range filtered {
+			names = append(names, u.ContainerName)
+		}
+		vars := map[string]string{
+			"EventType":  "update_available",
+			"AgentName":  agentName,
+			"Containers": strings.Join(names, ", "),
+			"Count":      fmt.Sprintf("%d", len(filtered)),
+		}
+		rendered := renderNotificationTemplate(n.template, vars, title+"\n"+body)
+		parts := strings.SplitN(rendered, "\n", 2)
+		title = parts[0]
+		if len(parts) > 1 {
+			body = parts[1]
+		} else {
+			body = ""
+		}
+	}
+
 	n.broadcast(title, body)
 }
 
@@ -133,6 +186,26 @@ func (n *Notifier) NotifyResult(result *UpdateResult) {
 	} else {
 		title = fmt.Sprintf("Update Failed — %s", result.ContainerName)
 		body = result.Error
+	}
+	if n.template != "" {
+		vars := map[string]string{
+			"EventType":     "update_result",
+			"ContainerName": result.ContainerName,
+			"ContainerID":   result.ContainerID,
+			"Success":       fmt.Sprintf("%v", result.Success),
+			"OldDigest":     result.OldDigest,
+			"NewDigest":     result.NewDigest,
+			"Duration":      fmt.Sprintf("%dms", result.DurationMs),
+			"Error":         result.Error,
+		}
+		rendered := renderNotificationTemplate(n.template, vars, title+"\n"+body)
+		parts := strings.SplitN(rendered, "\n", 2)
+		title = parts[0]
+		if len(parts) > 1 {
+			body = parts[1]
+		} else {
+			body = ""
+		}
 	}
 	n.broadcast(title, body)
 }
@@ -162,8 +235,32 @@ func (n *Notifier) NotifyResults(agentName string, results []*UpdateResult) {
 	} else {
 		title = fmt.Sprintf("Update Finished — %s (%d ok, %d failed)", agentName, successes, failures)
 	}
+	body := strings.Join(lines, "\n")
 
-	n.broadcast(title, strings.Join(lines, "\n"))
+	if n.template != "" {
+		var names []string
+		for _, r := range results {
+			names = append(names, r.ContainerName)
+		}
+		vars := map[string]string{
+			"EventType":  "update_results",
+			"AgentName":  agentName,
+			"Containers": strings.Join(names, ", "),
+			"Successes":  fmt.Sprintf("%d", successes),
+			"Failures":   fmt.Sprintf("%d", failures),
+			"Total":      fmt.Sprintf("%d", len(results)),
+		}
+		rendered := renderNotificationTemplate(n.template, vars, title+"\n"+body)
+		parts := strings.SplitN(rendered, "\n", 2)
+		title = parts[0]
+		if len(parts) > 1 {
+			body = parts[1]
+		} else {
+			body = ""
+		}
+	}
+
+	n.broadcast(title, body)
 }
 
 // NotifyHealth sends a notification about health-triggered rollback.
@@ -171,7 +268,24 @@ func (n *Notifier) NotifyHealth(containerName, reason string) {
 	if !n.IsConfigured() {
 		return
 	}
-	n.broadcast(fmt.Sprintf("Auto-Rollback — %s", containerName), reason)
+	title := fmt.Sprintf("Auto-Rollback — %s", containerName)
+	body := reason
+	if n.template != "" {
+		vars := map[string]string{
+			"EventType":     "health_rollback",
+			"ContainerName": containerName,
+			"Reason":        reason,
+		}
+		rendered := renderNotificationTemplate(n.template, vars, title+"\n"+body)
+		parts := strings.SplitN(rendered, "\n", 2)
+		title = parts[0]
+		if len(parts) > 1 {
+			body = parts[1]
+		} else {
+			body = ""
+		}
+	}
+	n.broadcast(title, body)
 }
 
 func (n *Notifier) broadcast(title, body string) {
@@ -281,6 +395,42 @@ func (w *WebhookSender) Send(ctx context.Context, title, body string) error {
 	return nil
 }
 
+// --- ntfy Sender ---
+
+type NtfySender struct {
+	server   string
+	topic    string
+	priority string
+	token    string
+	client   *http.Client
+}
+
+func (n *NtfySender) Name() string { return "ntfy:" + n.topic }
+
+func (n *NtfySender) Send(ctx context.Context, title, body string) error {
+	url := strings.TrimRight(n.server, "/") + "/" + n.topic
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Title", title)
+	if n.priority != "" && n.priority != "default" {
+		req.Header.Set("Priority", n.priority)
+	}
+	if n.token != "" {
+		req.Header.Set("Authorization", "Bearer "+n.token)
+	}
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("ntfy returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // --- Shoutrrr URL Parser ---
 
 func parseShoutrrrURL(rawURL string) Sender {
@@ -323,6 +473,25 @@ func parseShoutrrrURL(rawURL string) Sender {
 			webhookURL = "https://hooks.slack.com/services/" + strings.SplitN(trimmed, "@", 2)[0]
 		}
 		return &SlackSender{webhookURL: webhookURL, client: client}
+	}
+
+	if strings.HasPrefix(rawURL, "ntfy://") {
+		// ntfy://server/topic or ntfy://topic (defaults to https://ntfy.sh)
+		trimmed := strings.TrimPrefix(rawURL, "ntfy://")
+		parts := strings.SplitN(trimmed, "/", 2)
+		var server, topic string
+		if len(parts) == 2 && (strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":")) {
+			server = "https://" + parts[0]
+			topic = parts[1]
+		} else {
+			server = "https://ntfy.sh"
+			topic = trimmed
+		}
+		if topic == "" {
+			log.Printf("[notify] invalid ntfy URL: missing topic")
+			return nil
+		}
+		return &NtfySender{server: server, topic: topic, priority: "default", client: client}
 	}
 
 	log.Printf("[notify] unsupported notification URL scheme: %s (use WW_WEBHOOK_URL for generic webhooks)", rawURL)

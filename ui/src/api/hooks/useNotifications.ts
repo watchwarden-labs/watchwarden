@@ -1,15 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { NotificationChannel } from "@watchwarden/types";
 import { apiRequest } from "../client";
 
-export interface NotificationChannel {
-	id: string;
-	type: string;
-	name: string;
-	config: string;
-	enabled: number;
-	events: string;
-	created_at: number;
-}
+export type { NotificationChannel };
 
 export function useNotifications() {
 	return useQuery({
@@ -26,6 +19,8 @@ export function useCreateNotification() {
 			name: string;
 			config: Record<string, unknown>;
 			events: string[];
+			template?: string | null;
+			link_template?: string | null;
 		}) =>
 			apiRequest<{ id: string }>("/notifications", {
 				method: "POST",
@@ -47,6 +42,8 @@ export function useUpdateNotification() {
 			enabled?: boolean;
 			config?: Record<string, unknown>;
 			events?: string[];
+			template?: string | null;
+			link_template?: string | null;
 		}) =>
 			apiRequest<void>(`/notifications/${id}`, {
 				method: "PUT",

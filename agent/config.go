@@ -22,10 +22,10 @@ type AgentConfig struct {
 	MonitorOnly bool
 
 	// Update behavior
-	UpdateStrategy   string        // "recreate" (default) | "start-first" (blue-green)
-	PruneAfterUpdate bool
-	StopTimeout      time.Duration
-	IncludeStopped   bool
+	UpdateStrategy    string // "recreate" (default) | "start-first" (blue-green)
+	PruneAfterUpdate  bool
+	StopTimeout       time.Duration
+	IncludeStopped    bool
 	IncludeRestarting bool
 
 	// Label filtering
@@ -38,6 +38,9 @@ type AgentConfig struct {
 	SlackWebhook     string
 	WebhookURL       string
 	WebhookHeaders   map[string]string
+	NtfyURL          string
+	NtfyTopic        string
+	NtfyPriority     string
 
 	// HTTP server
 	HTTPPort  string
@@ -48,6 +51,9 @@ type AgentConfig struct {
 	DockerPassword string
 	DockerServer   string
 	RegistryAuth   string // JSON array
+
+	// Custom notification template (Go text/template)
+	NotificationTemplate string
 
 	// Security
 	RequireSigned   bool
@@ -67,32 +73,34 @@ func loadConfig() *AgentConfig {
 	}
 
 	cfg := &AgentConfig{
-		ControllerURL: os.Getenv("CONTROLLER_URL"),
-		AgentToken:    os.Getenv("AGENT_TOKEN"),
-		AgentName:     getEnvDefault("AGENT_NAME", ""),
-		Schedule:      getEnvDefault("WW_SCHEDULE", "@every 24h"),
-		AutoUpdate:    getEnvBool("WW_AUTO_UPDATE", false),
-		MonitorOnly:   getEnvBool("WW_MONITOR_ONLY", false),
-		UpdateStrategy: getEnvDefault("WW_UPDATE_STRATEGY", "recreate"),
-		PruneAfterUpdate: getEnvBool("WW_PRUNE", false),
-		StopTimeout:      time.Duration(getEnvInt("WW_STOP_TIMEOUT", 10)) * time.Second,
+		ControllerURL:     os.Getenv("CONTROLLER_URL"),
+		AgentToken:        os.Getenv("AGENT_TOKEN"),
+		AgentName:         getEnvDefault("AGENT_NAME", ""),
+		Schedule:          getEnvDefault("WW_SCHEDULE", "@every 24h"),
+		AutoUpdate:        getEnvBool("WW_AUTO_UPDATE", false),
+		MonitorOnly:       getEnvBool("WW_MONITOR_ONLY", false),
+		UpdateStrategy:    getEnvDefault("WW_UPDATE_STRATEGY", "recreate"),
+		PruneAfterUpdate:  getEnvBool("WW_PRUNE", false),
+		StopTimeout:       time.Duration(getEnvInt("WW_STOP_TIMEOUT", 10)) * time.Second,
 		IncludeStopped:    getEnvBool("WW_INCLUDE_STOPPED", false),
 		IncludeRestarting: getEnvBool("WW_INCLUDE_RESTARTING", false),
 		LabelEnableOnly:   getEnvBool("WATCHWARDEN_LABEL_ENABLE_ONLY", false),
-		TelegramToken:    os.Getenv("WW_TELEGRAM_TOKEN"),
-		TelegramChatID:   os.Getenv("WW_TELEGRAM_CHAT_ID"),
-		SlackWebhook:     os.Getenv("WW_SLACK_WEBHOOK"),
-		WebhookURL:       os.Getenv("WW_WEBHOOK_URL"),
-		HTTPPort:         getEnvDefault("WW_HTTP_PORT", "8080"),
-		HTTPToken:        os.Getenv("WW_HTTP_TOKEN"),
-		DockerUsername:   os.Getenv("WW_DOCKER_USERNAME"),
-		DockerPassword:   os.Getenv("WW_DOCKER_PASSWORD"),
-		DockerServer:     getEnvDefault("WW_DOCKER_SERVER", "index.docker.io"),
-		RegistryAuth:     os.Getenv("WW_REGISTRY_AUTH"),
-		RequireSigned:    getEnvBool("REQUIRE_SIGNED_IMAGES", false),
-		CosignPublicKey:  os.Getenv("COSIGN_PUBLIC_KEY"),
-		LocalSchedule:    os.Getenv("LOCAL_SCHEDULE"),
+		TelegramToken:     os.Getenv("WW_TELEGRAM_TOKEN"),
+		TelegramChatID:    os.Getenv("WW_TELEGRAM_CHAT_ID"),
+		SlackWebhook:      os.Getenv("WW_SLACK_WEBHOOK"),
+		WebhookURL:        os.Getenv("WW_WEBHOOK_URL"),
+		HTTPPort:          getEnvDefault("WW_HTTP_PORT", "8080"),
+		HTTPToken:         os.Getenv("WW_HTTP_TOKEN"),
+		DockerUsername:    os.Getenv("WW_DOCKER_USERNAME"),
+		DockerPassword:    os.Getenv("WW_DOCKER_PASSWORD"),
+		DockerServer:      getEnvDefault("WW_DOCKER_SERVER", "index.docker.io"),
+		RegistryAuth:      os.Getenv("WW_REGISTRY_AUTH"),
+		RequireSigned:     getEnvBool("REQUIRE_SIGNED_IMAGES", false),
+		CosignPublicKey:   os.Getenv("COSIGN_PUBLIC_KEY"),
+		LocalSchedule:     os.Getenv("LOCAL_SCHEDULE"),
 	}
+
+	cfg.NotificationTemplate = os.Getenv("WW_NOTIFICATION_TEMPLATE")
 
 	// Parse notification URLs
 	if rawURLs := os.Getenv("WW_NOTIFICATION_URL"); rawURLs != "" {
@@ -103,6 +111,11 @@ func loadConfig() *AgentConfig {
 	if headersJSON := os.Getenv("WW_WEBHOOK_HEADERS"); headersJSON != "" {
 		cfg.WebhookHeaders = parseHeadersJSON(headersJSON)
 	}
+
+	// ntfy config
+	cfg.NtfyURL = os.Getenv("WW_NTFY_URL")
+	cfg.NtfyTopic = os.Getenv("WW_NTFY_TOPIC")
+	cfg.NtfyPriority = getEnvDefault("WW_NTFY_PRIORITY", "default")
 
 	// Default agent name to hostname
 	if cfg.AgentName == "" {

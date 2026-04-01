@@ -226,7 +226,29 @@ func (s *SoloRunner) runCheckCycle(ctx context.Context) {
 	}
 
 	if s.config.AutoUpdate && !s.config.MonitorOnly && len(updatesAvailable) > 0 {
-		s.applyUpdates(checkCtx, updatesAvailable)
+		// Build a lookup of container policies from the full container list
+		policyMap := make(map[string]string)
+		for _, c := range containers {
+			policyMap[c.DockerID] = c.Policy
+		}
+
+		// Filter updates by per-container policy
+		var autoUpdates []CheckResult
+		for _, u := range updatesAvailable {
+			p := policyMap[u.ContainerID]
+			switch p {
+			case "manual":
+				log.Printf("[solo] Skipping update for %s: policy=manual", u.ContainerName)
+			case "notify":
+				log.Printf("[solo] Notify-only for %s: policy=notify (update available but skipped)", u.ContainerName)
+			default:
+				// "auto" or empty: use global config (already checked above)
+				autoUpdates = append(autoUpdates, u)
+			}
+		}
+		if len(autoUpdates) > 0 {
+			s.applyUpdates(checkCtx, autoUpdates)
+		}
 	}
 }
 

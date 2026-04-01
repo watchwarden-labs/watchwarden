@@ -128,12 +128,15 @@ export async function upsertContainers(
 			update_group: c.group ?? null,
 			update_priority: c.priority ?? 100,
 			depends_on: c.depends_on?.length ? JSON.stringify(c.depends_on) : null,
+			policy: c.policy ?? null,
+			tag_pattern: c.tag_pattern ?? null,
+			update_level: c.update_level ?? null,
 		}));
 
 		// postgres.js sql(rows, col...) generates the column list + VALUES — no separate column list
 		await tx`
     INSERT INTO containers
-    ${tx(rows, "id", "agent_id", "docker_id", "name", "image", "current_digest", "status", "excluded", "exclude_reason", "pinned_version", "update_group", "update_priority", "depends_on")}
+    ${tx(rows, "id", "agent_id", "docker_id", "name", "image", "current_digest", "status", "excluded", "exclude_reason", "pinned_version", "update_group", "update_priority", "depends_on", "policy", "tag_pattern", "update_level")}
     ON CONFLICT (id) DO UPDATE SET
       docker_id = EXCLUDED.docker_id,
       name = EXCLUDED.name,
@@ -145,7 +148,10 @@ export async function upsertContainers(
       pinned_version = EXCLUDED.pinned_version,
       update_group = EXCLUDED.update_group,
       update_priority = EXCLUDED.update_priority,
-      depends_on = EXCLUDED.depends_on
+      depends_on = EXCLUDED.depends_on,
+      policy = EXCLUDED.policy,
+      tag_pattern = EXCLUDED.tag_pattern,
+      update_level = EXCLUDED.update_level
   `;
 	}); // end sql.begin — DB-03
 }
@@ -314,6 +320,7 @@ export interface RegistryCredential {
 	registry: string;
 	username: string;
 	password_encrypted: string;
+	auth_type: string; // "basic" (default), "ecr", "gcr", "acr"
 	created_at: number;
 }
 
@@ -321,8 +328,8 @@ export async function insertRegistryCredential(
 	cred: Omit<RegistryCredential, "created_at">,
 ): Promise<void> {
 	await sql`
-    INSERT INTO registry_credentials (id, registry, username, password_encrypted, created_at)
-    VALUES (${cred.id}, ${cred.registry}, ${cred.username}, ${cred.password_encrypted}, ${Date.now()})
+    INSERT INTO registry_credentials (id, registry, username, password_encrypted, auth_type, created_at)
+    VALUES (${cred.id}, ${cred.registry}, ${cred.username}, ${cred.password_encrypted}, ${cred.auth_type ?? "basic"}, ${Date.now()})
   `;
 }
 
@@ -341,7 +348,12 @@ export async function getRegistryCredential(
 
 export async function updateRegistryCredential(
 	id: string,
-	data: { registry?: string; username?: string; password_encrypted?: string },
+	data: {
+		registry?: string;
+		username?: string;
+		password_encrypted?: string;
+		auth_type?: string;
+	},
 ): Promise<void> {
 	// DB-01: wrap in a transaction so a crash between statements never leaves
 	// credentials in a partially-updated state (e.g. new password + old username).
@@ -353,6 +365,8 @@ export async function updateRegistryCredential(
 			await tx`UPDATE registry_credentials SET username = ${data.username} WHERE id = ${id}`;
 		if (data.password_encrypted !== undefined)
 			await tx`UPDATE registry_credentials SET password_encrypted = ${data.password_encrypted} WHERE id = ${id}`;
+		if (data.auth_type !== undefined)
+			await tx`UPDATE registry_credentials SET auth_type = ${data.auth_type} WHERE id = ${id}`;
 	});
 }
 
@@ -369,6 +383,8 @@ export interface NotificationChannel {
 	config: string;
 	enabled: boolean;
 	events: string;
+	template: string | null;
+	link_template: string | null;
 	created_at: number;
 }
 
@@ -376,8 +392,8 @@ export async function insertNotificationChannel(
 	ch: Omit<NotificationChannel, "created_at">,
 ): Promise<void> {
 	await sql`
-    INSERT INTO notification_channels (id, type, name, config, enabled, events, created_at)
-    VALUES (${ch.id}, ${ch.type}, ${ch.name}, ${ch.config}, ${!!ch.enabled}, ${ch.events}, ${Date.now()})
+    INSERT INTO notification_channels (id, type, name, config, enabled, events, template, link_template, created_at)
+    VALUES (${ch.id}, ${ch.type}, ${ch.name}, ${ch.config}, ${!!ch.enabled}, ${ch.events}, ${ch.template ?? null}, ${ch.link_template ?? null}, ${Date.now()})
   `;
 }
 
@@ -414,6 +430,10 @@ export async function updateNotificationChannel(
 			await tx`UPDATE notification_channels SET enabled = ${!!data.enabled} WHERE id = ${id}`;
 		if (data.events !== undefined)
 			await tx`UPDATE notification_channels SET events = ${data.events} WHERE id = ${id}`;
+		if (data.template !== undefined)
+			await tx`UPDATE notification_channels SET template = ${data.template} WHERE id = ${id}`;
+		if (data.link_template !== undefined)
+			await tx`UPDATE notification_channels SET link_template = ${data.link_template} WHERE id = ${id}`;
 	});
 }
 
@@ -629,6 +649,9 @@ function mapContainer(row: Record<string, unknown>): Container {
 		update_group: row.update_group as string | null,
 		update_priority: Number(row.update_priority ?? 100),
 		depends_on: row.depends_on as string | null,
+		policy: row.policy as string | null,
+		tag_pattern: row.tag_pattern as string | null,
+		update_level: row.update_level as string | null,
 		last_diff: row.last_diff as string | null,
 		last_checked: row.last_checked ? Number(row.last_checked) : null,
 		last_updated: row.last_updated ? Number(row.last_updated) : null,
@@ -658,6 +681,7 @@ function mapRegistryCredential(
 		registry: row.registry as string,
 		username: row.username as string,
 		password_encrypted: row.password_encrypted as string,
+		auth_type: (row.auth_type as string) ?? "basic",
 		created_at: Number(row.created_at),
 	};
 }
@@ -672,6 +696,8 @@ function mapNotificationChannel(
 		config: row.config as string,
 		enabled: !!row.enabled,
 		events: row.events as string,
+		template: (row.template as string | null) ?? null,
+		link_template: (row.link_template as string | null) ?? null,
 		created_at: Number(row.created_at),
 	};
 }

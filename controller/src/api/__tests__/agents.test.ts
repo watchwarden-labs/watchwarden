@@ -377,7 +377,9 @@ describe("sendToAgent return value guards", () => {
 		await updateAgentStatus("check-all-b", "online", Date.now());
 
 		// Agent A is reachable, Agent B is a ghost (DB online, WS gone)
-		mockHub.sendToAgent.mockImplementation((id: string) => id === "check-all-a");
+		mockHub.sendToAgent.mockImplementation(
+			(id: string) => id === "check-all-a",
+		);
 
 		const res = await app.inject({
 			method: "POST",

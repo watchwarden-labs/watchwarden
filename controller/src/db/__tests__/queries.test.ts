@@ -508,6 +508,8 @@ describe("queries", () => {
 				config: "encrypted-config-old",
 				enabled: true,
 				events: JSON.stringify(["update_success"]),
+				template: null,
+				link_template: null,
 			});
 
 			await updateNotificationChannel("ch-atomic", {
@@ -566,13 +568,19 @@ describe("queries", () => {
 			];
 
 			// Seed initial containers
-			await upsertContainers(agentId, containers as unknown as Parameters<typeof upsertContainers>[1]);
+			await upsertContainers(
+				agentId,
+				containers as unknown as Parameters<typeof upsertContainers>[1],
+			);
 
 			// Run 10 concurrent upserts (simulating rapid heartbeats)
 			const promises: Promise<void>[] = [];
 			for (let i = 0; i < 10; i++) {
 				promises.push(
-					upsertContainers(agentId, containers as unknown as Parameters<typeof upsertContainers>[1]),
+					upsertContainers(
+						agentId,
+						containers as unknown as Parameters<typeof upsertContainers>[1],
+					),
 				);
 			}
 

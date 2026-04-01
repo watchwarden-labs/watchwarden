@@ -28,6 +28,9 @@ export async function buildTestApp(): Promise<FastifyInstance> {
 	await app.register(configRoutes);
 	await app.register(historyRoutes);
 
+	const { default: metricsRoutes } = await import("../routes/metrics.js");
+	await app.register(metricsRoutes);
+
 	// Register the audit hook so audit log tests work
 	const { registerAuditHook } = await import("../middleware/audit.js");
 	registerAuditHook(app);

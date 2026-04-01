@@ -163,7 +163,10 @@ describe("Scheduler", () => {
 
 	it("L2: does NOT run catch-up when check_on_startup is unset", async () => {
 		// Set scheduler_last_run to 48h ago — stale enough for catch-up
-		await setConfig("scheduler_last_run", String(Date.now() - 48 * 60 * 60 * 1000));
+		await setConfig(
+			"scheduler_last_run",
+			String(Date.now() - 48 * 60 * 60 * 1000),
+		);
 
 		await scheduler.init();
 
@@ -179,7 +182,10 @@ describe("Scheduler", () => {
 
 	it("L2: runs catch-up when check_on_startup is true and last run is stale", async () => {
 		await setConfig("check_on_startup", "true");
-		await setConfig("scheduler_last_run", String(Date.now() - 48 * 60 * 60 * 1000));
+		await setConfig(
+			"scheduler_last_run",
+			String(Date.now() - 48 * 60 * 60 * 1000),
+		);
 
 		// Reset sent messages
 		mockHub.sentMessages.length = 0;

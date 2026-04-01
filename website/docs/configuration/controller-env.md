@@ -44,3 +44,28 @@ export ENCRYPTION_KEY=$(openssl rand -base64 32)
 ```
 
 The controller validates all secrets at startup and refuses to start with weak or missing values.
+
+## Prometheus Metrics
+
+The controller exposes a `/metrics` endpoint in standard Prometheus exposition format. No authentication required (standard for Prometheus scraping).
+
+**Available metrics:**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `watchwarden_agents_total` | gauge | Total registered agents |
+| `watchwarden_agents_online` | gauge | Currently online agents |
+| `watchwarden_containers_total` | gauge | Total monitored containers |
+| `watchwarden_containers_updates_available` | gauge | Containers with pending updates |
+| `watchwarden_containers_excluded` | gauge | Excluded containers |
+| `watchwarden_updates_total{status}` | counter | Updates by status (success/failed/rolled_back) |
+
+**Prometheus scrape config example:**
+
+```yaml
+scrape_configs:
+  - job_name: watchwarden
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["controller:3000"]
+```

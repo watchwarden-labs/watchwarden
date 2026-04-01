@@ -23,11 +23,12 @@ type ProgressFunc func(containerID, containerName, step, progress string)
 
 // Updater orchestrates container updates with atomicity guarantees.
 type Updater struct {
-	docker     *DockerClient
-	snapshots  map[string]*ContainerSnapshot
-	mu         sync.RWMutex
-	onProgress ProgressFunc
-	verifier   *Verifier
+	docker         *DockerClient
+	registryClient *RegistryClient
+	snapshots      map[string]*ContainerSnapshot
+	mu             sync.RWMutex
+	onProgress     ProgressFunc
+	verifier       *Verifier
 	// Per-container lock to prevent concurrent updates to the same container.
 	// Uses containerLockEntry with a deleted flag so cleanup can safely remove
 	// idle entries without racing against goroutines that hold a reference but
@@ -196,6 +197,11 @@ func (u *Updater) lockContainer(containerID string) *containerLockEntry {
 	}
 }
 
+// SetRegistryClient attaches a RegistryClient for tag pattern queries.
+func (u *Updater) SetRegistryClient(rc *RegistryClient) {
+	u.registryClient = rc
+}
+
 // SetVerifier attaches a Verifier for image signing checks.
 func (u *Updater) SetVerifier(v *Verifier) {
 	u.verifier = v
@@ -269,33 +275,82 @@ func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([
 		}
 		entry.mu.Unlock() // SCALE-03: release before pull; registry read needs no container lock
 
-		// Pull outside the lock — SCALE-03
-		newDigest, err := u.docker.PullImage(ctx, snapshot.ImageRef)
-		if err != nil {
-			continue
+		// Tag pattern: query registry for matching tags instead of pulling.
+		// If tag_pattern is set and a registryClient is available, compare the
+		// current tag against the latest matching tag from the registry.
+		tagPatternUsed := false
+		var hasUpdate bool
+		var newDigest string
+		var diff *ImageDiff
+
+		if u.registryClient != nil {
+			if info, inspErr := u.docker.cli.ContainerInspect(ctx, id); inspErr == nil && info.Config != nil {
+				if pattern := info.Config.Labels["com.watchwarden.tag_pattern"]; pattern != "" {
+					tags, listErr := u.registryClient.ListTags(ctx, snapshot.ImageRef)
+					if listErr == nil {
+						matched, filterErr := FilterByPattern(tags, pattern)
+						if filterErr == nil && len(matched) > 0 {
+							currentTag := ""
+							if parts := strings.SplitN(snapshot.ImageRef, ":", 2); len(parts) == 2 {
+								currentTag = parts[1]
+							}
+							updateLevel := ""
+							if info.Config != nil {
+								updateLevel = info.Config.Labels["com.watchwarden.update_level"]
+							}
+							var latest string
+							if updateLevel != "" && currentTag != "" {
+								latest = FindLatestSemverAtLevel(matched, currentTag, updateLevel)
+							} else {
+								latest = FindLatestSemver(matched)
+							}
+							if latest != "" && latest != currentTag {
+								hasUpdate = true
+								baseImage := snapshot.ImageRef
+								if idx := strings.LastIndex(baseImage, ":"); idx > 0 {
+									baseImage = baseImage[:idx]
+								}
+								newDigest = baseImage + ":" + latest
+								log.Printf("[check] %s: tag pattern %q matched latest=%s (current=%s)", snapshot.Name, pattern, latest, currentTag)
+							}
+							tagPatternUsed = true
+						}
+					} else {
+						log.Printf("[check] %s: tag listing failed: %v", snapshot.Name, listErr)
+					}
+				}
+			}
 		}
 
-		hasUpdate := newDigest != "" && !digestsMatch(snapshot.ImageDigest, newDigest)
-
-		var diff *ImageDiff
-		if hasUpdate {
-			currentImg, _, err1 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageDigest)
-			targetImg, _, err2 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageRef)
-			if err1 == nil && err2 == nil {
-				d := DiffImages(currentImg, targetImg)
-				diff = &d
+		if !tagPatternUsed {
+			// Normal flow: pull and compare digest
+			var pullErr error
+			newDigest, pullErr = u.docker.PullImage(ctx, snapshot.ImageRef)
+			if pullErr != nil {
+				continue
 			}
-		} else if newDigest != "" {
-			// BUG-12 FIX: digest matches but image config may have changed (same layers,
-			// different entrypoint/env/labels). If image IDs differ, treat as an update
-			// so config-only changes are not silently ignored.
-			currentImg, _, err1 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageDigest)
-			targetImg, _, err2 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageRef)
-			if err1 == nil && err2 == nil && currentImg.ID != targetImg.ID {
-				log.Printf("[check] %s: digest unchanged but image ID differs (config-only change) — marking as update", snapshot.Name)
-				hasUpdate = true
-				d := DiffImages(currentImg, targetImg)
-				diff = &d
+
+			hasUpdate = newDigest != "" && !digestsMatch(snapshot.ImageDigest, newDigest)
+
+			if hasUpdate {
+				currentImg, _, err1 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageDigest)
+				targetImg, _, err2 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageRef)
+				if err1 == nil && err2 == nil {
+					d := DiffImages(currentImg, targetImg)
+					diff = &d
+				}
+			} else if newDigest != "" {
+				// BUG-12 FIX: digest matches but image config may have changed (same layers,
+				// different entrypoint/env/labels). If image IDs differ, treat as an update
+				// so config-only changes are not silently ignored.
+				currentImg, _, err1 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageDigest)
+				targetImg, _, err2 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageRef)
+				if err1 == nil && err2 == nil && currentImg.ID != targetImg.ID {
+					log.Printf("[check] %s: digest unchanged but image ID differs (config-only change) — marking as update", snapshot.Name)
+					hasUpdate = true
+					d := DiffImages(currentImg, targetImg)
+					diff = &d
+				}
 			}
 		}
 
@@ -727,8 +782,8 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 		_ = u.docker.cli.ContainerStop(cleanCtx, newID, container.StopOptions{Timeout: &cleanTimeout})
 		_ = u.docker.cli.ContainerRemove(cleanCtx, newID, container.RemoveOptions{})
 		return &UpdateResult{ContainerID: containerID, ContainerName: snapshot.Name, Success: false,
-			OldDigest: snapshot.ImageDigest,
-			Error:     "new container failed health check; old container kept running",
+			OldDigest:  snapshot.ImageDigest,
+			Error:      "new container failed health check; old container kept running",
 			DurationMs: time.Since(start).Milliseconds()}, fmt.Errorf("health check failed")
 	}
 
@@ -799,7 +854,7 @@ func (u *Updater) waitForHealthy(ctx context.Context, containerID string, timeou
 					return true
 				case "unhealthy":
 					return false
-				// "starting" — keep waiting
+					// "starting" — keep waiting
 				}
 			} else {
 				return true // No healthcheck — running is enough

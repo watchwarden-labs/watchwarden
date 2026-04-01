@@ -141,7 +141,10 @@ export function VersionPickerModal({
 					setSelected(null);
 				},
 				onError: () =>
-					addToast({ type: "error", message: `Rollback failed for ${container.name}` }),
+					addToast({
+						type: "error",
+						message: `Rollback failed for ${container.name}`,
+					}),
 			},
 		);
 	};

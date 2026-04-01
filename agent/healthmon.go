@@ -53,10 +53,10 @@ func NewHealthMonitor(docker *DockerClient, updater *Updater, sendMsg func(Messa
 		docker:             docker,
 		updater:            updater,
 		rollbackInProgress: make(map[string]bool),
-		sendMsg:  sendMsg,
-		monitors: make(map[string]*monitorEntry),
-		ctx:      ctx,
-		cancel:   cancel,
+		sendMsg:            sendMsg,
+		monitors:           make(map[string]*monitorEntry),
+		ctx:                ctx,
+		cancel:             cancel,
 	}
 }
 

@@ -35,6 +35,31 @@ func TestPullImage_ContextCancelStopsRead(t *testing.T) {
 	assert.Less(t, elapsed, 3*time.Second, "should return promptly, not wait for pull to complete")
 }
 
+// Per-container policy label is read from Docker labels
+func TestListContainers_ReadsPolicy(t *testing.T) {
+	mock := &mockDockerAPI{
+		containers: []container.Summary{
+			{
+				ID:     "container-with-policy-id",
+				Names:  []string{"/myapp"},
+				Image:  "myapp:latest",
+				State:  "running",
+				Labels: map[string]string{
+					"com.watchwarden.policy": "manual",
+				},
+			},
+		},
+		imageInspect: image.InspectResponse{
+			RepoDigests: []string{"myapp@sha256:test"},
+		},
+	}
+	dc := NewDockerClientWithAPI(mock)
+	containers, err := dc.ListContainers(context.Background())
+	require.NoError(t, err)
+	require.Len(t, containers, 1)
+	assert.Equal(t, "manual", containers[0].Policy)
+}
+
 // Finding 2.1 — RecreateContainer with multiple networks calls NetworkConnect
 func TestRecreateContainer_MultiNetwork(t *testing.T) {
 	mock := &mockDockerAPI{

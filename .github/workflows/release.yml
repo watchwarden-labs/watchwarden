@@ -83,6 +83,63 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+  publish-packages:
+    name: Publish npm Packages
+    needs: [test-controller, test-agent, test-ui]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Calculate version
+        id: pkg_version
+        run: |
+          LATEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v '\-' | head -1)
+          if [ -z "$LATEST" ]; then
+            VERSION="0.1.0"
+          else
+            VERSION=$(echo "$LATEST" | sed 's/^v//')
+          fi
+          STRATEGY="${{ inputs.version_strategy }}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+          case "$STRATEGY" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          echo "version=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+
+      - name: Set package versions
+        run: |
+          VERSION="${{ steps.pkg_version.outputs.version }}"
+          cd packages/types && npm version "$VERSION" --no-git-tag-version --allow-same-version
+          cd ../sdk && npm version "$VERSION" --no-git-tag-version --allow-same-version
+          # Update SDK's dependency on types to match
+          cd ../sdk && npm pkg set "dependencies.@watchwarden/types=$VERSION"
+
+      - name: Build packages
+        run: |
+          cd packages/types && npm install && npm run build
+          cd ../sdk && npm install && npm run build
+
+      - name: Publish @watchwarden/types
+        run: cd packages/types && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @watchwarden/sdk
+        run: cd packages/sdk && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   release:
     name: Build & Release
     needs: [test-controller, test-agent, test-ui]

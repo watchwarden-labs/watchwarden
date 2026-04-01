@@ -1,7 +1,7 @@
 import { formatDistanceToNow } from "date-fns";
 import { Lock, Pencil, Plus, Server, Trash2 } from "lucide-react";
 import { useState } from "react";
-import type { RegistryCredential } from "@/api/hooks/useRegistries";
+import type { AuthType, RegistryCredential } from "@/api/hooks/useRegistries";
 import { useDeleteRegistry, useRegistries } from "@/api/hooks/useRegistries";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -15,6 +15,7 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -27,6 +28,13 @@ import {
 } from "@/components/ui/table";
 import { useStore } from "@/store/useStore";
 import { RegistryModal } from "./RegistryModal";
+
+const AUTH_TYPE_LABELS: Record<AuthType, string> = {
+	basic: "Basic",
+	ecr: "AWS ECR",
+	gcr: "GCR",
+	acr: "ACR",
+};
 
 export function RegistriesTab() {
 	const { data: registries = [] } = useRegistries();
@@ -81,6 +89,7 @@ export function RegistriesTab() {
 						<TableHeader>
 							<TableRow>
 								<TableHead>Registry</TableHead>
+								<TableHead>Type</TableHead>
 								<TableHead>Username</TableHead>
 								<TableHead>Added</TableHead>
 								<TableHead className="text-right">Actions</TableHead>
@@ -94,6 +103,15 @@ export function RegistriesTab() {
 											<Server size={14} className="text-muted-foreground" />
 											<span className="font-mono text-sm">{reg.registry}</span>
 										</div>
+									</TableCell>
+									<TableCell>
+										<Badge
+											variant={
+												reg.auth_type === "basic" ? "secondary" : "outline"
+											}
+										>
+											{AUTH_TYPE_LABELS[reg.auth_type] ?? "Basic"}
+										</Badge>
 									</TableCell>
 									<TableCell className="text-sm">{reg.username}</TableCell>
 									<TableCell className="text-sm text-muted-foreground">
@@ -138,7 +156,15 @@ export function RegistriesTab() {
 													<AlertDialogFooter>
 														<AlertDialogCancel>Cancel</AlertDialogCancel>
 														<AlertDialogAction
-															onClick={() => deleteRegistry.mutate(reg.id, { onError: () => addToast({ type: "error", message: "Failed to delete registry" }) })}
+															onClick={() =>
+																deleteRegistry.mutate(reg.id, {
+																	onError: () =>
+																		addToast({
+																			type: "error",
+																			message: "Failed to delete registry",
+																		}),
+																})
+															}
 														>
 															Delete
 														</AlertDialogAction>

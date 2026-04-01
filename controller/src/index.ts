@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -5,13 +6,13 @@ import fastifyWebsocket from "@fastify/websocket";
 import bcrypt from "bcryptjs";
 import Fastify from "fastify";
 import jwt from "jsonwebtoken";
-import { randomBytes } from "node:crypto";
 import { registerAuditHook } from "./api/middleware/audit.js";
 import agentsRoutes from "./api/routes/agents.js";
 import auditRoutes from "./api/routes/audit.js";
 import authRoutes from "./api/routes/auth.js";
 import configRoutes from "./api/routes/config.js";
 import historyRoutes from "./api/routes/history.js";
+import metricsRoutes from "./api/routes/metrics.js";
 import notificationRoutes from "./api/routes/notifications.js";
 import registriesRoutes from "./api/routes/registries.js";
 import { closeSql } from "./db/client.js";
@@ -50,9 +51,17 @@ async function start() {
 			throw new Error("JWT_SECRET env var is required on first startup");
 		if (secret.length < 32)
 			throw new Error("JWT_SECRET must be at least 32 characters");
-		const weakPatterns = ["changeme", "secret", "your-secret", "jwt-secret", "password"];
+		const weakPatterns = [
+			"changeme",
+			"secret",
+			"your-secret",
+			"jwt-secret",
+			"password",
+		];
 		if (weakPatterns.some((w) => secret.toLowerCase().includes(w)))
-			throw new Error("JWT_SECRET appears to be a default/weak value — set a random secret (use: openssl rand -base64 32)");
+			throw new Error(
+				"JWT_SECRET appears to be a default/weak value — set a random secret (use: openssl rand -base64 32)",
+			);
 		await setConfig("jwt_secret", secret);
 	}
 
@@ -171,6 +180,7 @@ async function start() {
 	await app.register(registriesRoutes);
 	await app.register(notificationRoutes);
 	await app.register(auditRoutes);
+	await app.register(metricsRoutes);
 	registerAuditHook(app);
 
 	// Health check endpoint (used by Docker HEALTHCHECK)

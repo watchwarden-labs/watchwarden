@@ -33,15 +33,15 @@ type mockDockerAPI struct {
 	startErr      error
 	imageInspect  image.InspectResponse
 	// Extended mock fields for audit findings
-	networkConnectErr  error                                                        // Finding 2.1
-	containerRenameErr error                                                        // Blue-green tests
-	listAllFlag        bool                                                         // DOCKER-04 tracking
-	pullDelay          time.Duration                                                // Finding 1.4 context cancel
-	inspectFn          func(id string) (container.InspectResponse, error)                 // dynamic inspect
-	containerListFn    func(ctx context.Context, opts container.ListOptions) ([]container.Summary, error)  // dynamic list
-	stopFn             func(id string) error                                        // dynamic stop per container
-	removeFn           func(id string) error                                        // dynamic remove per container
-	imageInspectFn     func(imageID string) (image.InspectResponse, error)             // dynamic image inspect
+	networkConnectErr  error                                                                              // Finding 2.1
+	containerRenameErr error                                                                              // Blue-green tests
+	listAllFlag        bool                                                                               // DOCKER-04 tracking
+	pullDelay          time.Duration                                                                      // Finding 1.4 context cancel
+	inspectFn          func(id string) (container.InspectResponse, error)                                 // dynamic inspect
+	containerListFn    func(ctx context.Context, opts container.ListOptions) ([]container.Summary, error) // dynamic list
+	stopFn             func(id string) error                                                              // dynamic stop per container
+	removeFn           func(id string) error                                                              // dynamic remove per container
+	imageInspectFn     func(imageID string) (image.InspectResponse, error)                                // dynamic image inspect
 }
 
 func (m *mockDockerAPI) recordCall(call string) {
@@ -158,8 +158,8 @@ func newTestSetup() (*mockDockerAPI, *Updater) {
 	mock := &mockDockerAPI{
 		inspectResult: container.InspectResponse{
 			ContainerJSONBase: &container.ContainerJSONBase{
-				ID:   "test-container-123",
-				Name: "/nginx",
+				ID:    "test-container-123",
+				Name:  "/nginx",
 				Image: "sha256:oldimage",
 				HostConfig: &container.HostConfig{
 					RestartPolicy: container.RestartPolicy{Name: "always"},
@@ -322,8 +322,8 @@ func newMultiNetworkSetup() (*mockDockerAPI, *Updater) {
 	mock := &mockDockerAPI{
 		inspectResult: container.InspectResponse{
 			ContainerJSONBase: &container.ContainerJSONBase{
-				ID:   "multi-net-container",
-				Name: "/myapp",
+				ID:    "multi-net-container",
+				Name:  "/myapp",
 				Image: "sha256:oldimage",
 				HostConfig: &container.HostConfig{
 					NetworkMode:   "bridge",
@@ -681,11 +681,11 @@ func TestRecoverOrphans_RespectsTimeout(t *testing.T) {
 	// Pre-store a snapshot so recovery has something to check
 	updater.mu.Lock()
 	updater.snapshots["orphan-1"] = &ContainerSnapshot{
-		Name:     "orphan-app",
-		ImageRef: "orphan:latest",
-		Config:   mock.inspectResult.Config,
+		Name:       "orphan-app",
+		ImageRef:   "orphan:latest",
+		Config:     mock.inspectResult.Config,
 		HostConfig: mock.inspectResult.HostConfig,
-		Networks: mock.inspectResult.NetworkSettings.Networks,
+		Networks:   mock.inspectResult.NetworkSettings.Networks,
 	}
 	updater.mu.Unlock()
 

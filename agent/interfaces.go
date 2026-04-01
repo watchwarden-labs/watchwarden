@@ -41,6 +41,9 @@ type ContainerInfo struct {
 	Group         string   `json:"group,omitempty"`
 	Priority      int      `json:"priority,omitempty"`
 	DependsOn     []string `json:"depends_on,omitempty"`
+	Policy        string   `json:"policy,omitempty"`        // "auto", "notify", "manual" (from label)
+	TagPattern    string   `json:"tag_pattern,omitempty"`   // regex for tag matching (from label)
+	UpdateLevel   string   `json:"update_level,omitempty"`  // "major", "minor", "patch", "all" (from label)
 }
 
 // ContainerSnapshot captures all parameters needed to recreate a container.
@@ -55,11 +58,11 @@ type ContainerSnapshot struct {
 
 // CheckResult represents the result of checking a container for updates.
 type CheckResult struct {
-	ContainerID   string    `json:"containerId"`
-	ContainerName string    `json:"containerName"`
-	CurrentDigest string    `json:"currentDigest"`
-	LatestDigest  string    `json:"latestDigest"`
-	HasUpdate     bool      `json:"hasUpdate"`
+	ContainerID   string     `json:"containerId"`
+	ContainerName string     `json:"containerName"`
+	CurrentDigest string     `json:"currentDigest"`
+	LatestDigest  string     `json:"latestDigest"`
+	HasUpdate     bool       `json:"hasUpdate"`
 	Diff          *ImageDiff `json:"diff,omitempty"`
 }
 

@@ -249,7 +249,9 @@ describe("AgentHub", () => {
 
 		// Simulate autoUpdateInFlight being set (as if CHECK_RESULT triggered auto-update)
 		// Access private field for testing — this is a regression test, not a unit test
-		(hub as unknown as { autoUpdateInFlight: Set<string> }).autoUpdateInFlight.add("hub-agent-1");
+		(
+			hub as unknown as { autoUpdateInFlight: Set<string> }
+		).autoUpdateInFlight.add("hub-agent-1");
 
 		// Reconnect with a second socket (simulates agent crash + reconnect)
 		const ws2 = connectAgent();
@@ -267,7 +269,8 @@ describe("AgentHub", () => {
 		}
 
 		// Verify the stale entry was cleared on reconnect
-		const inFlight = (hub as unknown as { autoUpdateInFlight: Set<string> }).autoUpdateInFlight;
+		const inFlight = (hub as unknown as { autoUpdateInFlight: Set<string> })
+			.autoUpdateInFlight;
 		expect(inFlight.has("hub-agent-1")).toBe(false);
 
 		ws1.close();

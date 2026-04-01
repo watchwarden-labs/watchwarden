@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: watchwarden
+      POSTGRES_USER: watchwarden
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchwarden"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  controller:
+    image: alexneo/watchwarden-controller:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://watchwarden:${POSTGRES_PASSWORD}@postgres:5432/watchwarden"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY:?Set ENCRYPTION_KEY}"
+      ENCRYPTION_SALT: "${ENCRYPTION_SALT:?Set ENCRYPTION_SALT}"
+      CORS_ORIGIN: "http://localhost:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ui:
+    image: alexneo/watchwarden-ui:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - controller
+
+volumes:
+  postgres_data:

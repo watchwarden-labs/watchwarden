@@ -27,7 +27,10 @@ export class Scheduler {
 				const elapsed = Date.now() - Number(lastRun);
 				// If the last run was more than 24h ago, trigger a staggered catch-up
 				if (elapsed > 24 * 60 * 60 * 1000) {
-					log.info("scheduler", `Last check was ${Math.round(elapsed / 3600000)}h ago — triggering catch-up`);
+					log.info(
+						"scheduler",
+						`Last check was ${Math.round(elapsed / 3600000)}h ago — triggering catch-up`,
+					);
 					setTimeout(() => this.runGlobalCheckStaggered(), 10000);
 				}
 			}
@@ -44,7 +47,10 @@ export class Scheduler {
 			this.createGlobalTask(schedule);
 		}
 		this.running = true;
-		log.info("scheduler", `Scheduler initialized with global schedule: "${schedule}"`);
+		log.info(
+			"scheduler",
+			`Scheduler initialized with global schedule: "${schedule}"`,
+		);
 
 		// Load per-agent overrides
 		const agents = await listAgents();

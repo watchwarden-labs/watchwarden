@@ -159,6 +159,121 @@ func TestParseShoutrrrURL_Unknown(t *testing.T) {
 	assert.Nil(t, sender, "unsupported schemes should return nil")
 }
 
+func TestNtfySender_Send(t *testing.T) {
+	var receivedTitle, receivedBody, receivedPriority string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedTitle = r.Header.Get("Title")
+		receivedPriority = r.Header.Get("Priority")
+		body, _ := io.ReadAll(r.Body)
+		receivedBody = string(body)
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+
+	sender := &NtfySender{
+		server:   server.URL,
+		topic:    "watchwarden",
+		priority: "high",
+		client:   server.Client(),
+	}
+
+	assert.Equal(t, "ntfy:watchwarden", sender.Name())
+
+	err := sender.Send(t.Context(), "Test Title", "Test Body")
+	require.NoError(t, err)
+	assert.Equal(t, "Test Title", receivedTitle)
+	assert.Equal(t, "Test Body", receivedBody)
+	assert.Equal(t, "high", receivedPriority)
+}
+
+func TestNtfySender_DefaultPriority(t *testing.T) {
+	var receivedPriority string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPriority = r.Header.Get("Priority")
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+
+	sender := &NtfySender{
+		server:   server.URL,
+		topic:    "test",
+		priority: "default",
+		client:   server.Client(),
+	}
+
+	err := sender.Send(t.Context(), "Title", "Body")
+	require.NoError(t, err)
+	assert.Empty(t, receivedPriority, "should not set Priority header when priority is 'default'")
+}
+
+func TestNtfySender_WithToken(t *testing.T) {
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+
+	sender := &NtfySender{
+		server: server.URL,
+		topic:  "test",
+		token:  "tk_secrettoken",
+		client: server.Client(),
+	}
+
+	err := sender.Send(t.Context(), "Title", "Body")
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer tk_secrettoken", receivedAuth)
+}
+
+func TestNtfySender_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(429)
+	}))
+	defer server.Close()
+
+	sender := &NtfySender{
+		server: server.URL,
+		topic:  "test",
+		client: server.Client(),
+	}
+
+	err := sender.Send(t.Context(), "Title", "Body")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "429")
+}
+
+func TestParseShoutrrrURL_Ntfy(t *testing.T) {
+	// ntfy://server/topic
+	sender := parseShoutrrrURL("ntfy://ntfy.example.com/watchwarden")
+	require.NotNil(t, sender)
+	ns, ok := sender.(*NtfySender)
+	require.True(t, ok)
+	assert.Equal(t, "https://ntfy.example.com", ns.server)
+	assert.Equal(t, "watchwarden", ns.topic)
+}
+
+func TestParseShoutrrrURL_NtfyDefaultServer(t *testing.T) {
+	// ntfy://topic (defaults to ntfy.sh)
+	sender := parseShoutrrrURL("ntfy://my-updates")
+	require.NotNil(t, sender)
+	ns, ok := sender.(*NtfySender)
+	require.True(t, ok)
+	assert.Equal(t, "https://ntfy.sh", ns.server)
+	assert.Equal(t, "my-updates", ns.topic)
+}
+
+func TestNewNotifier_WithNtfy(t *testing.T) {
+	cfg := &AgentConfig{
+		NtfyURL:      "https://ntfy.sh",
+		NtfyTopic:    "watchwarden-test",
+		NtfyPriority: "high",
+	}
+	n := NewNotifier(cfg)
+	assert.Equal(t, 1, len(n.senders))
+	assert.Contains(t, n.Summary(), "ntfy:watchwarden-test")
+}
+
 func TestNewNotifier_FromConfig(t *testing.T) {
 	cfg := &AgentConfig{
 		TelegramToken:  "123:ABC",
@@ -171,4 +286,53 @@ func TestNewNotifier_FromConfig(t *testing.T) {
 	assert.Contains(t, n.Summary(), "telegram:111")
 	assert.Contains(t, n.Summary(), "telegram:222")
 	assert.Contains(t, n.Summary(), "slack")
+}
+
+func TestRenderNotificationTemplate_Valid(t *testing.T) {
+	tmpl := "{{.ContainerName}} updated to {{.NewDigest}}"
+	vars := map[string]string{
+		"ContainerName": "nginx",
+		"NewDigest":     "sha256:abc123",
+	}
+	result := renderNotificationTemplate(tmpl, vars, "fallback")
+	assert.Equal(t, "nginx updated to sha256:abc123", result)
+}
+
+func TestRenderNotificationTemplate_Empty(t *testing.T) {
+	result := renderNotificationTemplate("", nil, "fallback")
+	assert.Equal(t, "fallback", result)
+}
+
+func TestRenderNotificationTemplate_Invalid(t *testing.T) {
+	result := renderNotificationTemplate("{{.Missing", nil, "fallback")
+	assert.Equal(t, "fallback", result)
+}
+
+func TestNotifier_WithTemplate(t *testing.T) {
+	var receivedTitle, receivedBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		data, _ := io.ReadAll(r.Body)
+		json.Unmarshal(data, &body)
+		receivedTitle = body["title"].(string)
+		receivedBody = body["body"].(string)
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+
+	n := &Notifier{
+		senders:     []Sender{&WebhookSender{url: server.URL, client: server.Client()}},
+		cooldown:    make(map[string]time.Time),
+		cooldownTTL: 5 * time.Minute,
+		template:    "{{.ContainerName}} - {{.EventType}}\n{{.Duration}}",
+	}
+
+	n.NotifyResult(&UpdateResult{
+		ContainerName: "nginx",
+		Success:       true,
+		DurationMs:    5000,
+	})
+
+	assert.Equal(t, "nginx - update_result", receivedTitle)
+	assert.Equal(t, "5000ms", receivedBody)
 }

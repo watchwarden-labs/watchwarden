@@ -1,4 +1,4 @@
-import { Shield } from "lucide-react";
+import { ChevronDown, ChevronRight, Shield } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useAgents } from "@/api/hooks/useAgents";
 import { useAuditLogs } from "@/api/hooks/useAudit";
@@ -46,20 +46,31 @@ function formatTime(ts: number): string {
 	return new Date(ts).toLocaleString();
 }
 
-function formatDetails(raw: string): string {
+function formatDetails(raw: string): Array<{ key: string; value: string }> {
 	try {
 		const obj = JSON.parse(raw) as Record<string, unknown>;
-		return Object.entries(obj)
-			.map(([k, v]) => `${k}: ${v === "***" ? "***" : String(v)}`)
-			.join(", ");
+		return Object.entries(obj).map(([k, v]) => ({
+			key: k,
+			value: Array.isArray(v) ? JSON.stringify(v) : String(v),
+		}));
 	} catch {
-		return raw;
+		return [{ key: "raw", value: raw }];
 	}
 }
 
 export default function AuditLog() {
 	const [page, setPage] = useState(0);
 	const [actionFilter, setActionFilter] = useState<string>("all");
+	const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+
+	const toggleRow = (id: number) => {
+		setExpandedRows((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
 
 	const { data, isLoading } = useAuditLogs({
 		action: actionFilter === "all" ? undefined : actionFilter,
@@ -129,53 +140,77 @@ export default function AuditLog() {
 							<Table>
 								<TableHeader>
 									<TableRow>
+										<TableHead className="w-8" />
 										<TableHead>Time</TableHead>
 										<TableHead>Action</TableHead>
 										<TableHead>Actor</TableHead>
 										<TableHead>Target</TableHead>
-										<TableHead>Details</TableHead>
 										<TableHead>IP</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{logs.map((log) => (
-										<TableRow key={log.id}>
-											<TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-												{formatTime(log.created_at)}
-											</TableCell>
-											<TableCell>
-												<Badge
-													variant="outline"
-													className={`text-xs ${ACTION_COLORS[log.action] ?? ""}`}
+									{logs.map((log) => {
+										const isExpanded = expandedRows.has(log.id);
+										const hasDetails = !!log.details;
+										return (
+											<>
+												<TableRow
+													key={log.id}
+													className={hasDetails ? "cursor-pointer hover:bg-muted/50" : ""}
+													onClick={() => hasDetails && toggleRow(log.id)}
 												>
-													{ACTION_LABELS[log.action] ?? log.action}
-												</Badge>
-											</TableCell>
-											<TableCell className="text-sm">{log.actor}</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
-												{log.target_type}
-												{log.target_id && (
-													<span className="ml-1 text-xs">
-														{log.target_type === "agent"
-															? agentNames.get(log.target_id) ?? log.target_id.slice(0, 8)
-															: log.target_id.slice(0, 8)}
-													</span>
+													<TableCell className="w-8 pr-0">
+														{hasDetails && (
+															isExpanded
+																? <ChevronDown size={14} className="text-muted-foreground" />
+																: <ChevronRight size={14} className="text-muted-foreground" />
+														)}
+													</TableCell>
+													<TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+														{formatTime(log.created_at)}
+													</TableCell>
+													<TableCell>
+														<Badge
+															variant="outline"
+															className={`text-xs ${ACTION_COLORS[log.action] ?? ""}`}
+														>
+															{ACTION_LABELS[log.action] ?? log.action}
+														</Badge>
+													</TableCell>
+													<TableCell className="text-sm">{log.actor}</TableCell>
+													<TableCell className="text-sm text-muted-foreground">
+														{log.target_type}
+														{log.target_id && (
+															<span className="ml-1 text-xs">
+																{log.target_type === "agent"
+																	? (agentNames.get(log.target_id) ??
+																		log.target_id.slice(0, 8))
+																	: log.target_id.slice(0, 8)}
+															</span>
+														)}
+													</TableCell>
+													<TableCell className="text-sm text-muted-foreground font-mono">
+														{log.ip_address ?? "—"}
+													</TableCell>
+												</TableRow>
+												{isExpanded && hasDetails && (
+													<TableRow key={`${log.id}-details`}>
+														<TableCell />
+														<TableCell colSpan={5} className="bg-muted/30 py-3">
+															<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs font-mono">
+																{formatDetails(log.details!).map((item) => (
+																	<>
+																		<span key={`k-${item.key}`} className="text-muted-foreground">{item.key}</span>
+																		<span key={`v-${item.key}`} className="break-all">{item.value}</span>
+																	</>
+																))}
+															</div>
+														</TableCell>
+													</TableRow>
 												)}
-											</TableCell>
-											<TableCell className="text-sm text-muted-foreground max-w-[300px]">
-												{log.details ? (
-													<code className="text-xs break-all">
-														{formatDetails(log.details)}
-													</code>
-												) : (
-													"—"
-												)}
-											</TableCell>
-											<TableCell className="text-sm text-muted-foreground font-mono">
-												{log.ip_address ?? "—"}
-											</TableCell>
-										</TableRow>
-									))}
+											</>
+										);
+									})}
 								</TableBody>
 							</Table>
 

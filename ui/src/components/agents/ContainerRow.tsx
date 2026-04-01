@@ -11,17 +11,17 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
+	type Container,
 	useContainerDelete,
 	useContainerStart,
 	useContainerStop,
-	type Container,
 } from "@/api/hooks/useAgents";
 import { ContainerLogsDialog } from "@/components/agents/ContainerLogsDialog";
 import { DigestBadge } from "@/components/common/DigestBadge";
 import {
 	DiffBadge,
-	ImageDiffView,
 	type ImageDiff,
+	ImageDiffView,
 } from "@/components/diff/ImageDiffView";
 import { VersionPickerModal } from "@/components/rollback/VersionPickerModal";
 import {
@@ -72,9 +72,7 @@ function StatusDot({ status }: { status: string }) {
 	};
 	const color = colorMap[status] ?? "bg-muted-foreground/40";
 	return (
-		<span
-			className={`inline-block size-2.5 rounded-full shrink-0 ${color}`}
-		/>
+		<span className={`inline-block size-2.5 rounded-full shrink-0 ${color}`} />
 	);
 }
 
@@ -185,16 +183,11 @@ export function ContainerRow({
 			{/* Name + Image (stacked) */}
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
-					<span className="text-sm font-medium truncate">
-						{container.name}
-					</span>
+					<span className="text-sm font-medium truncate">{container.name}</span>
 					{isExcluded && (
 						<TooltipProvider>
 							<Tooltip>
-								<TooltipTrigger
-									render={<span />}
-									className="cursor-default"
-								>
+								<TooltipTrigger render={<span />} className="cursor-default">
 									<Ban size={12} className="text-muted-foreground" />
 								</TooltipTrigger>
 								<TooltipContent>
@@ -206,14 +199,51 @@ export function ContainerRow({
 					{isPinned && (
 						<TooltipProvider>
 							<Tooltip>
-								<TooltipTrigger
-									render={<span />}
-									className="cursor-default"
-								>
+								<TooltipTrigger render={<span />} className="cursor-default">
 									<Pin size={12} className="text-muted-foreground" />
 								</TooltipTrigger>
 								<TooltipContent>
 									Version pinned — auto-updates blocked
+								</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
+					)}
+					{container.policy && container.policy !== "auto" && (
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger render={<span />} className="cursor-default">
+									<Badge
+										variant="outline"
+										className={`text-[10px] px-1.5 py-0 ${
+											container.policy === "manual"
+												? "border-muted-foreground text-muted-foreground"
+												: "border-primary/30 text-primary"
+										}`}
+									>
+										{container.policy === "manual" ? "MANUAL" : "NOTIFY"}
+									</Badge>
+								</TooltipTrigger>
+								<TooltipContent>
+									{container.policy === "manual"
+										? "Updates managed manually — set via com.watchwarden.policy=manual"
+										: "Notify only — set via com.watchwarden.policy=notify"}
+								</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
+					)}
+					{container.tag_pattern && (
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger render={<span />} className="cursor-default">
+									<Badge
+										variant="outline"
+										className="text-[10px] px-1.5 py-0 border-blue-400/30 text-blue-500"
+									>
+										TAG
+									</Badge>
+								</TooltipTrigger>
+								<TooltipContent>
+									Tag pattern: {container.tag_pattern}
 								</TooltipContent>
 							</Tooltip>
 						</TooltipProvider>
@@ -227,20 +257,20 @@ export function ContainerRow({
 						container.last_diff &&
 						(() => {
 							try {
-								const diff = JSON.parse(
-									container.last_diff,
-								) as ImageDiff;
+								const diff = JSON.parse(container.last_diff) as ImageDiff;
 								if (diff.changeCount === 0) return null;
 								return (
 									<Dialog>
-										<DialogTrigger render={<button type="button" className="cursor-pointer" />}>
-										<DiffBadge diff={diff} />
-									</DialogTrigger>
-										<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+										<DialogTrigger
+											render={
+												<button type="button" className="cursor-pointer" />
+											}
+										>
+											<DiffBadge diff={diff} />
+										</DialogTrigger>
+										<DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-y-auto">
 											<DialogHeader>
-												<DialogTitle>
-													Image Diff — {container.name}
-												</DialogTitle>
+												<DialogTitle>Image Diff — {container.name}</DialogTitle>
 												<DialogDescription>
 													Changes between current and latest image
 												</DialogDescription>
@@ -254,10 +284,7 @@ export function ContainerRow({
 							}
 						})()}
 					{container.update_group && (
-						<Badge
-							variant="outline"
-							className="text-[10px] px-1.5 py-0"
-						>
+						<Badge variant="outline" className="text-[10px] px-1.5 py-0">
 							{container.update_group}
 						</Badge>
 					)}
@@ -267,9 +294,7 @@ export function ContainerRow({
 					{container.depends_on &&
 						(() => {
 							try {
-								const deps = JSON.parse(
-									container.depends_on,
-								) as string[];
+								const deps = JSON.parse(container.depends_on) as string[];
 								if (deps.length > 0)
 									return (
 										<span className="ml-2 text-muted-foreground/60">
@@ -300,9 +325,7 @@ export function ContainerRow({
 									s === progress.step
 										? "bg-primary animate-pulse"
 										: STEPS.indexOf(s) <
-												STEPS.indexOf(
-													progress.step as (typeof STEPS)[number],
-												)
+												STEPS.indexOf(progress.step as (typeof STEPS)[number])
 											? "bg-success"
 											: "bg-border"
 								}`}
@@ -394,10 +417,7 @@ export function ContainerRow({
 											onClick={handleStart}
 										>
 											{pendingAction === "start" ? (
-												<Loader2
-													size={15}
-													className="animate-spin"
-												/>
+												<Loader2 size={15} className="animate-spin" />
 											) : (
 												<Play size={15} />
 											)}
@@ -407,10 +427,7 @@ export function ContainerRow({
 								</Tooltip>
 							)}
 
-							<AlertDialog
-								open={deleteOpen}
-								onOpenChange={setDeleteOpen}
-							>
+							<AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
 								<Tooltip>
 									<AlertDialogTrigger
 										render={
@@ -428,10 +445,7 @@ export function ContainerRow({
 										}
 									>
 										{pendingAction === "delete" ? (
-											<Loader2
-												size={15}
-												className="animate-spin"
-											/>
+											<Loader2 size={15} className="animate-spin" />
 										) : (
 											<Trash2 size={15} />
 										)}
@@ -440,14 +454,10 @@ export function ContainerRow({
 								</Tooltip>
 								<AlertDialogContent>
 									<AlertDialogHeader>
-										<AlertDialogTitle>
-											Delete container?
-										</AlertDialogTitle>
+										<AlertDialogTitle>Delete container?</AlertDialogTitle>
 										<AlertDialogDescription>
-											This will force-remove{" "}
-											<strong>{container.name}</strong>. The
-											container will be stopped and permanently
-											deleted.
+											This will force-remove <strong>{container.name}</strong>.
+											The container will be stopped and permanently deleted.
 										</AlertDialogDescription>
 									</AlertDialogHeader>
 									<AlertDialogFooter>

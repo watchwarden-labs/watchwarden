@@ -34,6 +34,15 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 | **Image Pruning** | ✅ Keeps N-1 for rollback | ✅ Cleanup flag |
 | **Private Registry Auth** | ✅ Encrypted + env vars | ✅ Config file |
 | **Database** | ✅ PostgreSQL (Managed) | ❌ Stateless |
+| **Per-container Policies** | ✅ Label-driven (auto/notify/manual) | ❌ Global only |
+| **Tag Pattern Matching** | ✅ Regex + semver level filtering | ❌ None |
+| **Prometheus Metrics** | ✅ /metrics endpoint | ❌ None |
+| **ntfy Notifications** | ✅ Dedicated sender | ❌ None |
+| **Notification Templates** | ✅ Custom formatting + link templates | ❌ Fixed format |
+| **Cloud Registry Auth** | ✅ ECR/GCR/ACR | ❌ Basic only |
+| **TypeScript SDK** | ✅ @watchwarden/sdk | ❌ None |
+| **AutoRemove Support** | ✅ Handles --rm containers | ❌ Breaks |
+| **Rootless Docker** | ✅ DOCKER_SOCKET env var | ❌ None |
 | **License** | BSL 1.1 | Apache 2.0 |
 
 ## Migration from Watchtower

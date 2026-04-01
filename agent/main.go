@@ -26,6 +26,8 @@ func main() {
 
 	// 4. Init core components
 	updater := NewUpdater(dockerClient)
+	registryClient := NewRegistryClient(credStore)
+	updater.SetRegistryClient(registryClient)
 	pruner := NewPruner(dockerClient)
 	scanner := NewScanner()
 

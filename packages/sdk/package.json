@@ -1,0 +1,25 @@
+{
+  "name": "@watchwarden/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the WatchWarden API",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@watchwarden/types": "*"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.0"
+  },
+  "license": "BSL-1.1"
+}

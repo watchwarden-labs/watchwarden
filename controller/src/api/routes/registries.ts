@@ -17,6 +17,7 @@ async function syncCredentialsToAgents(hub: AgentHub) {
 		registry: c.registry,
 		username: c.username,
 		password: decrypt(c.password_encrypted),
+		auth_type: c.auth_type ?? "basic",
 	}));
 	hub.broadcastToAllAgents({
 		type: "CREDENTIALS_SYNC",
@@ -35,19 +36,26 @@ const registriesRoutes: FastifyPluginAsync = async (fastify) => {
 			registry: c.registry,
 			username: c.username,
 			password: "••••••••",
+			auth_type: c.auth_type ?? "basic",
 			created_at: c.created_at,
 		}));
 	});
 
 	fastify.post<{
-		Body: { registry: string; username: string; password: string };
+		Body: {
+			registry: string;
+			username: string;
+			password: string;
+			auth_type?: string;
+		};
 	}>("/api/registries", async (request, reply) => {
-		const { registry, username, password } = request.body;
+		const { registry, username, password, auth_type } = request.body;
 		if (!registry || !username || !password) {
 			return reply
 				.code(400)
 				.send({ error: "registry, username, and password are required" });
 		}
+		const authType = auth_type ?? "basic";
 		const id = uuidv4();
 		const passwordEncrypted = encrypt(password);
 		await insertRegistryCredential({
@@ -55,24 +63,33 @@ const registriesRoutes: FastifyPluginAsync = async (fastify) => {
 			registry,
 			username,
 			password_encrypted: passwordEncrypted,
+			auth_type: authType,
 		});
 		await syncCredentialsToAgents(hub);
-		return reply.code(201).send({ id, registry, username });
+		return reply
+			.code(201)
+			.send({ id, registry, username, auth_type: authType });
 	});
 
 	fastify.put<{
 		Params: { id: string };
-		Body: { registry?: string; username?: string; password?: string };
+		Body: {
+			registry?: string;
+			username?: string;
+			password?: string;
+			auth_type?: string;
+		};
 	}>("/api/registries/:id", async (request, reply) => {
 		const existing = await getRegistryCredential(request.params.id);
 		if (!existing) {
 			return reply.code(404).send({ error: "Registry credential not found" });
 		}
-		const { registry, username, password } = request.body;
+		const { registry, username, password, auth_type } = request.body;
 		await updateRegistryCredential(request.params.id, {
 			registry,
 			username,
 			password_encrypted: password ? encrypt(password) : undefined,
+			auth_type,
 		});
 		await syncCredentialsToAgents(hub);
 		return { message: "Updated" };

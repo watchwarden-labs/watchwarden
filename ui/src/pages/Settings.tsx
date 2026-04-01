@@ -62,7 +62,13 @@ function GeneralTab() {
 						onChange={(val) =>
 							updateConfig.mutate(
 								{ key: "global_schedule", value: val },
-								{ onError: () => addToast({ type: "error", message: "Failed to update schedule" }) },
+								{
+									onError: () =>
+										addToast({
+											type: "error",
+											message: "Failed to update schedule",
+										}),
+								},
 							)
 						}
 					/>
@@ -80,7 +86,8 @@ function GeneralTab() {
 						<div>
 							<p className="text-sm font-medium">Check on startup</p>
 							<p className="text-xs text-muted-foreground">
-								Run a catch-up check when the controller starts if the last scheduled check was more than 24 hours ago
+								Run a catch-up check when the controller starts if the last
+								scheduled check was more than 24 hours ago
 							</p>
 						</div>
 						<Switch
@@ -88,7 +95,13 @@ function GeneralTab() {
 							onCheckedChange={(checked) =>
 								updateConfig.mutate(
 									{ key: "check_on_startup", value: String(checked) },
-									{ onError: () => addToast({ type: "error", message: "Failed to update setting" }) },
+									{
+										onError: () =>
+											addToast({
+												type: "error",
+												message: "Failed to update setting",
+											}),
+									},
 								)
 							}
 						/>
@@ -113,22 +126,22 @@ function GeneralTab() {
 							<Button
 								disabled={newPassword.length < 8}
 								onClick={async () => {
-								try {
-									await apiRequest("/auth/password", {
-										method: "PUT",
-										body: JSON.stringify({ password: newPassword }),
-									});
-									setNewPassword("");
-									addToast({ type: "success", message: "Password updated" });
-								} catch (err) {
-									const body = (err as { body?: { error?: string } })?.body;
-									const message = body?.error || "Failed to update password";
-									addToast({ type: "error", message });
-								}
-							}}
-						>
-							Update
-						</Button>
+									try {
+										await apiRequest("/auth/password", {
+											method: "PUT",
+											body: JSON.stringify({ password: newPassword }),
+										});
+										setNewPassword("");
+										addToast({ type: "success", message: "Password updated" });
+									} catch (err) {
+										const body = (err as { body?: { error?: string } })?.body;
+										const message = body?.error || "Failed to update password";
+										addToast({ type: "error", message });
+									}
+								}}
+							>
+								Update
+							</Button>
 						</div>
 						{newPassword.length > 0 && newPassword.length < 8 && (
 							<p className="text-xs text-destructive">
