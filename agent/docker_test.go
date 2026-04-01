@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,7 +18,7 @@ import (
 func TestPullImage_ContextCancelStopsRead(t *testing.T) {
 	mock := &mockDockerAPI{
 		pullDelay: 10 * time.Second, // Simulate very slow pull
-		imageInspect: types.ImageInspect{
+		imageInspect: image.InspectResponse{
 			RepoDigests: []string{"nginx@sha256:test"},
 		},
 	}
@@ -38,7 +38,7 @@ func TestPullImage_ContextCancelStopsRead(t *testing.T) {
 // Finding 2.1 — RecreateContainer with multiple networks calls NetworkConnect
 func TestRecreateContainer_MultiNetwork(t *testing.T) {
 	mock := &mockDockerAPI{
-		imageInspect: types.ImageInspect{
+		imageInspect: image.InspectResponse{
 			RepoDigests: []string{"myapp@sha256:test"},
 		},
 	}
@@ -76,7 +76,7 @@ func TestRecreateContainer_MultiNetwork(t *testing.T) {
 func TestRecreateContainer_NetworkConnectFailure(t *testing.T) {
 	mock := &mockDockerAPI{
 		networkConnectErr: fmt.Errorf("network unreachable"),
-		imageInspect: types.ImageInspect{
+		imageInspect: image.InspectResponse{
 			RepoDigests: []string{"myapp@sha256:test"},
 		},
 	}

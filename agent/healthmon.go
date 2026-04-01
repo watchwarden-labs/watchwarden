@@ -146,6 +146,11 @@ func (h *HealthMonitor) monitor(ctx context.Context, entry *monitorEntry, rollba
 					return
 				}
 
+			case "removed":
+				// Container was intentionally removed — stop monitoring, don't rollback
+				log.Printf("[health] %s was removed — stopping monitor (no rollback)", entry.containerName)
+				return
+
 			case "starting":
 				// Still starting, reset unhealthy timer
 				entry.unhealthySince = nil
@@ -162,12 +167,12 @@ func (h *HealthMonitor) checkHealth(ctx context.Context, containerID string) str
 	// Resolve container ID (may have changed after recreation)
 	resolvedID, err := h.docker.ResolveContainerID(ctx, containerID)
 	if err != nil {
-		return "unhealthy" // Can't find container = unhealthy
+		return "removed" // Container no longer exists — not unhealthy, just gone
 	}
 
 	info, err := h.docker.cli.ContainerInspect(ctx, resolvedID)
 	if err != nil {
-		return "unhealthy"
+		return "removed" // Container disappeared between resolve and inspect
 	}
 
 	// Check if container is running
@@ -277,9 +282,15 @@ func (h *HealthMonitor) sendStatus(entry *monitorEntry, status string) {
 
 // --- Crash Loop Detection (continuous, runs alongside heartbeats) ---
 
+// minCrashLoopRestarts is the minimum number of restarts (delta from baseline)
+// required before a crash loop rollback is triggered. A single restart is normal
+// for containers with restart: always.
+const minCrashLoopRestarts = 3
+
 // restartTracker tracks container restart counts to detect crash loops.
 type restartTracker struct {
 	lastRestartCount int
+	baseRestartCount int // restart count when crash tracking started
 	crashStart       *time.Time
 }
 
@@ -345,9 +356,11 @@ func (h *HealthMonitor) detectCrashLoops(ctx context.Context, docker *DockerClie
 			now := time.Now()
 			if tracker.crashStart == nil {
 				tracker.crashStart = &now
+				tracker.baseRestartCount = tracker.lastRestartCount
 			}
 
 			crashDuration := time.Since(*tracker.crashStart)
+			restartDelta := restartCount - tracker.baseRestartCount
 
 			// Report as unhealthy
 			h.sendMsg(Message{
@@ -362,8 +375,9 @@ func (h *HealthMonitor) detectCrashLoops(ctx context.Context, docker *DockerClie
 				},
 			})
 
-			// If crash loop detected for > 60s and we have a snapshot, auto-rollback
-			if crashDuration > 60*time.Second {
+			// If crash loop detected for > 60s WITH enough restarts, auto-rollback.
+			// A single restart is normal for containers with restart: always.
+			if crashDuration > 60*time.Second && restartDelta >= minCrashLoopRestarts {
 				h.mu.Lock()
 				_, hasMonitor := h.monitors[c.ID[:12]]
 				h.mu.Unlock()

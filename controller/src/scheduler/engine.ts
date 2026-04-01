@@ -16,9 +16,23 @@ export class Scheduler {
 	}
 
 	async init(): Promise<void> {
-		// Checks are triggered only by the cron schedule or manually from the UI.
-		// No automatic catch-up on startup — a restart shouldn't surprise operators
-		// with a flood of Docker pulls they didn't ask for.
+		// L2 FIX: optionally run a catch-up check if the last scheduled run was
+		// missed (e.g., controller restarted just before the cron fired).
+		// Guarded by the "check_on_startup" config flag — disabled by default so
+		// operators aren't surprised by Docker pulls on every restart.
+		const checkOnStartup = (await getConfig("check_on_startup")) === "true";
+		if (checkOnStartup) {
+			const lastRun = await getConfig("scheduler_last_run");
+			if (lastRun) {
+				const elapsed = Date.now() - Number(lastRun);
+				// If the last run was more than 24h ago, trigger a staggered catch-up
+				if (elapsed > 24 * 60 * 60 * 1000) {
+					log.info("scheduler", `Last check was ${Math.round(elapsed / 3600000)}h ago — triggering catch-up`);
+					setTimeout(() => this.runGlobalCheckStaggered(), 10000);
+				}
+			}
+		}
+
 		const schedule = (await getConfig("global_schedule")) ?? "0 4 * * *";
 		if (!cron.validate(schedule)) {
 			log.warn(

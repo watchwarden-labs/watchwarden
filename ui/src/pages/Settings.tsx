@@ -1,4 +1,4 @@
-import { Bell, Clock, Database, Plus } from "lucide-react";
+import { Bell, Clock, Database, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { apiRequest } from "@/api/client";
 import { useConfig, useUpdateConfig } from "@/api/hooks/useSettings";
@@ -9,6 +9,7 @@ import { RegistriesTab } from "@/components/registries/RegistriesTab";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useStore } from "@/store/useStore";
 
@@ -65,6 +66,33 @@ function GeneralTab() {
 							)
 						}
 					/>
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<RefreshCw size={16} /> Startup Behavior
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className="flex items-center justify-between">
+						<div>
+							<p className="text-sm font-medium">Check on startup</p>
+							<p className="text-xs text-muted-foreground">
+								Run a catch-up check when the controller starts if the last scheduled check was more than 24 hours ago
+							</p>
+						</div>
+						<Switch
+							checked={config?.check_on_startup === "true"}
+							onCheckedChange={(checked) =>
+								updateConfig.mutate(
+									{ key: "check_on_startup", value: String(checked) },
+									{ onError: () => addToast({ type: "error", message: "Failed to update setting" }) },
+								)
+							}
+						/>
+					</div>
 				</CardContent>
 			</Card>
 

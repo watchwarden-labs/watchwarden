@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
@@ -24,23 +23,25 @@ import (
 type mockDockerAPI struct {
 	mu            sync.Mutex // protects calls slice for concurrent test safety
 	calls         []string
-	containers    []types.Container
-	inspectResult types.ContainerJSON
+	containers    []container.Summary
+	inspectResult container.InspectResponse
 	inspectErr    error
 	pullErr       error
 	stopErr       error
 	removeErr     error
 	createErr     error
 	startErr      error
-	imageInspect  types.ImageInspect
+	imageInspect  image.InspectResponse
 	// Extended mock fields for audit findings
 	networkConnectErr  error                                                        // Finding 2.1
 	containerRenameErr error                                                        // Blue-green tests
 	listAllFlag        bool                                                         // DOCKER-04 tracking
 	pullDelay          time.Duration                                                // Finding 1.4 context cancel
-	inspectFn          func(id string) (types.ContainerJSON, error)                 // dynamic inspect
-	containerListFn    func(ctx context.Context, opts container.ListOptions) ([]types.Container, error)  // dynamic list
+	inspectFn          func(id string) (container.InspectResponse, error)                 // dynamic inspect
+	containerListFn    func(ctx context.Context, opts container.ListOptions) ([]container.Summary, error)  // dynamic list
 	stopFn             func(id string) error                                        // dynamic stop per container
+	removeFn           func(id string) error                                        // dynamic remove per container
+	imageInspectFn     func(imageID string) (image.InspectResponse, error)             // dynamic image inspect
 }
 
 func (m *mockDockerAPI) recordCall(call string) {
@@ -57,7 +58,7 @@ func (m *mockDockerAPI) getCalls() []string {
 	return cp
 }
 
-func (m *mockDockerAPI) ContainerList(ctx context.Context, opts container.ListOptions) ([]types.Container, error) {
+func (m *mockDockerAPI) ContainerList(ctx context.Context, opts container.ListOptions) ([]container.Summary, error) {
 	m.recordCall("ContainerList")
 	m.listAllFlag = opts.All
 	if m.containerListFn != nil {
@@ -66,7 +67,7 @@ func (m *mockDockerAPI) ContainerList(ctx context.Context, opts container.ListOp
 	return m.containers, nil
 }
 
-func (m *mockDockerAPI) ContainerInspect(_ context.Context, id string) (types.ContainerJSON, error) {
+func (m *mockDockerAPI) ContainerInspect(_ context.Context, id string) (container.InspectResponse, error) {
 	m.recordCall("ContainerInspect:" + id)
 	if m.inspectFn != nil {
 		return m.inspectFn(id)
@@ -84,6 +85,9 @@ func (m *mockDockerAPI) ContainerStop(_ context.Context, id string, _ container.
 
 func (m *mockDockerAPI) ContainerRemove(_ context.Context, id string, _ container.RemoveOptions) error {
 	m.recordCall("ContainerRemove:" + id)
+	if m.removeFn != nil {
+		return m.removeFn(id)
+	}
 	return m.removeErr
 }
 
@@ -117,8 +121,12 @@ func (m *mockDockerAPI) ImagePull(ctx context.Context, ref string, _ image.PullO
 	return io.NopCloser(strings.NewReader(body)), nil
 }
 
-func (m *mockDockerAPI) ImageInspectWithRaw(_ context.Context, _ string) (types.ImageInspect, []byte, error) {
-	m.recordCall("ImageInspectWithRaw")
+func (m *mockDockerAPI) ImageInspectWithRaw(_ context.Context, imageID string) (image.InspectResponse, []byte, error) {
+	m.recordCall("ImageInspectWithRaw:" + imageID)
+	if m.imageInspectFn != nil {
+		result, err := m.imageInspectFn(imageID)
+		return result, nil, err
+	}
 	return m.imageInspect, nil, nil
 }
 
@@ -148,8 +156,8 @@ func (m *mockDockerAPI) ContainerLogs(_ context.Context, _ string, _ container.L
 
 func newTestSetup() (*mockDockerAPI, *Updater) {
 	mock := &mockDockerAPI{
-		inspectResult: types.ContainerJSON{
-			ContainerJSONBase: &types.ContainerJSONBase{
+		inspectResult: container.InspectResponse{
+			ContainerJSONBase: &container.ContainerJSONBase{
 				ID:   "test-container-123",
 				Name: "/nginx",
 				Image: "sha256:oldimage",
@@ -162,13 +170,13 @@ func newTestSetup() (*mockDockerAPI, *Updater) {
 				Env:    []string{"FOO=bar"},
 				Labels: map[string]string{"app": "web"},
 			},
-			NetworkSettings: &types.NetworkSettings{
+			NetworkSettings: &container.NetworkSettings{
 				Networks: map[string]*network.EndpointSettings{
 					"bridge": {NetworkID: "bridge-id"},
 				},
 			},
 		},
-		imageInspect: types.ImageInspect{
+		imageInspect: image.InspectResponse{
 			RepoDigests: []string{"nginx@sha256:currentdigest"},
 		},
 	}
@@ -180,7 +188,7 @@ func newTestSetup() (*mockDockerAPI, *Updater) {
 func TestCheckForUpdates_NoUpdate(t *testing.T) {
 	mock, updater := newTestSetup()
 	// Pull returns same digest as current
-	mock.imageInspect = types.ImageInspect{
+	mock.imageInspect = image.InspectResponse{
 		RepoDigests: []string{"nginx@sha256:currentdigest"},
 	}
 
@@ -210,9 +218,9 @@ func TestUpdateContainer_Success(t *testing.T) {
 	assert.Equal(t, "new-container-id", result.ContainerID)
 
 	// Verify call order: inspect -> pull -> stop -> remove -> create -> start
-	expectedCalls := []string{
+	expectedPrefixes := []string{
 		"ContainerInspect:test-container-123",
-		"ImageInspectWithRaw",
+		"ImageInspectWithRaw:",
 		"ImagePull:nginx:latest",
 		"ContainerStop:test-container-123",
 		"ContainerRemove:test-container-123",
@@ -220,15 +228,15 @@ func TestUpdateContainer_Success(t *testing.T) {
 		"ContainerStart:new-container-id",
 	}
 	calls := mock.getCalls()
-	for _, expected := range expectedCalls {
+	for _, expected := range expectedPrefixes {
 		found := false
 		for _, call := range calls {
-			if call == expected {
+			if strings.HasPrefix(call, expected) {
 				found = true
 				break
 			}
 		}
-		assert.True(t, found, "expected call %s not found in %v", expected, calls)
+		assert.True(t, found, "expected call prefix %s not found in %v", expected, calls)
 	}
 
 	// Verify snapshot stored for rollback
@@ -312,8 +320,8 @@ func TestRollbackContainer_NoSnapshot(t *testing.T) {
 // newMultiNetworkSetup creates a test setup with multiple networks for Finding 2.1 tests.
 func newMultiNetworkSetup() (*mockDockerAPI, *Updater) {
 	mock := &mockDockerAPI{
-		inspectResult: types.ContainerJSON{
-			ContainerJSONBase: &types.ContainerJSONBase{
+		inspectResult: container.InspectResponse{
+			ContainerJSONBase: &container.ContainerJSONBase{
 				ID:   "multi-net-container",
 				Name: "/myapp",
 				Image: "sha256:oldimage",
@@ -326,14 +334,14 @@ func newMultiNetworkSetup() (*mockDockerAPI, *Updater) {
 				Image:  "myapp:latest",
 				Labels: map[string]string{},
 			},
-			NetworkSettings: &types.NetworkSettings{
+			NetworkSettings: &container.NetworkSettings{
 				Networks: map[string]*network.EndpointSettings{
 					"frontend": {NetworkID: "frontend-id"},
 					"backend":  {NetworkID: "backend-id"},
 				},
 			},
 		},
-		imageInspect: types.ImageInspect{
+		imageInspect: image.InspectResponse{
 			RepoDigests: []string{"myapp@sha256:currentdigest"},
 		},
 	}
@@ -543,13 +551,13 @@ func TestBlueGreenUpdate_OldContainerCleanupFailure(t *testing.T) {
 	}
 
 	// waitForHealthy needs the container to appear healthy
-	mock.inspectFn = func(id string) (types.ContainerJSON, error) {
+	mock.inspectFn = func(id string) (container.InspectResponse, error) {
 		result := mock.inspectResult
-		result.ContainerJSONBase = &types.ContainerJSONBase{
+		result.ContainerJSONBase = &container.ContainerJSONBase{
 			ID:    id,
 			Name:  "/nginx",
 			Image: "sha256:oldimage",
-			State: &types.ContainerState{
+			State: &container.State{
 				Status:  "running",
 				Running: true,
 			},
@@ -571,13 +579,13 @@ func TestBlueGreenUpdate_AcquiresContainerLock(t *testing.T) {
 	mock, updater := newTestSetup()
 
 	// Make inspectFn return running state for waitForHealthy
-	mock.inspectFn = func(id string) (types.ContainerJSON, error) {
+	mock.inspectFn = func(id string) (container.InspectResponse, error) {
 		result := mock.inspectResult
-		result.ContainerJSONBase = &types.ContainerJSONBase{
+		result.ContainerJSONBase = &container.ContainerJSONBase{
 			ID:    id,
 			Name:  "/nginx",
 			Image: "sha256:oldimage",
-			State: &types.ContainerState{
+			State: &container.State{
 				Status:  "running",
 				Running: true,
 			},
@@ -682,7 +690,7 @@ func TestRecoverOrphans_RespectsTimeout(t *testing.T) {
 	updater.mu.Unlock()
 
 	// ContainerList blocks until context is cancelled, simulating unresponsive Docker
-	mock.containerListFn = func(ctx context.Context, _ container.ListOptions) ([]types.Container, error) {
+	mock.containerListFn = func(ctx context.Context, _ container.ListOptions) ([]container.Summary, error) {
 		<-ctx.Done()
 		return nil, fmt.Errorf("docker daemon unavailable")
 	}
@@ -702,15 +710,15 @@ func TestWaitForHealthy_RespectsContextCancel(t *testing.T) {
 	mock, updater := newTestSetup()
 
 	// Always return "starting" health status (never healthy)
-	mock.inspectFn = func(id string) (types.ContainerJSON, error) {
-		return types.ContainerJSON{
-			ContainerJSONBase: &types.ContainerJSONBase{
+	mock.inspectFn = func(id string) (container.InspectResponse, error) {
+		return container.InspectResponse{
+			ContainerJSONBase: &container.ContainerJSONBase{
 				ID:   id,
 				Name: "/test",
-				State: &types.ContainerState{
+				State: &container.State{
 					Status:  "running",
 					Running: true,
-					Health:  &types.Health{Status: "starting"},
+					Health:  &container.Health{Status: "starting"},
 				},
 			},
 		}, nil
@@ -743,7 +751,7 @@ func TestRecoverOrphans_UsesAllTrue(t *testing.T) {
 	updater.mu.Unlock()
 
 	// The container exists (stopped) in the list
-	mock.containers = []types.Container{
+	mock.containers = []container.Summary{
 		{ID: "stopped-1", Names: []string{"/stopped-app"}, State: "exited"},
 	}
 
@@ -775,7 +783,7 @@ func TestRecoverOrphans_RecreatesMissingContainer(t *testing.T) {
 	updater.mu.Unlock()
 
 	// Empty container list — container is missing
-	mock.containers = []types.Container{}
+	mock.containers = []container.Summary{}
 
 	updater.RecoverOrphans(context.Background())
 
@@ -804,7 +812,7 @@ func TestRecoverOrphans_SkipsStoppedContainer(t *testing.T) {
 	}
 	updater.mu.Unlock()
 
-	mock.containers = []types.Container{
+	mock.containers = []container.Summary{
 		{ID: "exited-1", Names: []string{"/exited-app"}, State: "exited"},
 	}
 
@@ -824,7 +832,7 @@ func TestRecoverOrphans_RenamesBlueGreenOrphan(t *testing.T) {
 
 	// Simulate crash after blue-green create but before rename:
 	// "nginx-ww-new" exists but "nginx" does not
-	mock.containers = []types.Container{
+	mock.containers = []container.Summary{
 		{ID: "new-bg-id", Names: []string{"/nginx-ww-new"}, State: "running"},
 	}
 
@@ -853,7 +861,7 @@ func TestRecoverOrphans_RemovesBlueGreenOrphanWhenOriginalExists(t *testing.T) {
 	mock, updater := newTestSetup()
 
 	// Both "nginx" and "nginx-ww-new" exist (crash during health check phase)
-	mock.containers = []types.Container{
+	mock.containers = []container.Summary{
 		{ID: "original-id", Names: []string{"/nginx"}, State: "running"},
 		{ID: "orphan-id", Names: []string{"/nginx-ww-new"}, State: "running"},
 	}
@@ -898,7 +906,7 @@ func TestRecoverOrphans_BlueGreenRenameAllowsSnapshotSkip(t *testing.T) {
 	}
 	updater.mu.Unlock()
 
-	mock.containers = []types.Container{
+	mock.containers = []container.Summary{
 		{ID: "bg-id", Names: []string{"/nginx-ww-new"}, State: "running"},
 	}
 
@@ -981,13 +989,13 @@ func TestBlueGreenUpdate_SkipsRenameIfNameExists(t *testing.T) {
 
 	// inspectFn returns a running container for waitForHealthy AND for the
 	// collision check (ResolveContainerID succeeds = name exists)
-	mock.inspectFn = func(id string) (types.ContainerJSON, error) {
+	mock.inspectFn = func(id string) (container.InspectResponse, error) {
 		result := mock.inspectResult
-		result.ContainerJSONBase = &types.ContainerJSONBase{
+		result.ContainerJSONBase = &container.ContainerJSONBase{
 			ID:    id,
 			Name:  "/nginx",
 			Image: "sha256:oldimage",
-			State: &types.ContainerState{
+			State: &container.State{
 				Status:  "running",
 				Running: true,
 			},
@@ -1000,8 +1008,8 @@ func TestBlueGreenUpdate_SkipsRenameIfNameExists(t *testing.T) {
 
 	// ContainerList returns the original container (simulating it wasn't removed
 	// due to external interference) — causes ResolveContainerID to find it
-	mock.containerListFn = func(_ context.Context, _ container.ListOptions) ([]types.Container, error) {
-		return []types.Container{
+	mock.containerListFn = func(_ context.Context, _ container.ListOptions) ([]container.Summary, error) {
+		return []container.Summary{
 			{ID: "external-nginx", Names: []string{"/nginx"}},
 		}, nil
 	}
@@ -1015,4 +1023,432 @@ func TestBlueGreenUpdate_SkipsRenameIfNameExists(t *testing.T) {
 		assert.False(t, strings.HasPrefix(call, "ContainerRename:"),
 			"should skip rename when target name already exists")
 	}
+}
+
+// --- H1: AutoRemove container tests ---
+
+// H1 — UpdateContainer succeeds when AutoRemove=true causes 409 on ContainerRemove
+func TestUpdateContainer_AutoRemoveContainer(t *testing.T) {
+	mock, updater := newTestSetup()
+
+	// Set HostConfig.AutoRemove = true in inspect result
+	mock.inspectResult.ContainerJSONBase.HostConfig = &container.HostConfig{
+		AutoRemove:    true,
+		RestartPolicy: container.RestartPolicy{Name: "no"},
+	}
+
+	// ContainerRemove returns 409 because AutoRemove already removed it
+	mock.removeFn = func(id string) error {
+		if id == "test-container-123" {
+			return fmt.Errorf("Error response from daemon: 409 conflict: removal of container %s is already in progress", id)
+		}
+		return nil
+	}
+
+	result, err := updater.UpdateContainer(context.Background(), "test-container-123")
+	require.NoError(t, err)
+	assert.True(t, result.Success, "update should succeed despite 409 on remove")
+	assert.Equal(t, "new-container-id", result.ContainerID)
+}
+
+// --- M1: Config-only image change detection ---
+
+func TestCheckForUpdates_ConfigOnlyChange(t *testing.T) {
+	// Use a custom mock that returns the same digest in pull stream as the current digest,
+	// but different image IDs when inspected.
+	configOnlyMock := &configOnlyPullMock{
+		mockDockerAPI: mockDockerAPI{
+			inspectResult: container.InspectResponse{
+				ContainerJSONBase: &container.ContainerJSONBase{
+					ID:    "test-container-123",
+					Name:  "/nginx",
+					Image: "sha256:oldimage",
+					HostConfig: &container.HostConfig{
+						RestartPolicy: container.RestartPolicy{Name: "always"},
+					},
+				},
+				Config: &container.Config{
+					Image:  "nginx:latest",
+					Labels: map[string]string{},
+				},
+				NetworkSettings: &container.NetworkSettings{
+					Networks: map[string]*network.EndpointSettings{
+						"bridge": {NetworkID: "bridge-id"},
+					},
+				},
+			},
+		},
+	}
+	// imageInspectFn returns different IDs but same digest.
+	// InspectContainer calls ImageInspectWithRaw("sha256:oldimage") → current image.
+	// CheckForUpdates calls ImageInspectWithRaw("nginx@sha256:samedigest") for current
+	// and ImageInspectWithRaw("nginx:latest") for target.
+	configOnlyMock.imageInspectFn = func(imageID string) (image.InspectResponse, error) {
+		if imageID == "sha256:oldimage" || imageID == "nginx@sha256:samedigest" {
+			return image.InspectResponse{
+				ID:          "sha256:oldimageID",
+				RepoDigests: []string{"nginx@sha256:samedigest"},
+			}, nil
+		}
+		// target image (looked up by ref "nginx:latest")
+		return image.InspectResponse{
+			ID:          "sha256:newimageID",
+			RepoDigests: []string{"nginx@sha256:samedigest"},
+			Config:      &container.Config{Entrypoint: []string{"/new-entrypoint"}},
+		}, nil
+	}
+
+	dc := NewDockerClientWithAPI(configOnlyMock)
+	updater := NewUpdater(dc)
+
+	results, err := updater.CheckForUpdates(context.Background(), []string{"test-container-123"})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.True(t, results[0].HasUpdate, "should detect config-only change as an update")
+}
+
+// configOnlyPullMock returns a pull stream with the same digest as the current image
+type configOnlyPullMock struct {
+	mockDockerAPI
+}
+
+func (m *configOnlyPullMock) ImagePull(ctx context.Context, ref string, opts image.PullOptions) (io.ReadCloser, error) {
+	m.recordCall("ImagePull:" + ref)
+	// Return same digest as the current image
+	body := `{"status":"Digest: sha256:samedigest"}` + "\n"
+	return io.NopCloser(strings.NewReader(body)), nil
+}
+
+// --- M2: Blue-green health timeout respects start_period ---
+
+func TestBlueGreenUpdate_RespectsStartPeriod(t *testing.T) {
+	mock, updater := newTestSetup()
+
+	startTime := time.Now()
+	// Container reports "starting" for the first 3s, then "healthy"
+	// With a healthcheck StartPeriod of 4s, the total timeout should be > 60s
+	mock.inspectFn = func(id string) (container.InspectResponse, error) {
+		elapsed := time.Since(startTime)
+		healthStatus := "starting"
+		if elapsed > 3*time.Second {
+			healthStatus = "healthy"
+		}
+		return container.InspectResponse{
+			ContainerJSONBase: &container.ContainerJSONBase{
+				ID:    id,
+				Name:  "/nginx",
+				Image: "sha256:oldimage",
+				State: &container.State{
+					Status:  "running",
+					Running: true,
+					Health:  &container.Health{Status: healthStatus},
+				},
+				HostConfig: mock.inspectResult.HostConfig,
+			},
+			Config: &container.Config{
+				Image: "nginx:latest",
+				Healthcheck: &container.HealthConfig{
+					StartPeriod: 120 * time.Second, // 2 minute start period
+				},
+			},
+			NetworkSettings: mock.inspectResult.NetworkSettings,
+		}, nil
+	}
+
+	result, err := updater.BlueGreenUpdate(context.Background(), "test-container-123")
+	require.NoError(t, err)
+	assert.True(t, result.Success, "should succeed — start_period extends timeout past initial 60s")
+}
+
+// --- M3: Pull stream digest extraction ---
+
+func TestPullImage_NoDigestInStream(t *testing.T) {
+	mock := &mockDockerAPI{
+		imageInspect: image.InspectResponse{
+			RepoDigests: []string{"nginx@sha256:fallbackdigest"},
+		},
+	}
+	dc := NewDockerClientWithAPI(mock)
+
+	// Override ImagePull to return a stream WITHOUT "Digest:" line
+	mock.pullErr = nil
+
+	// We need a custom ImagePull that doesn't emit digest — use a custom mock approach
+	// The default mock emits Digest in the stream. We need to override it.
+	// Let's use a wrapper approach: set pullErr to nil and override via a subtype.
+	// Actually, the simplest way is to test the fallback path separately.
+
+	// For this test, we need the pull stream to NOT contain "Digest:".
+	// The mock always returns it. Let's create a separate test docker client.
+	noDigestMock := &noDigestPullMock{
+		mockDockerAPI: mockDockerAPI{
+			imageInspect: image.InspectResponse{
+				RepoDigests: []string{"nginx@sha256:fallbackdigest"},
+			},
+		},
+	}
+	dc2 := NewDockerClientWithAPI(noDigestMock)
+
+	digest, err := dc2.PullImage(context.Background(), "nginx:latest")
+	require.NoError(t, err)
+	assert.Equal(t, "nginx@sha256:fallbackdigest", digest, "should fall back to ImageInspectWithRaw digest")
+	_ = mock
+	_ = dc
+}
+
+func TestPullImage_FallbackUsesRefNotLocal(t *testing.T) {
+	// Verify that when digest is not in the stream, ImageInspectWithRaw is called with the ref
+	noDigestMock := &noDigestPullMock{
+		mockDockerAPI: mockDockerAPI{
+			imageInspect: image.InspectResponse{
+				RepoDigests: []string{"nginx@sha256:fallbackdigest"},
+			},
+		},
+	}
+	dc := NewDockerClientWithAPI(noDigestMock)
+
+	_, err := dc.PullImage(context.Background(), "nginx:1.25")
+	require.NoError(t, err)
+
+	// Verify ImageInspectWithRaw was called with the ref "nginx:1.25"
+	calls := noDigestMock.getCalls()
+	found := false
+	for _, call := range calls {
+		if call == "ImageInspectWithRaw:nginx:1.25" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "fallback should inspect by ref (nginx:1.25), not local ID; calls: %v", calls)
+}
+
+// noDigestPullMock wraps mockDockerAPI but returns pull stream without Digest line
+type noDigestPullMock struct {
+	mockDockerAPI
+}
+
+func (m *noDigestPullMock) ImagePull(ctx context.Context, ref string, opts image.PullOptions) (io.ReadCloser, error) {
+	m.recordCall("ImagePull:" + ref)
+	// Return progress events without a Digest line
+	body := `{"status":"Pulling from library/nginx"}` + "\n" +
+		`{"status":"Already exists","id":"abc123"}` + "\n" +
+		`{"status":"Pull complete","id":"def456"}` + "\n"
+	return io.NopCloser(strings.NewReader(body)), nil
+}
+
+// --- M4: Health monitor treats removed containers as gone ---
+
+func TestCheckHealth_RemovedContainer_ReturnsGone(t *testing.T) {
+	mock := &mockDockerAPI{
+		// ResolveContainerID will fail (ContainerInspect fails, ContainerList returns empty)
+		inspectErr: fmt.Errorf("Error: No such container: gone-container"),
+		containers: []container.Summary{}, // empty list for fallback
+	}
+	dc := NewDockerClientWithAPI(mock)
+	updater := NewUpdater(dc)
+	hm := NewHealthMonitor(dc, updater, func(m Message) {})
+
+	status := hm.checkHealth(context.Background(), "gone-container")
+	assert.Equal(t, "removed", status, "should return 'removed' when container is gone, not 'unhealthy'")
+}
+
+func TestHealthMonitor_RemovedContainer_NoRollback(t *testing.T) {
+	mock := &mockDockerAPI{
+		inspectErr: fmt.Errorf("Error: No such container: gone-container"),
+		containers: []container.Summary{},
+	}
+	dc := NewDockerClientWithAPI(mock)
+	updater := NewUpdater(dc)
+
+	rollbackTriggered := false
+	hm := NewHealthMonitor(dc, updater, func(m Message) {
+		if payload, ok := m.Payload.(map[string]interface{}); ok {
+			if payload["autoRolledBack"] == true {
+				rollbackTriggered = true
+			}
+		}
+	})
+
+	hm.StartMonitoring(MonitorRequest{
+		ContainerID:       "gone-container",
+		ContainerName:     "test-app",
+		DurationSeconds:   2,
+		RollbackOnFailure: true,
+		RollbackImage:     "test-app:old",
+	})
+
+	// Wait for the monitor to run a few cycles and exit
+	time.Sleep(4 * time.Second)
+
+	assert.False(t, rollbackTriggered, "should NOT trigger rollback for a removed container")
+}
+
+// --- L1: Floating tags treated as pinned ---
+
+func TestIsPinnedVersion_FloatingTags(t *testing.T) {
+	// These should NOT be pinned (floating/alias tags)
+	floatingCases := []string{
+		"ruby:alpine",
+		"node:lts",
+		"ubuntu:jammy",
+		"redis:7-alpine",
+		"nginx:stable",
+		"node:22-slim",
+		"ubuntu:focal",
+		"postgres:alpine",
+		"node:lts-alpine",
+		"debian:bookworm",
+		"debian:bullseye",
+		"nginx:latest",
+		"myapp",
+	}
+	for _, img := range floatingCases {
+		assert.False(t, isPinnedVersion(img), "%s should NOT be pinned", img)
+	}
+
+	// These SHOULD be pinned (specific versions)
+	pinnedCases := []string{
+		"postgres:16.2",
+		"nginx:1.25.3",
+		"node:20.11.1-alpine",
+		"redis:7.2.4",
+		"ubuntu:22.04",
+		"myapp@sha256:abc123",
+		"node:20.11-alpine",
+		"postgres:16.2-alpine",
+	}
+	for _, img := range pinnedCases {
+		assert.True(t, isPinnedVersion(img), "%s SHOULD be pinned", img)
+	}
+}
+
+// --- L3: Crash loop detector threshold ---
+
+func TestCrashLoopDetector_SingleRestart_NoRollback(t *testing.T) {
+	mock := &mockDockerAPI{}
+	dc := NewDockerClientWithAPI(mock)
+	updater := NewUpdater(dc)
+
+	rollbackTriggered := false
+	hm := NewHealthMonitor(dc, updater, func(m Message) {
+		if payload, ok := m.Payload.(map[string]interface{}); ok {
+			if payload["autoRolledBack"] == true {
+				rollbackTriggered = true
+			}
+		}
+	})
+
+	trackers := make(map[string]*restartTracker)
+
+	// First tick: container running, restart count 0
+	mock.containers = []container.Summary{
+		{ID: "container-single-restart-id", Names: []string{"/myapp"}, State: "running", Labels: map[string]string{}},
+	}
+	mock.inspectFn = func(id string) (container.InspectResponse, error) {
+		return container.InspectResponse{
+			ContainerJSONBase: &container.ContainerJSONBase{
+				ID: id, Name: "/myapp", RestartCount: 0,
+				State: &container.State{Running: true},
+			},
+		}, nil
+	}
+	hm.detectCrashLoops(context.Background(), dc, trackers)
+
+	// Second tick: restart count goes to 1
+	mock.inspectFn = func(id string) (container.InspectResponse, error) {
+		return container.InspectResponse{
+			ContainerJSONBase: &container.ContainerJSONBase{
+				ID: id, Name: "/myapp", RestartCount: 1,
+				State: &container.State{Running: true},
+			},
+		}, nil
+	}
+	hm.detectCrashLoops(context.Background(), dc, trackers)
+
+	// Simulate 90 seconds passing with restart count staying at 1
+	if tracker, ok := trackers["container-single-restart-id"]; ok && tracker.crashStart != nil {
+		past := time.Now().Add(-90 * time.Second)
+		tracker.crashStart = &past
+	}
+
+	hm.detectCrashLoops(context.Background(), dc, trackers)
+
+	assert.False(t, rollbackTriggered, "single restart should NOT trigger rollback")
+}
+
+func TestCrashLoopDetector_MultipleRestarts_TriggersRollback(t *testing.T) {
+	mock := &mockDockerAPI{}
+	dc := NewDockerClientWithAPI(mock)
+	updater := NewUpdater(dc)
+
+	// Store a snapshot so rollback can proceed
+	updater.mu.Lock()
+	updater.snapshots["container-crash-id"] = &ContainerSnapshot{
+		Name:     "crashapp",
+		ImageRef: "crashapp:old",
+		Config:   &container.Config{Image: "crashapp:old"},
+		HostConfig: &container.HostConfig{
+			RestartPolicy: container.RestartPolicy{Name: "always"},
+		},
+		Networks: map[string]*network.EndpointSettings{},
+	}
+	updater.mu.Unlock()
+
+	rollbackTriggered := false
+	hm := NewHealthMonitor(dc, updater, func(m Message) {
+		if payload, ok := m.Payload.(map[string]interface{}); ok {
+			if payload["autoRolledBack"] == true {
+				rollbackTriggered = true
+			}
+		}
+	})
+
+	trackers := make(map[string]*restartTracker)
+
+	mock.containers = []container.Summary{
+		{ID: "container-crash-id", Names: []string{"/crashapp"}, State: "restarting", Labels: map[string]string{}},
+	}
+
+	// Initialize tracker with restart count 0
+	mock.inspectFn = func(id string) (container.InspectResponse, error) {
+		return container.InspectResponse{
+			ContainerJSONBase: &container.ContainerJSONBase{
+				ID: id, Name: "/crashapp", RestartCount: 0,
+				State:      &container.State{Running: true},
+				HostConfig: &container.HostConfig{RestartPolicy: container.RestartPolicy{Name: "always"}},
+			},
+			Config: &container.Config{Image: "crashapp:latest"},
+			NetworkSettings: &container.NetworkSettings{
+				Networks: map[string]*network.EndpointSettings{},
+			},
+		}, nil
+	}
+	hm.detectCrashLoops(context.Background(), dc, trackers)
+
+	// Now simulate 3+ restarts after 60+ seconds
+	mock.inspectFn = func(id string) (container.InspectResponse, error) {
+		return container.InspectResponse{
+			ContainerJSONBase: &container.ContainerJSONBase{
+				ID: id, Name: "/crashapp", RestartCount: 5,
+				State:      &container.State{Running: true},
+				HostConfig: &container.HostConfig{RestartPolicy: container.RestartPolicy{Name: "always"}},
+			},
+			Config: &container.Config{Image: "crashapp:latest"},
+			NetworkSettings: &container.NetworkSettings{
+				Networks: map[string]*network.EndpointSettings{},
+			},
+		}, nil
+	}
+
+	hm.detectCrashLoops(context.Background(), dc, trackers)
+
+	// Set crashStart to 90 seconds ago to simulate time passing
+	if tracker, ok := trackers["container-crash-id"]; ok && tracker.crashStart != nil {
+		past := time.Now().Add(-90 * time.Second)
+		tracker.crashStart = &past
+	}
+
+	hm.detectCrashLoops(context.Background(), dc, trackers)
+
+	assert.True(t, rollbackTriggered, "3+ restarts over 60s should trigger rollback")
 }

@@ -9,7 +9,7 @@ import {
 import { requireAuth } from "../middleware/auth.js";
 
 const CRON_KEYS = new Set(["global_schedule"]);
-const ALLOWED_CONFIG_KEYS = new Set(["global_schedule", "auto_update_global"]);
+const ALLOWED_CONFIG_KEYS = new Set(["global_schedule", "auto_update_global", "check_on_startup"]);
 
 const SENSITIVE_CONFIG_KEYS = new Set(["jwt_secret", "admin_password_hash"]);
 

@@ -212,6 +212,21 @@ func (u *Updater) emitProgress(containerID, containerName, step, progress string
 	}
 }
 
+// isNonFatalRemoveErr returns true if the error from ContainerRemove indicates
+// the container is already gone (e.g. AutoRemove triggered by ContainerStop).
+func isNonFatalRemoveErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "404") ||
+		strings.Contains(msg, "409") ||
+		strings.Contains(msg, "No such container") ||
+		strings.Contains(msg, "no such container") ||
+		strings.Contains(msg, "removal already in progress") ||
+		strings.Contains(msg, "is already in progress")
+}
+
 // digestsMatch compares two digests, ignoring the "image@" prefix.
 // e.g. "nginx@sha256:abc123" matches "sha256:abc123"
 func digestsMatch(a, b string) bool {
@@ -271,14 +286,16 @@ func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([
 				diff = &d
 			}
 		} else if newDigest != "" {
-			// BUG-12: digest matches but image config may have changed (same layers,
-			// different entrypoint/env/labels). Log a warning so operators know the
-			// tag moved without a layer change — WatchWarden can't detect this as an
-			// update since the manifest digest is identical.
+			// BUG-12 FIX: digest matches but image config may have changed (same layers,
+			// different entrypoint/env/labels). If image IDs differ, treat as an update
+			// so config-only changes are not silently ignored.
 			currentImg, _, err1 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageDigest)
 			targetImg, _, err2 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageRef)
 			if err1 == nil && err2 == nil && currentImg.ID != targetImg.ID {
-				log.Printf("[check] %s: digest unchanged but image ID differs (config-only change) — manual update may be needed", snapshot.Name)
+				log.Printf("[check] %s: digest unchanged but image ID differs (config-only change) — marking as update", snapshot.Name)
+				hasUpdate = true
+				d := DiffImages(currentImg, targetImg)
+				diff = &d
 			}
 		}
 
@@ -423,18 +440,21 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 		}, err
 	}
 
-	// 6. Remove old container
+	// 6. Remove old container (non-fatal if already gone, e.g. AutoRemove=true)
 	u.emitProgress(containerID, snapshot.Name, "removing", "")
 	if err := u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{}); err != nil {
-		_ = u.docker.cli.ContainerStart(ctx, containerID, container.StartOptions{})
-		return &UpdateResult{
-			ContainerID:   containerID,
-			ContainerName: snapshot.Name,
-			Success:       false,
-			OldDigest:     snapshot.ImageDigest,
-			Error:         fmt.Sprintf("remove failed: %v", err),
-			DurationMs:    time.Since(start).Milliseconds(),
-		}, err
+		if !isNonFatalRemoveErr(err) {
+			_ = u.docker.cli.ContainerStart(ctx, containerID, container.StartOptions{})
+			return &UpdateResult{
+				ContainerID:   containerID,
+				ContainerName: snapshot.Name,
+				Success:       false,
+				OldDigest:     snapshot.ImageDigest,
+				Error:         fmt.Sprintf("remove failed: %v", err),
+				DurationMs:    time.Since(start).Milliseconds(),
+			}, err
+		}
+		log.Printf("[update] ContainerRemove %s returned non-fatal error (container already gone): %v", containerID, err)
 	}
 
 	// 7. Create and start new container
@@ -486,7 +506,9 @@ func (u *Updater) RollbackContainer(ctx context.Context, containerID string) (*U
 
 	timeout := 30
 	_ = u.docker.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout})
-	_ = u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{})
+	if err := u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{}); err != nil && !isNonFatalRemoveErr(err) {
+		log.Printf("[rollback] ContainerRemove %s failed: %v", containerID, err)
+	}
 
 	newID, err := u.docker.RecreateContainer(ctx, snapshot, snapshot.ImageRef)
 	if err != nil {
@@ -596,7 +618,9 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 	_ = u.docker.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout})
 
 	u.emitProgress(originalID, snapshot.Name, "removing", "")
-	_ = u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{})
+	if err := u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{}); err != nil && !isNonFatalRemoveErr(err) {
+		log.Printf("[rollback-to-image] ContainerRemove %s failed: %v", containerID, err)
+	}
 
 	// 4. Recreate with target image
 	u.emitProgress(originalID, snapshot.Name, "starting", "")
@@ -680,8 +704,19 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 			DurationMs: time.Since(start).Milliseconds()}, err
 	}
 
-	// 5. Wait for new container to be healthy (up to 60s)
-	healthy := u.waitForHealthy(ctx, newID, 60*time.Second)
+	// 5. Wait for new container to be healthy.
+	// Inspect the new container to check for healthcheck start_period and adjust timeout.
+	healthTimeout := 60 * time.Second
+	newInfo, inspErr := u.docker.cli.ContainerInspect(ctx, newID)
+	if inspErr == nil && newInfo.Config != nil && newInfo.Config.Healthcheck != nil && newInfo.Config.Healthcheck.StartPeriod > 0 {
+		healthTimeout += newInfo.Config.Healthcheck.StartPeriod
+	}
+	// Cap at 5 minutes total
+	const maxHealthTimeout = 5 * time.Minute
+	if healthTimeout > maxHealthTimeout {
+		healthTimeout = maxHealthTimeout
+	}
+	healthy := u.waitForHealthy(ctx, newID, healthTimeout)
 	if !healthy {
 		// New container failed — clean it up using a fresh context (RC-04: the original
 		// ctx may already be cancelled on WS disconnect, which would skip cleanup and
