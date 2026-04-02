@@ -48,8 +48,14 @@
 - **Private registry support** — encrypted credential storage with ECR/GCR/ACR cloud auth, auto-synced to agents
 - **Vulnerability scanning** — Trivy-based CVE scanning per container image, results stored and broadcast to dashboard
 - **Image signing** — optional cosign signature verification before pulling (`REQUIRE_SIGNED_IMAGES=true`)
+- **API token authentication** — scoped tokens (`full`, `read`, `write`) with optional expiration for external integrations
 - **Audit log** — full trail of every check, update, rollback, config change, and agent event
 - **Container hardening** — production compose uses `read_only`, `no-new-privileges`, and `tmpfs` for controller and UI services
+
+### Integrations
+- **Integration API** — stable REST API at `/api/integrations/watchwarden/*` for Home Assistant, CI/CD, and custom tools
+- **Home Assistant** — custom integration (planned) with sensors and services for container management
+- **TypeScript SDK** — `@watchwarden/sdk` for programmatic access
 
 ### Observability
 - **Prometheus metrics** — `/metrics` endpoint on the controller exposes container counts, update status, and agent health in standard Prometheus format
@@ -97,6 +103,8 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 | Tag Pattern Matching | ✅ Regex-based | ❌ None |
 | Prometheus Metrics | ✅ /metrics endpoint | ❌ None |
 | Cloud Registry Auth | ✅ ECR/GCR/ACR | ❌ Basic only |
+| API Token Auth | ✅ Scoped tokens with expiration | ❌ None |
+| Integration API | ✅ Stable HTTP contract for HA/CI | ❌ None |
 | TypeScript SDK | ✅ @watchwarden/sdk | ❌ None |
 | Docker Version Reporting | ✅ Per-agent in dashboard | ❌ None |
 | REST API | ✅ Full CRUD | ❌ None |
@@ -430,13 +438,13 @@ npm run dev
 ### Running Tests
 
 ```bash
-# Controller — 141 tests (needs Docker for testcontainers)
+# Controller — 181 tests (needs Docker for testcontainers)
 cd controller && npm test
 
 # Agent — 160 tests (use -race for race detection)
 cd agent && go test -race ./... -count=1
 
-# UI — 29 tests
+# UI — 50 tests
 cd ui && npm test
 ```
 

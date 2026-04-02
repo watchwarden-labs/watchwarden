@@ -362,3 +362,55 @@ export interface AuditLogFilters {
 	limit?: number;
 	offset?: number;
 }
+
+// --- API Tokens ---
+
+export interface ApiToken {
+	id: string;
+	name: string;
+	token_hash: string;
+	token_prefix: string;
+	scopes: string;
+	created_at: number;
+	expires_at: number | null;
+	last_used_at: number | null;
+	revoked_at: number | null;
+}
+
+export interface NewApiToken {
+	id: string;
+	name: string;
+	token_hash: string;
+	token_prefix: string;
+	scopes?: string;
+	expires_at?: number | null;
+}
+
+// --- Integration API Types ---
+
+export interface IntegrationSummary {
+	containers_total: number;
+	containers_with_updates: number;
+	unhealthy_containers: number;
+	agents_online: number;
+	agents_total: number;
+	last_check: string | null;
+}
+
+export interface IntegrationContainer {
+	id: string;
+	agent_id: string;
+	agent_name: string;
+	name: string;
+	image: string;
+	current_digest: string | null;
+	latest_digest: string | null;
+	has_update: boolean;
+	status: string;
+	health_status: string;
+	policy: string | null;
+	tag_pattern: string | null;
+	update_level: string | null;
+	last_checked_at: string | null;
+	last_updated_at: string | null;
+}

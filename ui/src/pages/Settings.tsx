@@ -1,4 +1,4 @@
-import { Bell, Clock, Database, Plus, RefreshCw } from 'lucide-react';
+import { Bell, Clock, Database, Key, Plus, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { apiRequest } from '@/api/client';
 import { useConfig, useUpdateConfig } from '@/api/hooks/useSettings';
@@ -6,6 +6,7 @@ import { RegisterAgentModal } from '@/components/agents/RegisterAgentModal';
 import { CronPicker } from '@/components/common/CronPicker';
 import { NotificationsTab } from '@/components/notifications/NotificationsTab';
 import { RegistriesTab } from '@/components/registries/RegistriesTab';
+import { ApiTokensTab } from '@/components/settings/ApiTokensTab';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,9 @@ export function Settings() {
           <TabsTrigger value="registries">
             <Database size={14} className="mr-1" /> Registries
           </TabsTrigger>
+          <TabsTrigger value="api-tokens">
+            <Key size={14} className="mr-1" /> API Tokens
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="general" className="mt-4">
           <GeneralTab />
@@ -37,6 +41,9 @@ export function Settings() {
         </TabsContent>
         <TabsContent value="registries" className="mt-4">
           <RegistriesTab />
+        </TabsContent>
+        <TabsContent value="api-tokens" className="mt-4">
+          <ApiTokensTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -116,6 +116,51 @@ All secrets are validated at startup. The controller refuses to start with weak 
 
 Registry credentials are encrypted at rest using AES-256-GCM with a scrypt-derived key. The encryption key itself is never stored — it must be provided via environment variable on every startup.
 
+## API Token Security
+
+WatchWarden supports token-based authentication for external integrations (Home Assistant, CI pipelines, custom scripts) via the [Integration API](/docs/integrations/api).
+
+### How tokens work
+
+1. An admin creates a token in **Settings &rarr; API Tokens** in the web UI
+2. The token (`ww_<64-hex-chars>`) is shown **once** and must be stored securely
+3. External clients pass the token in the `Authorization: Bearer <token>` header
+4. The controller validates the token, checks scopes and expiration, then processes the request
+
+### Storage & hashing
+
+- Tokens are hashed with **SHA-256** before storage — the plaintext is never persisted
+- SHA-256 is appropriate here because API tokens are high-entropy random strings (256 bits), unlike user passwords
+- Hash comparison uses `crypto.timingSafeEqual` to prevent timing attacks
+- A token prefix is stored for fast DB lookup but is **never exposed** via the API
+
+### Scopes
+
+Each token has one or more scopes that restrict access:
+
+| Scope | Access |
+|-------|--------|
+| `full` | All endpoints (default) |
+| `read` | GET endpoints only (summary, container list) |
+| `write` | POST endpoints only (check, update, rollback) |
+
+**Best practice:** Use the narrowest scope possible. A monitoring dashboard only needs `read`; only grant `write` or `full` to tools that trigger updates.
+
+### Expiration & rotation
+
+- Tokens can be created with an optional expiration (30 days, 90 days, 1 year, or never)
+- Expired tokens are immediately rejected
+- Revoked tokens are immediately rejected
+- **Recommendation:** Set an expiration and rotate tokens periodically
+
+### Rate limiting
+
+Integration endpoints are rate-limited to **60 requests per minute** per IP to prevent brute-force attacks.
+
+### Audit trail
+
+All token create and revoke operations are recorded in the [audit log](/docs/operations/security#secret-management), including the admin actor and IP address.
+
 ## Network Separation
 
 The production compose file uses separate networks:

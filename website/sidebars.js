@@ -27,6 +27,8 @@ const sidebars = {
       label: 'Integrations',
       items: [
         'integrations/sdk',
+        'integrations/api',
+        'integrations/home-assistant',
       ],
     },
     'design-decisions',
