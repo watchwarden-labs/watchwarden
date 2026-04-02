@@ -87,6 +87,10 @@ for (const container of agent.containers ?? []) {
 | `createNotification(channel)` | Create a channel |
 | `testNotification(id)` | Send a test message |
 
+## Integration API
+
+For external integrations that don't use TypeScript (e.g. Home Assistant, Python scripts, CI pipelines), WatchWarden provides a stable [Integration API](/docs/integrations/api) with token-based authentication. The Integration API is a focused subset of the full REST API, designed for machine-to-machine use.
+
 ## Using Types Only
 
 If you only need type definitions (e.g., for a custom integration):

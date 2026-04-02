@@ -8,10 +8,12 @@ import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import { registerAuditHook } from './api/middleware/audit.js';
 import agentsRoutes from './api/routes/agents.js';
+import apiTokenRoutes from './api/routes/api-tokens.js';
 import auditRoutes from './api/routes/audit.js';
 import authRoutes from './api/routes/auth.js';
 import configRoutes from './api/routes/config.js';
 import historyRoutes from './api/routes/history.js';
+import integrationRoutes from './api/routes/integrations.js';
 import metricsRoutes from './api/routes/metrics.js';
 import notificationRoutes from './api/routes/notifications.js';
 import registriesRoutes from './api/routes/registries.js';
@@ -169,6 +171,8 @@ async function start() {
   await app.register(notificationRoutes);
   await app.register(auditRoutes);
   await app.register(metricsRoutes);
+  await app.register(apiTokenRoutes);
+  await app.register(integrationRoutes);
   registerAuditHook(app);
 
   // Health check endpoint (used by Docker HEALTHCHECK)

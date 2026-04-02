@@ -2,6 +2,7 @@ import type postgres from 'postgres';
 import type {
   Agent,
   AgentConfigUpdate,
+  ApiToken,
   AuditLogEntry,
   AuditLogFilters,
   Container,
@@ -9,6 +10,7 @@ import type {
   HistoryFilters,
   HistoryStats,
   NewAgent,
+  NewApiToken,
   NewUpdateLog,
   UpdateLog,
 } from '../types.js';
@@ -743,4 +745,94 @@ function mapAuditLog(row: Record<string, unknown>): AuditLogEntry {
     ip_address: row.ip_address as string | null,
     created_at: Number(row.created_at),
   };
+}
+
+// --- API Tokens ---
+
+function mapApiToken(row: Record<string, unknown>): ApiToken {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    token_hash: row.token_hash as string,
+    token_prefix: row.token_prefix as string,
+    scopes: row.scopes as string,
+    created_at: Number(row.created_at),
+    expires_at: row.expires_at ? Number(row.expires_at) : null,
+    last_used_at: row.last_used_at ? Number(row.last_used_at) : null,
+    revoked_at: row.revoked_at ? Number(row.revoked_at) : null,
+  };
+}
+
+export async function insertApiToken(token: NewApiToken): Promise<void> {
+  await sql`
+    INSERT INTO api_tokens (id, name, token_hash, token_prefix, scopes, created_at, expires_at)
+    VALUES (${token.id}, ${token.name}, ${token.token_hash}, ${token.token_prefix},
+      ${token.scopes ?? '["full"]'}, ${Date.now()}, ${token.expires_at ?? null})
+  `;
+}
+
+export async function listApiTokens(): Promise<ApiToken[]> {
+  const rows = await sql`SELECT * FROM api_tokens ORDER BY created_at DESC`;
+  return rows.map(mapApiToken);
+}
+
+export async function getApiToken(id: string): Promise<ApiToken | undefined> {
+  const [row] = await sql`SELECT * FROM api_tokens WHERE id = ${id}`;
+  return row ? mapApiToken(row) : undefined;
+}
+
+export async function listApiTokensByPrefix(prefix: string): Promise<ApiToken[]> {
+  const rows =
+    await sql`SELECT * FROM api_tokens WHERE token_prefix = ${prefix} AND revoked_at IS NULL`;
+  return rows.map(mapApiToken);
+}
+
+export async function revokeApiToken(id: string): Promise<void> {
+  await sql`UPDATE api_tokens SET revoked_at = ${Date.now()} WHERE id = ${id}`;
+}
+
+export async function touchApiTokenLastUsed(id: string): Promise<void> {
+  await sql`UPDATE api_tokens SET last_used_at = ${Date.now()} WHERE id = ${id}`;
+}
+
+// --- Integration helpers ---
+
+export async function countContainers(): Promise<{
+  total: number;
+  withUpdates: number;
+  unhealthy: number;
+}> {
+  const [row] = await sql`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE has_update = true)::int AS with_updates,
+      COUNT(*) FILTER (WHERE health_status NOT IN ('healthy', 'none', 'unknown', ''))::int AS unhealthy
+    FROM containers
+  `;
+  return {
+    total: Number(row?.total ?? 0),
+    withUpdates: Number(row?.with_updates ?? 0),
+    unhealthy: Number(row?.unhealthy ?? 0),
+  };
+}
+
+export async function getLastCheckTime(): Promise<number | null> {
+  const [row] =
+    await sql`SELECT MAX(last_checked) AS last_checked FROM containers WHERE last_checked IS NOT NULL`;
+  return row?.last_checked ? Number(row.last_checked) : null;
+}
+
+export async function listAllContainersWithAgent(): Promise<
+  Array<Container & { agent_name: string }>
+> {
+  const rows = await sql`
+    SELECT c.*, a.name AS agent_name
+    FROM containers c
+    JOIN agents a ON a.id = c.agent_id
+    ORDER BY a.name, c.name
+  `;
+  return rows.map((row) => ({
+    ...mapContainer(row),
+    agent_name: row.agent_name as string,
+  }));
 }
