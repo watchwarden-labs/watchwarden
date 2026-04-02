@@ -1,32 +1,32 @@
 #!/bin/sh
-# Pre-commit hook: format and lint staged files with Biome
+# Pre-commit hook: format staged files with Biome, then re-stage them.
 
-# Get staged files (only added/modified, not deleted)
-STAGED_CONTROLLER=$(git diff --cached --name-only --diff-filter=ACM -- 'controller/src/**/*.ts' 'controller/src/**/*.tsx')
-STAGED_UI=$(git diff --cached --name-only --diff-filter=ACM -- 'ui/src/**/*.ts' 'ui/src/**/*.tsx' 'ui/src/**/*.css')
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 
-EXIT_CODE=0
+# Filter to only files Biome handles
+BIOME_FILES=""
+for f in $STAGED; do
+  case "$f" in
+    controller/src/*.ts|controller/src/*.tsx|ui/src/*.ts|ui/src/*.tsx|ui/src/*.css|packages/*/src/*.ts)
+      BIOME_FILES="$BIOME_FILES $f"
+      ;;
+  esac
+done
 
-if [ -n "$STAGED_CONTROLLER" ]; then
-  echo "🔍 Linting controller files..."
-  npx @biomejs/biome check --config-path . --write --staged $STAGED_CONTROLLER
-  if [ $? -ne 0 ]; then
-    echo "❌ Controller lint failed"
-    EXIT_CODE=1
-  else
-    git add $STAGED_CONTROLLER
-  fi
+if [ -z "$BIOME_FILES" ]; then
+  exit 0
 fi
 
-if [ -n "$STAGED_UI" ]; then
-  echo "🔍 Linting UI files..."
-  npx @biomejs/biome check --config-path . --write --staged $STAGED_UI
-  if [ $? -ne 0 ]; then
-    echo "❌ UI lint failed"
-    EXIT_CODE=1
-  else
-    git add $STAGED_UI
-  fi
-fi
+echo "Formatting staged files with Biome..."
 
-exit $EXIT_CODE
+# Format the working-tree copies, then re-stage
+# shellcheck disable=SC2086
+npx @biomejs/biome check --config-path . --write $BIOME_FILES 2>/dev/null
+
+# Re-add the (possibly reformatted) files so the commit includes the fixes
+# shellcheck disable=SC2086
+git add $BIOME_FILES
+
+# Now verify — if there are still lint errors (not just formatting), block the commit
+# shellcheck disable=SC2086
+npx @biomejs/biome check --config-path . $BIOME_FILES
