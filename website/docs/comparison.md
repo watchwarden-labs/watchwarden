@@ -15,7 +15,7 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 | **Watchtower Env Var Compat** | ✅ Drop-in replacement | — |
 | **Web Dashboard** | ✅ Real-time UI | ❌ CLI only |
 | **Multi-host Management** | ✅ Central controller + agents | ❌ Single host |
-| **Blue-green Updates** | ✅ Zero-downtime, health-verified | ❌ None |
+| **Blue-green Updates** | ✅ Zero-downtime, health-verified (auto-fallback for port conflicts) | ❌ None |
 | **Rollback** | ✅ Any version + snapshot restore | ❌ None |
 | **Health-based Auto-Rollback** | ✅ Stability window + crash-loop | ❌ None |
 | **Crash-loop Detection** | ✅ Auto-detects and rolls back | ❌ None |

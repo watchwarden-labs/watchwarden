@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -246,6 +245,52 @@ func extractDigest(s string) string {
 	return s
 }
 
+// floatingTags are tags that track "latest" and should be pulled as-is for update checks.
+// Version-specific tags (e.g. "0.16.0", "v3.1.2") are NOT floating — pulling them
+// will always return "up to date" since the tag is pinned to a specific version.
+var floatingTags = map[string]bool{
+	"latest": true, "stable": true, "edge": true, "nightly": true,
+	"beta": true, "alpha": true, "dev": true, "develop": true,
+	"main": true, "master": true, "lts": true, "release": true,
+}
+
+// resolveCheckRef determines the correct image reference to pull when checking
+// for updates. After a rollback to a specific version (e.g. :0.16.0), the
+// container's Config.Image points to that version — pulling it will always say
+// "up to date". We need to resolve back to the floating tag (e.g. :latest).
+func resolveCheckRef(ctx context.Context, docker *DockerClient, snapshot *ContainerSnapshot) string {
+	ref := snapshot.ImageRef
+
+	// 1. Docker Compose label has the original image from the compose file
+	// Skip if it's a raw image ID (sha256:...) — happens when container was
+	// recreated by WatchWarden rollback; the label gets set to the resolved ID.
+	if snapshot.Config != nil {
+		if composeImage, ok := snapshot.Config.Labels["com.docker.compose.image"]; ok &&
+			composeImage != "" && !strings.HasPrefix(composeImage, "sha256:") {
+			return composeImage
+		}
+	}
+
+	// 2. Digest reference (image@sha256:...) → strip to base:latest
+	if atIdx := strings.Index(ref, "@sha256:"); atIdx > 0 {
+		base := ref[:atIdx]
+		if !strings.Contains(base, ":") {
+			return base + ":latest"
+		}
+		return base
+	}
+
+	// 3. Specific version tag (not floating) → replace with :latest
+	if idx := strings.LastIndex(ref, ":"); idx > 0 {
+		tag := ref[idx+1:]
+		if !floatingTags[tag] {
+			return ref[:idx] + ":latest"
+		}
+	}
+
+	return ref
+}
+
 // CheckForUpdates compares current vs latest digests for the given containers.
 // RC-02: locks by canonical container name (stable across recreations) so CHECK
 // and UPDATE always serialize on the same key even after a container is recreated.
@@ -323,14 +368,22 @@ func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([
 		}
 
 		if !tagPatternUsed {
-			// Normal flow: pull and compare digest
+			// Resolve the pull reference to a floating tag so the check actually
+			// queries the registry for newer images.
+			pullRef := resolveCheckRef(ctx, u.docker, snapshot)
+			if pullRef != snapshot.ImageRef {
+				log.Printf("[check] %s: resolved %s to %s", snapshot.Name, snapshot.ImageRef, pullRef)
+			}
 			var pullErr error
-			newDigest, pullErr = u.docker.PullImage(ctx, snapshot.ImageRef)
+			newDigest, pullErr = u.docker.PullImage(ctx, pullRef)
 			if pullErr != nil {
+				log.Printf("[check] %s: pull failed for %s: %v", snapshot.Name, snapshot.ImageRef, pullErr)
 				continue
 			}
 
 			hasUpdate = newDigest != "" && !digestsMatch(snapshot.ImageDigest, newDigest)
+			log.Printf("[check] %s: current=%s latest=%s hasUpdate=%v",
+				snapshot.Name, extractDigest(snapshot.ImageDigest), extractDigest(newDigest), hasUpdate)
 
 			if hasUpdate {
 				currentImg, _, err1 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageDigest)
@@ -456,23 +509,10 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 		}, err
 	}
 
-	// 4. Pre-flight: verify all bind mount sources exist
-	for _, bind := range snapshot.HostConfig.Binds {
-		parts := strings.SplitN(bind, ":", 2)
-		hostPath := parts[0]
-		if strings.HasPrefix(hostPath, "/") {
-			if _, err := os.Stat(hostPath); os.IsNotExist(err) {
-				return &UpdateResult{
-					ContainerID:   containerID,
-					ContainerName: snapshot.Name,
-					Success:       false,
-					OldDigest:     snapshot.ImageDigest,
-					Error:         fmt.Sprintf("bind mount source does not exist: %s", hostPath),
-					DurationMs:    time.Since(start).Milliseconds(),
-				}, fmt.Errorf("bind mount source does not exist: %s", hostPath)
-			}
-		}
-	}
+	// 4. Pre-flight: bind mount validation removed. The agent runs in its own
+	// container and cannot see the host filesystem — os.Stat() on host paths
+	// returns false positives. Docker daemon validates bind mounts at container
+	// creation time and returns a clear error if a path doesn't exist.
 
 	// 5. Save snapshot BEFORE stop — ensures rollback data exists if agent crashes mid-update
 	u.mu.Lock()
@@ -681,11 +721,22 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 	u.emitProgress(originalID, snapshot.Name, "starting", "")
 	_, err = u.docker.RecreateContainer(ctx, snapshot, targetImage)
 	if err != nil {
+		// Recovery: try to recreate with the original image so the container isn't left dead
+		log.Printf("[rollback-to-image] Create with %s failed: %v — attempting recovery with original image", targetImage, err)
+		_, recoveryErr := u.docker.RecreateContainer(ctx, snapshot, snapshot.ImageRef)
+		errMsg := fmt.Sprintf("rollback to %s failed: %v", targetImage, err)
+		if recoveryErr != nil {
+			errMsg += fmt.Sprintf("; recovery also failed: %v", recoveryErr)
+			log.Printf("[rollback-to-image] Recovery also failed for %s: %v", snapshot.Name, recoveryErr)
+		} else {
+			errMsg += "; recovered with original image"
+			log.Printf("[rollback-to-image] Recovered %s with original image", snapshot.Name)
+		}
 		return &UpdateResult{
 			ContainerID:   originalID,
 			ContainerName: snapshot.Name,
 			Success:       false,
-			Error:         fmt.Sprintf("rollback to %s failed: %v", targetImage, err),
+			Error:         errMsg,
 			DurationMs:    time.Since(start).Milliseconds(),
 			IsRollback:    true,
 		}, err
@@ -722,7 +773,12 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 
 	// RACE-01 + RC-02: lock by canonical name (stable across recreations)
 	entry := u.lockContainer(preSnap.Name)
-	defer entry.mu.Unlock()
+	unlocked := false
+	defer func() {
+		if !unlocked {
+			entry.mu.Unlock()
+		}
+	}()
 
 	// 1. Snapshot current container (authoritative state inside the lock)
 	snapshot, err := u.docker.InspectContainer(ctx, containerID)
@@ -754,6 +810,16 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 	u.emitProgress(containerID, snapshot.Name, "starting", "blue-green")
 	newID, err := u.docker.RecreateContainerNamed(ctx, snapshot, snapshot.ImageRef, tempName)
 	if err != nil {
+		// If blue-green fails due to port conflict, fall back to stop-first strategy
+		if strings.Contains(err.Error(), "port is already allocated") ||
+			strings.Contains(err.Error(), "address already in use") {
+			log.Printf("[blue-green] %s: port conflict, falling back to stop-first", snapshot.Name)
+			// Clean up the failed temp container if it was created
+			_ = u.docker.cli.ContainerRemove(ctx, tempName, container.RemoveOptions{Force: true})
+			entry.mu.Unlock()
+			unlocked = true
+			return u.UpdateContainer(ctx, containerID)
+		}
 		return &UpdateResult{ContainerID: containerID, ContainerName: snapshot.Name, Success: false,
 			OldDigest: snapshot.ImageDigest, Error: fmt.Sprintf("create new failed: %v", err),
 			DurationMs: time.Since(start).Milliseconds()}, err

@@ -98,9 +98,22 @@ Both modes use the same update engine:
 5. Rename new container to original name
 ```
 
+:::tip Port conflict fallback
+If the new container fails to start due to a port conflict (e.g. direct port mappings like `7575:7575`), the agent automatically falls back to the stop-first strategy. Blue-green is most effective for containers behind a reverse proxy without direct port bindings.
+:::
+
 ### Crash Recovery
 
 On agent restart, `RecoverOrphans` checks all persisted snapshots against running containers. If a container is missing but a snapshot exists, it recreates from the snapshot using the exact pre-update image digest.
+
+Snapshots are stored at `/var/lib/watchwarden/snapshots`. Mount a named volume to persist them across restarts:
+
+```yaml
+volumes:
+  - watchwarden_snapshots:/var/lib/watchwarden/snapshots
+```
+
+Without this volume, snapshots are lost on agent restart and crash recovery is unavailable.
 
 ### Per-Container Mutex
 

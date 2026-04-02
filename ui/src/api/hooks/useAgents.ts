@@ -47,6 +47,16 @@ export function useCheckAgent() {
   });
 }
 
+export function useCheckContainer() {
+  return useMutation({
+    mutationFn: ({ agentId, containerIds }: { agentId: string; containerIds: string[] }) =>
+      apiRequest<void>(`/agents/${agentId}/check`, {
+        method: 'POST',
+        body: JSON.stringify({ containerIds }),
+      }),
+  });
+}
+
 export function useCheckAllAgents() {
   return useMutation({
     mutationFn: () => apiRequest<{ count: number }>('/agents/check-all', { method: 'POST' }),

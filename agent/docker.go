@@ -63,6 +63,21 @@ var semverish = regexp.MustCompile(`\d+\.\d+`)
 // and not a floating alias like "alpine", "lts", "slim", "jammy", "22-slim").
 // A tag is considered pinned only if it contains a major.minor version pattern (e.g. "16.2").
 // Tags like "22-slim" with only a major version are floating (they track the latest minor).
+// isPinnedVersionWithLabels checks if an image is pinned, but first consults
+// the Docker Compose label to see if the original compose image uses a floating
+// tag. After a rollback to e.g. :0.16.0, Config.Image changes but the compose
+// file still says :latest — that's not pinned.
+func isPinnedVersionWithLabels(image string, labels map[string]string) bool {
+	if composeImage, ok := labels["com.docker.compose.image"]; ok && composeImage != "" {
+		return isPinnedVersion(composeImage)
+	}
+	// Also check the watchwarden pinned label override
+	if val, ok := labels["com.watchwarden.pinned"]; ok {
+		return val == "true"
+	}
+	return isPinnedVersion(image)
+}
+
 func isPinnedVersion(image string) bool {
 	// No tag or digest → not pinned (uses :latest implicitly)
 	if !strings.Contains(image, ":") {
@@ -182,7 +197,7 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 			Status:        c.State,
 			Excluded:      excluded,
 			ExcludeReason: excludeReason,
-			PinnedVersion: isPinnedVersion(imageName),
+			PinnedVersion: isPinnedVersionWithLabels(imageName, c.Labels),
 			Group:         group,
 			Priority:      priority,
 			DependsOn:     dependsOn,
@@ -304,13 +319,29 @@ func (d *DockerClient) PullImage(ctx context.Context, ref string) (string, error
 			if strings.HasPrefix(status, "Digest: ") {
 				digest = strings.TrimPrefix(status, "Digest: ")
 			}
+			// Log pull progress for diagnostics
+			if id, hasID := event["id"].(string); hasID {
+				log.Printf("[pull] %s: %s %s", ref, id, status)
+			} else if status != "" {
+				log.Printf("[pull] %s: %s", ref, status)
+			}
 		}
 	}
 
-	// If we didn't get digest from pull output, inspect the image
-	if digest == "" {
-		imgInspect, _, err := d.cli.ImageInspectWithRaw(ctx, ref)
-		if err == nil && len(imgInspect.RepoDigests) > 0 {
+	// Always inspect the image after pull to get the authoritative digest.
+	// The pull stream's "Digest:" line may report the manifest list digest
+	// (multi-arch index) while the container uses the platform-specific digest.
+	// Inspecting gives us the actual digest Docker resolved for this platform.
+	imgInspect, _, err := d.cli.ImageInspectWithRaw(ctx, ref)
+	if err == nil && len(imgInspect.RepoDigests) > 0 {
+		// Use the repo digest that matches the registry (most specific)
+		for _, rd := range imgInspect.RepoDigests {
+			if strings.Contains(rd, "sha256:") {
+				digest = rd
+				break
+			}
+		}
+		if digest == "" {
 			digest = imgInspect.RepoDigests[0]
 		}
 	}
@@ -329,6 +360,16 @@ func (d *DockerClient) recreateContainerWithName(ctx context.Context, snapshot *
 	// Update config with new image
 	newConfig := *snapshot.Config
 	newConfig.Image = newImage
+
+	// Docker rejects hostname, exposed ports, and port bindings when using
+	// container:/host/none network mode — the container inherits networking
+	// from the target, so these settings conflict.
+	if snapshot.HostConfig != nil && isSpecialNetworkMode(string(snapshot.HostConfig.NetworkMode)) {
+		newConfig.Hostname = ""
+		newConfig.Domainname = ""
+		newConfig.ExposedPorts = nil
+		snapshot.HostConfig.PortBindings = nil
+	}
 
 	// Determine if network mode is special (handled by HostConfig only)
 	var networkingConfig *network.NetworkingConfig

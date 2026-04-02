@@ -41,9 +41,14 @@ services:
       - /tmp
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - watchwarden_snapshots:/var/lib/watchwarden/snapshots
 ```
 
 The agent **cannot** use `read_only: true` because it writes snapshot files to `/var/lib/watchwarden/snapshots` for crash recovery. The Docker socket **must** remain read-write because WatchWarden actively manages containers (stop, remove, create, start).
+
+:::tip Snapshot persistence
+The `watchwarden_snapshots` volume persists rollback snapshots across agent restarts. Without it, the agent stores snapshots in memory only — crash recovery after an agent restart won't be able to restore containers to their pre-update state. The agent works without this volume, but adding it is strongly recommended for production.
+:::
 
 :::info Why not read-only socket?
 WUD (What's Up Docker) can use a read-only Docker socket because it only *monitors* containers. WatchWarden *manages* them — it needs write access for updates, rollbacks, and blue-green deployments. This is an inherent architectural difference, not a missing feature.

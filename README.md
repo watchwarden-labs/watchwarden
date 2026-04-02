@@ -31,7 +31,7 @@
 
 ### Updates & Rollback
 - **Automatic updates** — schedule checks globally or per-agent, with optional auto-update
-- **Blue-green updates** — start new container first, verify health, then stop old (zero-downtime)
+- **Blue-green updates** — start new container first, verify health, then stop old (zero-downtime). Automatically falls back to stop-first if port conflicts are detected (e.g. containers with direct port mappings)
 - **Rollback** — roll back to any previous version or pick a specific tag from the registry
 - **Update groups** — label-based dependency ordering (`com.watchwarden.group`, `com.watchwarden.depends_on`)
 - **Per-container policies** — label-driven control: `com.watchwarden.policy=auto|notify|manual` per container
@@ -278,12 +278,15 @@ DOCKER_SOCKET=$XDG_RUNTIME_DIR/docker.sock docker compose up -d
 docker run -d \
   --name watchwarden-agent \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -v watchwarden_snapshots:/var/lib/watchwarden/snapshots \
   -e CONTROLLER_URL=ws://YOUR_CONTROLLER:3000 \
   -e AGENT_TOKEN=your-generated-token \
   -e AGENT_NAME=production-server \
   --restart unless-stopped \
   alexneo/watchwarden-agent:latest
 ```
+
+> **Snapshot volume**: The `-v watchwarden_snapshots:/var/lib/watchwarden/snapshots` mount persists rollback snapshots across agent restarts. Without it, snapshots are stored in memory only and lost on restart. The agent works without this volume but crash recovery after an agent restart won't be able to restore containers.
 
 ## Docker Images
 
@@ -342,7 +345,7 @@ When `CONTROLLER_URL` is not set, the agent runs autonomously.
 | `WW_SCHEDULE` | `@every 24h` | Check schedule (cron expression or `@every` interval) |
 | `WW_AUTO_UPDATE` | `false` | Automatically apply updates (set `true` to enable) |
 | `WW_MONITOR_ONLY` | `false` | Check only, never update |
-| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` (stop-first) or `start-first` (blue-green zero-downtime) |
+| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` (stop-first) or `start-first` (blue-green zero-downtime). Blue-green auto-falls back to stop-first for containers with port mappings. |
 | `WW_PRUNE` | `false` | Remove old images after update |
 | `WW_STOP_TIMEOUT` | `10` | Container stop timeout in seconds |
 | `WW_TELEGRAM_TOKEN` | — | Telegram bot token for notifications |

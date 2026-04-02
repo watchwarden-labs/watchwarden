@@ -1,6 +1,6 @@
 import { formatDistanceToNow } from 'date-fns';
 import { Clock, GitCompare, Globe, Loader2, RotateCcw, Search } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Container } from '@/api/hooks/useAgents';
 import { useRollbackContainer } from '@/api/hooks/useAgents';
 import type { RegistryTag } from '@/api/hooks/useVersions';
@@ -44,7 +44,11 @@ interface SelectedVersion {
   tag?: string;
   digest?: string;
   label: string;
+  /** Unique key for disambiguating entries with same digest/tag */
+  key: string;
 }
+
+const PAGE_SIZE = 20;
 
 export function VersionPickerModal({
   open,
@@ -63,7 +67,7 @@ export function VersionPickerModal({
   const [allTags, setAllTags] = useState<RegistryTag[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
 
-  // Debounce search — don't clear tags, let results replace them
+  // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
@@ -80,14 +84,14 @@ export function VersionPickerModal({
     return () => clearTimeout(timer);
   }, [search, versions]);
 
-  // Load initial tags from versions response (only when no search active)
+  // Load initial tags from versions response
   useEffect(() => {
     if (versions?.registry?.tags && !debouncedSearch && !hasSearched) {
       setAllTags(versions.registry.tags);
     }
   }, [versions, debouncedSearch, hasSearched]);
 
-  // Search/pagination query — enabled when searching OR loading more pages
+  // Search/pagination query
   const needsSearchQuery = (debouncedSearch !== '' || registryPage > 1) && open;
   const { data: searchResult, isFetching: loadingSearch } = useRegistryTags(
     agentId,
@@ -109,6 +113,20 @@ export function VersionPickerModal({
   const hasMore = registryInfo?.hasMore ?? false;
   const total = registryInfo?.total ?? versions?.registry?.total ?? null;
 
+  // Client-side filter for registries that don't support server-side search
+  const filteredTags = useMemo(() => {
+    if (!debouncedSearch) return allTags;
+    const q = debouncedSearch.toLowerCase();
+    return allTags.filter((t) => t.name.toLowerCase().includes(q));
+  }, [allTags, debouncedSearch]);
+
+  // Paginate client-side
+  const visibleTags = useMemo(
+    () => filteredTags.slice(0, registryPage * PAGE_SIZE),
+    [filteredTags, registryPage],
+  );
+  const clientHasMore = visibleTags.length < filteredTags.length;
+
   const handleRollback = () => {
     rollback.mutate(
       {
@@ -119,19 +137,13 @@ export function VersionPickerModal({
       },
       {
         onSuccess: () => {
-          addToast({
-            type: 'info',
-            message: `Rolling back ${container.name}...`,
-          });
+          addToast({ type: 'info', message: `Rolling back ${container.name}...` });
           setConfirmOpen(false);
           onOpenChange(false);
           setSelected(null);
         },
         onError: () =>
-          addToast({
-            type: 'error',
-            message: `Rollback failed for ${container.name}`,
-          }),
+          addToast({ type: 'error', message: `Rollback failed for ${container.name}` }),
       },
     );
   };
@@ -154,7 +166,7 @@ export function VersionPickerModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw size={18} /> Roll Back Container
@@ -195,53 +207,65 @@ export function VersionPickerModal({
                   No update history yet. Run an update first to enable rollback from history.
                 </div>
               )}
-              {versions?.local.map((v) => (
-                <button
-                  type="button"
-                  key={v.digest}
-                  onClick={() =>
-                    !v.isCurrent &&
-                    setSelected({
-                      type: 'local',
-                      digest: v.digest ?? undefined,
-                      tag: v.tag ?? undefined,
-                      label: v.tag ?? truncateDigest(v.digest),
-                    })
-                  }
-                  disabled={v.isCurrent}
-                  className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                    v.isCurrent
-                      ? 'opacity-50 cursor-default'
-                      : selected?.digest === v.digest && selected?.type === 'local'
-                        ? 'bg-primary/10 border border-primary/30'
-                        : 'hover:bg-secondary'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`w-3 h-3 rounded-full border-2 ${selected?.digest === v.digest && selected?.type === 'local' ? 'border-primary bg-primary' : 'border-muted-foreground'}`}
-                    />
-                    <div>
-                      {v.tag && <span className="text-sm font-medium">{v.tag}</span>}
-                      {v.digest && (
-                        <code className="text-xs text-muted-foreground ml-2" title={v.digest}>
-                          {truncateDigest(v.digest)}
-                        </code>
+              {versions?.local.map((v, idx) => {
+                const entryKey = `local-${idx}`;
+                const isSelected = selected?.key === entryKey;
+                return (
+                  <button
+                    type="button"
+                    key={entryKey}
+                    onClick={() =>
+                      !v.isCurrent &&
+                      setSelected({
+                        type: 'local',
+                        digest: v.digest ?? undefined,
+                        tag: v.tag ?? undefined,
+                        label: v.tag
+                          ? `${v.tag} (${truncateDigest(v.digest)})`
+                          : truncateDigest(v.digest),
+                        key: entryKey,
+                      })
+                    }
+                    disabled={v.isCurrent}
+                    className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                      v.isCurrent
+                        ? 'opacity-50 cursor-default'
+                        : isSelected
+                          ? 'bg-primary/10 border border-primary/30'
+                          : 'hover:bg-secondary'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`w-3 h-3 rounded-full border-2 ${isSelected ? 'border-primary bg-primary' : 'border-muted-foreground'}`}
+                      />
+                      <div className="flex items-center gap-2">
+                        {v.tag && <span className="text-sm font-medium">{v.tag}</span>}
+                        {v.digest && (
+                          <code className="text-xs text-muted-foreground" title={v.digest}>
+                            {truncateDigest(v.digest)}
+                          </code>
+                        )}
+                        {v.status && v.status !== 'success' && (
+                          <Badge variant="destructive" className="text-[10px]">
+                            {v.status}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(v.updatedAt, { addSuffix: true })}
+                      </span>
+                      {v.isCurrent && (
+                        <Badge variant="outline" className="text-xs">
+                          Current
+                        </Badge>
                       )}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(v.updatedAt, { addSuffix: true })}
-                    </span>
-                    {v.isCurrent && (
-                      <Badge variant="outline" className="text-xs">
-                        Current
-                      </Badge>
-                    )}
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </TabsContent>
 
             {/* Registry Tags Tab */}
@@ -274,84 +298,99 @@ export function VersionPickerModal({
                   <Alert>
                     <Globe size={14} />
                     <AlertDescription className="text-xs">
-                      Could not fetch registry tags. Check credentials in Settings → Registries.
+                      Could not fetch registry tags. Check credentials in Settings &rarr;
+                      Registries.
                     </AlertDescription>
                   </Alert>
                 )}
 
               {!isLoading &&
                 !loadingSearch &&
-                allTags.length === 0 &&
-                versions?.registry !== null && (
+                filteredTags.length === 0 &&
+                allTags.length > 0 &&
+                debouncedSearch && (
                   <div className="py-8 text-center text-muted-foreground text-sm">
-                    No tags found{search ? ` matching "${search}"` : ''}.
+                    No tags matching &quot;{debouncedSearch}&quot;
                   </div>
                 )}
 
-              <div className="relative max-h-64 overflow-y-auto space-y-0.5">
+              {!isLoading &&
+                !loadingSearch &&
+                allTags.length === 0 &&
+                versions?.registry !== null &&
+                !debouncedSearch && (
+                  <div className="py-8 text-center text-muted-foreground text-sm">
+                    No tags found.
+                  </div>
+                )}
+
+              <div className="relative max-h-72 overflow-y-auto space-y-0.5">
                 {loadingSearch && allTags.length > 0 && (
                   <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-lg">
                     <Loader2 size={20} className="animate-spin text-primary" />
                   </div>
                 )}
-                {allTags.map((tag) => (
-                  <button
-                    type="button"
-                    key={tag.name}
-                    onClick={() =>
-                      setSelected({
-                        type: 'registry',
-                        tag: tag.name,
-                        digest: tag.digest ?? undefined,
-                        label: tag.name,
-                      })
-                    }
-                    className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                      selected?.tag === tag.name && selected?.type === 'registry'
-                        ? 'bg-primary/10 border border-primary/30'
-                        : 'hover:bg-secondary'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`w-3 h-3 rounded-full border-2 ${selected?.tag === tag.name && selected?.type === 'registry' ? 'border-primary bg-primary' : 'border-muted-foreground'}`}
-                      />
-                      <span className="text-sm font-medium">{tag.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {tag.digest && (
-                        <code className="text-xs text-muted-foreground" title={tag.digest}>
-                          {truncateDigest(tag.digest)}
-                        </code>
-                      )}
-                      {tag.updatedAt && (
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(tag.updatedAt), {
-                            addSuffix: true,
-                          })}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+                {visibleTags.map((tag) => {
+                  const tagKey = `registry-${tag.name}`;
+                  const isTagSelected = selected?.key === tagKey;
+                  return (
+                    <button
+                      type="button"
+                      key={tag.name}
+                      onClick={() =>
+                        setSelected({
+                          type: 'registry',
+                          tag: tag.name,
+                          digest: tag.digest ?? undefined,
+                          label: tag.name,
+                          key: tagKey,
+                        })
+                      }
+                      className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                        isTagSelected
+                          ? 'bg-primary/10 border border-primary/30'
+                          : 'hover:bg-secondary'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`w-3 h-3 rounded-full border-2 ${isTagSelected ? 'border-primary bg-primary' : 'border-muted-foreground'}`}
+                        />
+                        <span className="text-sm font-medium">{tag.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {tag.digest && (
+                          <code className="text-xs text-muted-foreground" title={tag.digest}>
+                            {truncateDigest(tag.digest)}
+                          </code>
+                        )}
+                        {tag.updatedAt && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(tag.updatedAt), { addSuffix: true })}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
-              {(hasMore || (loadingSearch && allTags.length > 0)) && (
+              {(clientHasMore || hasMore || loadingSearch) && (
                 <div className="mt-3 flex items-center justify-between">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setRegistryPage((p) => p + 1)}
-                    disabled={loadingSearch}
+                    disabled={loadingSearch || (!clientHasMore && !hasMore)}
                   >
-                    {loadingSearch ? <Loader2 size={14} className="animate-spin" /> : null}
-                    {loadingSearch ? 'Searching...' : 'Load more'}
+                    {loadingSearch && <Loader2 size={14} className="animate-spin" />}
+                    {loadingSearch
+                      ? 'Loading...'
+                      : `Show more (${filteredTags.length - visibleTags.length})`}
                   </Button>
-                  {total !== null && (
-                    <span className="text-xs text-muted-foreground">
-                      Showing {allTags.length} of {total} tags
-                    </span>
-                  )}
+                  <span className="text-xs text-muted-foreground">
+                    Showing {visibleTags.length} of {total ?? filteredTags.length} tags
+                  </span>
                 </div>
               )}
             </TabsContent>

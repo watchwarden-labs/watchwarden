@@ -356,11 +356,36 @@ export class AgentHub {
                     );
                     const containerName = dbContainer?.name ?? r.containerName ?? r.containerId;
                     const rawImage = dbContainer?.image ?? '';
-                    const image =
-                      rawImage.match(/^[a-f0-9]{12,}$/) || rawImage.startsWith('sha256:')
-                        ? containerName
-                        : rawImage;
-                    return { name: containerName, image };
+                    // Extract base image and current tag
+                    let baseImage = rawImage;
+                    let currentTag = '';
+                    if (rawImage.includes('@sha256:')) {
+                      baseImage = rawImage.split('@')[0] ?? rawImage;
+                    } else if (
+                      rawImage.match(/^[a-f0-9]{12,}$/) ||
+                      rawImage.startsWith('sha256:')
+                    ) {
+                      baseImage = containerName;
+                    } else if (rawImage.includes(':')) {
+                      const idx = rawImage.lastIndexOf(':');
+                      baseImage = rawImage.slice(0, idx);
+                      currentTag = rawImage.slice(idx + 1);
+                    }
+                    // Extract tag from latestDigest if it contains an image ref
+                    let latestTag = 'latest';
+                    const ld = r.latestDigest ?? '';
+                    if (ld.includes(':') && !ld.startsWith('sha256:')) {
+                      // e.g. "ghcr.io/ajnart/homarr@sha256:..." or "image:tag"
+                      const afterColon = ld.split(':').pop() ?? '';
+                      if (!afterColon.match(/^[a-f0-9]{32,}/)) {
+                        latestTag = afterColon;
+                      }
+                    }
+                    const versionInfo =
+                      currentTag && currentTag !== latestTag
+                        ? `${currentTag} → ${latestTag}`
+                        : latestTag;
+                    return { name: containerName, image: `${baseImage} (${versionInfo})` };
                   });
                 if (withUpdates.length > 0) {
                   const agent = (await listAgents()).find((a) => a.id === agentId);
@@ -564,6 +589,28 @@ export class AgentHub {
                 containerId: payload.containerId,
                 containerName: payload.containerName,
                 status: payload.status,
+              });
+              break;
+            }
+
+            case 'CONTAINER_ACTION_RESULT': {
+              const payload = message.payload as {
+                action: string;
+                containerId: string;
+                success: boolean;
+                error?: string;
+              };
+              log.info(
+                'hub',
+                `Agent ${agentId}: ${payload.action} ${payload.containerId} → ${payload.success ? 'ok' : payload.error}`,
+              );
+              this.broadcaster?.broadcast({
+                type: 'CONTAINER_ACTION_RESULT',
+                agentId,
+                action: payload.action,
+                containerId: payload.containerId,
+                success: payload.success,
+                error: payload.error,
               });
               break;
             }

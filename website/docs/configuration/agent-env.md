@@ -27,7 +27,7 @@ title: Agent Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` (stop-first) or `start-first` (blue-green zero-downtime) |
+| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` (stop-first) or `start-first` (blue-green zero-downtime). Blue-green automatically falls back to stop-first for containers with direct port mappings. |
 | `WW_PRUNE` | `false` | Remove old images after successful update |
 | `WW_STOP_TIMEOUT` | `10` | Container stop timeout in seconds |
 | `WW_INCLUDE_STOPPED` | `false` | Also monitor stopped containers |

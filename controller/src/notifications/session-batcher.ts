@@ -1,6 +1,5 @@
 import { log } from '../lib/logger.js';
 import { notifier } from './notifier.js';
-import type { NotificationEvent } from './types.js';
 
 interface UpdateResultItem {
   containerId: string;
@@ -11,25 +10,85 @@ interface UpdateResultItem {
   durationMs: number;
 }
 
-export function addUpdateResult(agentId: string, result: UpdateResultItem): void {
-  const event: NotificationEvent = result.success
-    ? {
+// Batch update results per agent — accumulate for a short window, then dispatch
+// a single notification with all containers from the same update operation.
+interface ResultBatch {
+  agentId: string;
+  successes: Array<{ name: string; image: string; durationMs: number }>;
+  failures: Array<{ name: string; error: string }>;
+  timer: ReturnType<typeof setTimeout>;
+  maxTimer: ReturnType<typeof setTimeout>;
+  createdAt: number;
+}
+
+const resultBatches = new Map<string, ResultBatch>();
+// Sliding window: reset timer on each new result so the batch keeps growing
+// as long as results arrive within the window. Max wait caps total delay.
+const RESULT_BATCH_WINDOW_MS = 10_000; // wait 10s after last result before flushing
+const RESULT_BATCH_MAX_WAIT_MS = 3 * 60_000; // max 3 minutes from first result
+
+function flushResultBatch(agentId: string): void {
+  const batch = resultBatches.get(agentId);
+  if (!batch) return;
+  clearTimeout(batch.timer);
+  clearTimeout(batch.maxTimer);
+  resultBatches.delete(agentId);
+
+  if (batch.successes.length > 0) {
+    notifier
+      .dispatch({
         type: 'update_success',
-        agentName: agentId,
-        containers: [
-          {
-            name: result.containerName,
-            image: result.image ?? '',
-            durationMs: result.durationMs,
-          },
-        ],
-      }
-    : {
+        agentName: batch.agentId,
+        containers: batch.successes,
+      })
+      .catch((err) => log.error('notify', `dispatch failed: ${err}`));
+  }
+
+  if (batch.failures.length > 0) {
+    notifier
+      .dispatch({
         type: 'update_failed',
-        agentName: agentId,
-        containers: [{ name: result.containerName, error: result.error ?? 'unknown' }],
-      };
-  notifier.dispatch(event).catch((err) => log.error('notify', `dispatch failed: ${err}`));
+        agentName: batch.agentId,
+        containers: batch.failures,
+      })
+      .catch((err) => log.error('notify', `dispatch failed: ${err}`));
+  }
+}
+
+export function addUpdateResult(agentId: string, result: UpdateResultItem): void {
+  let batch = resultBatches.get(agentId);
+  if (!batch) {
+    const maxTimer = setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_MAX_WAIT_MS);
+    maxTimer.unref?.();
+    batch = {
+      agentId,
+      successes: [],
+      failures: [],
+      timer: setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_WINDOW_MS),
+      maxTimer,
+      createdAt: Date.now(),
+    };
+    batch.timer.unref?.();
+    resultBatches.set(agentId, batch);
+  } else {
+    // Sliding window: reset the timer on each new result
+    clearTimeout(batch.timer);
+    batch.timer = setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_WINDOW_MS);
+    batch.timer.unref?.();
+  }
+
+  if (result.success) {
+    batch.successes.push({
+      name: result.containerName,
+      image: result.image ?? '',
+      durationMs: result.durationMs,
+    });
+  } else {
+    batch.failures.push({
+      name: result.containerName,
+      error: result.error ?? 'unknown',
+    });
+  }
 }
 
 // Deduplicate: track which container updates we already notified about
@@ -63,6 +122,10 @@ export function clearPendingTimers(): void {
   if (pendingCheckBatch) {
     clearTimeout(pendingCheckBatch.timer);
     flushCheckBatch(); // flush before discarding
+  }
+  // Flush any pending update result batches
+  for (const [agentId] of resultBatches) {
+    flushResultBatch(agentId);
   }
 }
 

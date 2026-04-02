@@ -135,7 +135,7 @@ Write tests before implementation for every module.
 | `AGENT_NAME` | hostname | Display name |
 | `WW_SCHEDULE` | `@every 24h` | Check schedule (Solo Mode) |
 | `WW_AUTO_UPDATE` | `false` | Auto-apply updates (Solo Mode) |
-| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` or `start-first` (blue-green) |
+| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` or `start-first` (blue-green, auto-falls back for port conflicts) |
 | `WW_TELEGRAM_TOKEN` | — | Telegram bot token (Solo Mode notifications) |
 | `WW_TELEGRAM_CHAT_ID` | — | Telegram chat ID |
 | `WW_SLACK_WEBHOOK` | — | Slack webhook URL |
