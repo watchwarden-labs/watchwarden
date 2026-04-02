@@ -36,6 +36,27 @@ function setCache(key: string, data: TagsResult): void {
   }
 }
 
+/**
+ * Check if a non-Docker Hub registry image also exists on Docker Hub,
+ * which has better search, pagination, and date metadata.
+ * Currently: lscr.io images are LinuxServer — always published to Docker Hub too.
+ */
+function canUseDockerHub(registry: string, _repository: string): boolean {
+  const lower = registry.toLowerCase();
+  return lower === 'lscr.io';
+}
+
+function extractTag(image: string): string | undefined {
+  // Strip digest
+  let ref = image;
+  const atIdx = ref.indexOf('@');
+  if (atIdx !== -1) ref = ref.slice(0, atIdx);
+  const colonIdx = ref.lastIndexOf(':');
+  const slashIdx = ref.lastIndexOf('/');
+  if (colonIdx > slashIdx) return ref.slice(colonIdx + 1);
+  return undefined;
+}
+
 function parseImageRef(image: string): {
   registry: string;
   repository: string;
@@ -89,20 +110,36 @@ export async function fetchRegistryTags(
   const { page = 1, limit = 20, search } = options;
   const { registry, repository } = parseImageRef(image);
 
+  // Extract the tag from the image (e.g. "latest" from "lscr.io/linuxserver/sonarr:latest")
+  const imageTag = extractTag(image);
+
   const cacheKey = `${registry}/${repository}:p${page}:l${limit}:s${search ?? ''}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
     let result: TagsResult;
     if (registry === 'docker.io') {
       result = await fetchDockerHubTags(repository, page, limit, search, controller.signal);
+    } else if (canUseDockerHub(registry, repository)) {
+      // lscr.io and some GHCR-backed registries also publish to Docker Hub
+      // with better search, pagination, and date metadata
+      result = await fetchDockerHubTags(repository, page, limit, search, controller.signal);
     } else {
       const creds = await getCredentials(registry);
-      result = await fetchV2Tags(registry, repository, creds, controller.signal);
+      result = await fetchV2Tags(
+        registry,
+        repository,
+        creds,
+        page,
+        limit,
+        search,
+        controller.signal,
+        imageTag,
+      );
     }
     setCache(cacheKey, result);
     return result;
@@ -161,62 +198,153 @@ async function fetchV2Tags(
   registry: string,
   repository: string,
   creds: { username: string; password: string } | null,
+  page: number,
+  limit: number,
+  search: string | undefined,
   signal: AbortSignal,
+  imageTag?: string,
 ): Promise<TagsResult> {
   const headers: Record<string, string> = {};
 
-  // Authenticate if credentials available
-  if (creds) {
-    // Try to get a bearer token first (ghcr.io, registry.gitlab.com, etc.)
-    try {
-      const tokenUrl = `https://${registry}/token?service=${registry}&scope=repository:${repository}:pull`;
-      const tokenRes = await fetch(tokenUrl, {
-        signal,
-        headers: {
-          Authorization: `Basic ${btoa(`${creds.username}:${creds.password}`)}`,
-        },
-      });
-      if (tokenRes.ok) {
-        const tokenData = (await tokenRes.json()) as { token?: string };
-        if (tokenData.token) {
-          headers.Authorization = `Bearer ${tokenData.token}`;
-        }
-      }
-    } catch {
-      // Fall back to basic auth
+  // Step 1: probe the tags endpoint to discover the auth scheme
+  const tagsUrl = `https://${registry}/v2/${repository}/tags/list`;
+  const probe = await fetch(tagsUrl, { signal, redirect: 'follow' }).catch(() => null);
+
+  if (probe && probe.status === 401) {
+    // Drain the body to free the connection
+    await probe.text().catch(() => {});
+    // Parse the WWW-Authenticate header to discover the token endpoint
+    const wwwAuth = probe.headers.get('www-authenticate') ?? '';
+    const token = await fetchBearerToken(wwwAuth, repository, creds, signal);
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    } else if (creds) {
+      headers.Authorization = `Basic ${btoa(`${creds.username}:${creds.password}`)}`;
+    }
+  } else if (probe && !probe.ok) {
+    await probe.text().catch(() => {});
+    if (creds) {
       headers.Authorization = `Basic ${btoa(`${creds.username}:${creds.password}`)}`;
     }
   }
 
-  const url = `https://${registry}/v2/${repository}/tags/list`;
-  const res = await fetch(url, { signal, headers });
+  // Step 2: fetch tags using V2 pagination (RFC 5988 Link header).
+  // V2 returns tags in lexicographic order. We fetch from the start (catches "latest",
+  // "alpine", "beta" etc.) and also from the image's own tag as cursor (catches
+  // version-numbered tags that sort after it: "4.x", "5.x", etc.).
+  if (probe?.ok) await probe.text().catch(() => {}); // drain unused probe body
 
-  if (!res.ok) {
-    return { tags: [], page: 1, hasMore: false, total: null };
-  }
+  const fetchBatch = async (cursor?: string): Promise<string[]> => {
+    const u = new URL(tagsUrl);
+    u.searchParams.set('n', '500');
+    if (cursor) u.searchParams.set('last', cursor);
+    const r = await fetch(u.toString(), { signal, headers });
+    if (!r.ok) return [];
+    const d = (await r.json()) as { tags: string[] | null };
+    return d.tags ?? [];
+  };
 
-  const data = (await res.json()) as { tags: string[] | null };
-  const tagNames = data.tags ?? [];
+  // Use the image's current tag (e.g. "latest") as a cursor to skip past old tags
+  const cursor = imageTag ?? 'latest';
+  const [batch1, batch2] = await Promise.all([fetchBatch(), fetchBatch(cursor)]);
+  const tagSet = new Set([...batch1, ...batch2]);
+  let tagNames = [...tagSet];
 
-  // Sort tags: semver-like first (descending), then alphabetical
-  tagNames.sort((a, b) => {
-    const aIsSemver = /^\d/.test(a);
-    const bIsSemver = /^\d/.test(b);
-    if (aIsSemver && !bIsSemver) return -1;
-    if (!aIsSemver && bIsSemver) return 1;
-    if (aIsSemver && bIsSemver) return b.localeCompare(a, undefined, { numeric: true });
-    return a.localeCompare(b);
+  // Filter out platform-specific, internal, and build-info tags
+  const noisePrefixes = [
+    'amd64-',
+    'arm64v8-',
+    'arm32v7-',
+    'arm64-',
+    'arm-',
+    'i386-',
+    '386-',
+    'version-',
+    'sha-',
+    'unstable-',
+    'develop-',
+  ];
+  tagNames = tagNames.filter((t) => {
+    const lower = t.toLowerCase();
+    if (noisePrefixes.some((p) => lower.startsWith(p))) return false;
+    // Filter out LinuxServer-style build tags (contain long build IDs + distro names)
+    if (/ubuntu|debian|alpine\d/.test(lower) && lower.length > 30) return false;
+    return true;
   });
 
-  // Try to fetch digests for each tag (best effort, parallel, with timeout)
-  const tagsWithDigests = await resolveDigests(registry, repository, tagNames, headers, signal);
+  // Filter by search term (V2 API doesn't support server-side search)
+  let filtered = tagNames;
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = tagNames.filter((t) => t.toLowerCase().includes(q));
+  }
+
+  // Sort: "latest" first, then version-like tags descending (newest first),
+  // then remaining tags alphabetically descending.
+  const isVersion = (t: string) => /^v?\d/.test(t);
+  filtered.sort((a, b) => {
+    if (a === 'latest') return -1;
+    if (b === 'latest') return 1;
+    const aVer = isVersion(a);
+    const bVer = isVersion(b);
+    if (aVer && !bVer) return -1;
+    if (!aVer && bVer) return 1;
+    // Both version-like: descending numeric sort (v3.3.16 before v3.0.3)
+    if (aVer && bVer) return b.localeCompare(a, undefined, { numeric: true });
+    // Both non-version: descending alphabetical
+    return b.localeCompare(a);
+  });
+
+  // Paginate — only resolve digests for the requested page
+  const totalCount = filtered.length;
+  const start = (page - 1) * limit;
+  const pageNames = filtered.slice(start, start + limit);
+
+  const tagsWithDigests = await resolveDigests(registry, repository, pageNames, headers, signal);
 
   return {
     tags: tagsWithDigests,
-    page: 1,
-    hasMore: false,
-    total: tagNames.length,
+    page,
+    hasMore: start + limit < totalCount,
+    total: totalCount,
   };
+}
+
+/**
+ * Parse a WWW-Authenticate header and fetch a bearer token.
+ * Format: Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:user/repo:pull"
+ */
+async function fetchBearerToken(
+  wwwAuth: string,
+  repository: string,
+  creds: { username: string; password: string } | null,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const realmMatch = wwwAuth.match(/realm="([^"]+)"/);
+  if (!realmMatch) return null;
+
+  const realm = realmMatch[1];
+  const serviceMatch = wwwAuth.match(/service="([^"]+)"/);
+  const scopeMatch = wwwAuth.match(/scope="([^"]+)"/);
+
+  const params = new URLSearchParams();
+  if (serviceMatch) params.set('service', serviceMatch[1]!);
+  params.set('scope', scopeMatch?.[1] ?? `repository:${repository}:pull`);
+
+  const tokenUrl = `${realm}?${params}`;
+  const fetchHeaders: Record<string, string> = {};
+  if (creds) {
+    fetchHeaders.Authorization = `Basic ${btoa(`${creds.username}:${creds.password}`)}`;
+  }
+
+  try {
+    const res = await fetch(tokenUrl, { signal, headers: fetchHeaders });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { token?: string; access_token?: string };
+    return data.token ?? data.access_token ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function resolveDigests(

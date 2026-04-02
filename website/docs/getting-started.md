@@ -59,7 +59,7 @@ docker run -d \
 |----------|---------|-------------|
 | `WW_SCHEDULE` | `@every 24h` | Check interval (`@every 6h`) or cron (`0 4 * * *`) |
 | `WW_AUTO_UPDATE` | `false` | Automatically apply updates |
-| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` or `start-first` (blue-green) |
+| `WW_UPDATE_STRATEGY` | `recreate` | `recreate` or `start-first` (blue-green, auto-falls back for port conflicts) |
 | `WW_PRUNE` | `false` | Remove old images after update |
 
 See [Agent Configuration](/docs/configuration/agent-env) for the full reference.

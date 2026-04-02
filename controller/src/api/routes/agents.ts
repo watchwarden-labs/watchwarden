@@ -160,9 +160,15 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
           strategy: policy.strategy ?? 'stop-first',
         });
       } else {
-        // All containers — get list and orchestrate
+        // All containers with updates — filter to only those that actually need updating
         const containers = await getContainersByAgent(request.params.id);
-        const allIds = containers.filter((c) => !c.excluded).map((c) => c.docker_id);
+        const allIds = containers
+          .filter((c) => !c.excluded && c.has_update)
+          .map((c) => c.docker_id);
+        if (allIds.length === 0) {
+          hub.setUpdateInFlight(request.params.id, false);
+          return reply.code(200).send({ message: 'No containers have updates' });
+        }
         const { executeOrchestratedUpdate } = await import('../../scheduler/orchestrator.js');
         await executeOrchestratedUpdate(hub, request.params.id, allIds, {
           strategy: policy.strategy ?? 'stop-first',
@@ -193,9 +199,15 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
     let targetImage: string | undefined;
     if (targetTag || targetDigest) {
       if (container) {
-        const baseImage = container.image.split(':')[0] ?? container.image;
+        const baseImage = container.image.split(':')[0]?.split('@')[0] ?? container.image;
         if (targetDigest) {
-          targetImage = `${baseImage}@${targetDigest}`;
+          // Strip image prefix if digest contains full ref (e.g. "registry/repo@sha256:...")
+          const bareDigest = targetDigest.includes('@')
+            ? targetDigest.slice(targetDigest.indexOf('@') + 1)
+            : targetDigest.startsWith('sha256:')
+              ? targetDigest
+              : `sha256:${targetDigest}`;
+          targetImage = `${baseImage}@${bareDigest}`;
         } else if (targetTag) {
           targetImage = `${baseImage}:${targetTag}`;
         }
@@ -224,22 +236,40 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
       (c) => c.docker_id === containerId || c.id === containerId,
     );
 
-    // Local history from update_log
+    // Local history from update_log — deduplicate by digest, skip entries with no digest
     const history = await getHistory({ limit: 50 });
-    const imageTag = container?.image?.includes(':') ? container.image.split(':').pop() : null;
+    const seenDigests = new Set<string>();
     const localVersions = history.data
       .filter(
         (e) =>
           e.agent_id === agentId &&
           (e.container_id === containerId || e.container_name === container?.name),
       )
-      .map((e) => ({
-        digest: e.new_digest ?? e.old_digest,
-        tag: imageTag ?? container?.name ?? null,
-        status: e.status,
-        updatedAt: e.created_at,
-        isCurrent: e.new_digest === container?.current_digest,
-      }));
+      .map((e) => {
+        const rawDigest = e.new_digest ?? e.old_digest;
+        // Extract bare sha256 digest from full image ref
+        const digest = rawDigest?.includes('@')
+          ? rawDigest.slice(rawDigest.indexOf('@') + 1)
+          : rawDigest;
+        const shortDigest = digest ? digest.replace('sha256:', '').slice(0, 12) : null;
+        return {
+          digest,
+          tag: shortDigest,
+          status: e.status,
+          updatedAt: e.created_at,
+          isCurrent: digest
+            ? digest === container?.current_digest || rawDigest === container?.current_digest
+            : false,
+        };
+      })
+      .filter((v) => {
+        // Skip entries with no digest — they can't be used for rollback
+        if (!v.digest) return false;
+        // Deduplicate by digest — keep only the most recent entry per digest
+        if (seenDigests.has(v.digest)) return false;
+        seenDigests.add(v.digest);
+        return true;
+      });
 
     // Fetch registry tags
     let registryResult = null;

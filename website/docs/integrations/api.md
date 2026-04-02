@@ -244,7 +244,7 @@ Trigger updates for specific containers.
 ```
 
 :::caution
-Updates are **destructive** — containers are recreated with the new image. Use with care in production. Updates respect dependency ordering and update groups.
+Updates are **destructive** — containers are recreated with the new image. Use with care in production. Updates respect dependency ordering and update groups. Blue-green (start-first) strategy automatically falls back to stop-first for containers with direct port mappings.
 :::
 
 <details>

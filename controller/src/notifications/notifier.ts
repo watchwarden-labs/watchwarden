@@ -25,11 +25,14 @@ class Notifier {
         const events = JSON.parse(channel.events) as string[];
         if (!events.includes(event.type)) continue;
 
-        // Rate limit check
+        // Rate limit: only throttle "update_available" (which is already batched).
+        // Success and failure notifications are per-container events — always deliver.
         const rateKey = `${channel.id}:${event.type}`;
-        const lastTime = lastDispatch.get(rateKey) ?? 0;
-        if (Date.now() - lastTime < RATE_LIMIT_MS) {
-          continue; // Skip — too soon since last dispatch for this channel+event
+        if (event.type === 'update_available') {
+          const lastTime = lastDispatch.get(rateKey) ?? 0;
+          if (Date.now() - lastTime < RATE_LIMIT_MS) {
+            continue;
+          }
         }
 
         await this.sendToChannel(channel, event);

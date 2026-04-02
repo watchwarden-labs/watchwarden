@@ -228,6 +228,12 @@ export const useStore = create<WatchWardenState>((set, get) => ({
       // Delayed refetch to pick up container data from the post-update heartbeat
       setTimeout(() => get().invalidateAgents?.(), 2000);
     }
+
+    if (type === 'CONTAINER_ACTION_RESULT') {
+      // Refresh agent data so the container status updates in the UI
+      get().invalidateAgents?.();
+      setTimeout(() => get().invalidateAgents?.(), 1500);
+    }
   },
 
   sidebarCollapsed: false,

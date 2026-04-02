@@ -4,6 +4,7 @@ import {
   Loader2,
   Pin,
   Play,
+  RefreshCw,
   RotateCcw,
   ScrollText,
   Square,
@@ -12,6 +13,7 @@ import {
 import { useEffect, useState } from 'react';
 import {
   type Container,
+  useCheckContainer,
   useContainerDelete,
   useContainerStart,
   useContainerStop,
@@ -65,10 +67,11 @@ function StatusDot({ status }: { status: string }) {
   return <span className={`inline-block size-2.5 rounded-full shrink-0 ${color}`} />;
 }
 
-function statusLabel(status: string, pendingAction: string | null) {
+function statusLabel(status: string, pendingAction: string | null, isChecking: boolean) {
   if (pendingAction === 'stop') return 'stopping…';
   if (pendingAction === 'start') return 'starting…';
   if (pendingAction === 'delete') return 'deleting…';
+  if (isChecking) return 'checking…';
   return status;
 }
 
@@ -76,22 +79,37 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'delete' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'delete' | 'check' | null>(
+    null,
+  );
   const progressKey = `${agentId}:${container.docker_id}`;
   const progress = useStore((s) => s.updateProgress[progressKey]);
   const addToast = useStore((s) => s.addToast);
+  const checkingAgents = useStore((s) => s.checkingAgents);
+  const checkContainer = useCheckContainer();
+  const startContainer = useContainerStart();
+  const stopContainer = useContainerStop();
+  const deleteContainer = useContainerDelete();
+
   const hasUpdate = container.has_update === 1;
   const isExcluded = container.excluded === 1;
   const isPinned = container.pinned_version === 1;
   const isRunning = container.status === 'running';
+  const isAgentChecking = checkingAgents.has(agentId);
+  const isChecking = pendingAction === 'check' || isAgentChecking;
 
+  // Clear pending action when container data changes (status, check result, etc.)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally watching specific container fields
   useEffect(() => {
     setPendingAction(null);
-  }, []);
+  }, [container.status, container.has_update, container.last_checked]);
 
-  const startContainer = useContainerStart();
-  const stopContainer = useContainerStop();
-  const deleteContainer = useContainerDelete();
+  // Safety timeout: clear stale check state after 30s (e.g. if check fails silently)
+  useEffect(() => {
+    if (pendingAction !== 'check') return;
+    const timer = setTimeout(() => setPendingAction(null), 30000);
+    return () => clearTimeout(timer);
+  }, [pendingAction]);
 
   function handleStart() {
     setPendingAction('start');
@@ -141,6 +159,23 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
     );
   }
 
+  function handleCheck() {
+    setPendingAction('check');
+    checkContainer.mutate(
+      { agentId, containerIds: [container.docker_id] },
+      {
+        onSuccess: () => addToast({ type: 'info', message: `Checking ${container.name}...` }),
+        onError: (err) => {
+          setPendingAction(null);
+          addToast({
+            type: 'error',
+            message: `Check failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        },
+      },
+    );
+  }
+
   const isActionPending = pendingAction !== null;
 
   return (
@@ -153,9 +188,15 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger render={<span />} className="cursor-default">
-            <StatusDot status={isActionPending ? 'restarting' : container.status} />
+            {isChecking ? (
+              <RefreshCw size={10} className="animate-spin text-primary" />
+            ) : (
+              <StatusDot status={isActionPending ? 'restarting' : container.status} />
+            )}
           </TooltipTrigger>
-          <TooltipContent>{statusLabel(container.status, pendingAction)}</TooltipContent>
+          <TooltipContent>
+            {statusLabel(container.status, pendingAction, isChecking)}
+          </TooltipContent>
         </Tooltip>
       </TooltipProvider>
 
@@ -306,6 +347,27 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
         ) : (
           <TooltipProvider>
             <div className="flex items-center gap-0.5">
+              {!isExcluded && (
+                <Tooltip>
+                  <TooltipTrigger render={<span />}>
+                    <Button
+                      aria-label="Check for updates"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={isChecking || isActionPending}
+                      onClick={handleCheck}
+                    >
+                      {isChecking ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={15} />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Check for updates</TooltipContent>
+                </Tooltip>
+              )}
+
               {hasUpdate && !isPinned && !isExcluded && (
                 <Tooltip>
                   <TooltipTrigger render={<span />}>

@@ -101,20 +101,33 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 
 	// Register all message handlers
 	wsClient.OnMessage("CHECK", func(payload json.RawMessage) {
+		var cmd struct {
+			ContainerIDs []string `json:"containerIds"`
+		}
+		_ = json.Unmarshal(payload, &cmd)
+
 		ctx, cancel := context.WithTimeout(wsClient.ConnectionCtx(), 10*time.Minute)
 		defer cancel()
-		containers, err := dockerClient.ListContainers(ctx)
-		if err != nil {
-			log.Printf("CHECK failed: %v", err)
-			return
-		}
+
 		var ids []string
-		for _, c := range containers {
-			if !c.Excluded && !c.PinnedVersion {
-				ids = append(ids, c.DockerID)
+		if len(cmd.ContainerIDs) > 0 {
+			// Check specific containers only
+			ids = cmd.ContainerIDs
+			log.Printf("Running CHECK for %d specific container(s)", len(ids))
+		} else {
+			// Check all non-excluded, non-pinned containers
+			containers, err := dockerClient.ListContainers(ctx)
+			if err != nil {
+				log.Printf("CHECK failed: %v", err)
+				return
 			}
+			for _, c := range containers {
+				if !c.Excluded && !c.PinnedVersion {
+					ids = append(ids, c.DockerID)
+				}
+			}
+			log.Printf("Running CHECK for %d containers (%d excluded)", len(ids), len(containers)-len(ids))
 		}
-		log.Printf("Running CHECK for %d containers (%d excluded)", len(ids), len(containers)-len(ids))
 		results, err := updater.CheckForUpdates(ctx, ids)
 		if err != nil {
 			log.Printf("CHECK error: %v", err)
@@ -139,7 +152,8 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			log.Printf("[handler] UPDATE: invalid payload: %v", err)
 			return
 		}
-		ctx, cancel := context.WithTimeout(wsClient.ConnectionCtx(), 10*time.Minute)
+		// Use background context — updates must complete even if WS disconnects
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		for _, id := range cmd.ContainerIDs {
 			currentID := id
@@ -189,7 +203,8 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			log.Printf("[handler] UPDATE_SEQUENTIAL: invalid payload: %v", err)
 			return
 		}
-		ctx, cancel := context.WithTimeout(wsClient.ConnectionCtx(), 30*time.Minute)
+		// Use background context — sequential updates must complete even if WS disconnects
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		for i, batch := range cmd.Batches {
 			log.Printf("[sequential] Batch %d/%d: %d containers", i+1, len(cmd.Batches), len(batch.ContainerIDs))
@@ -228,7 +243,9 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			log.Printf("[handler] ROLLBACK: invalid payload: %v", err)
 			return
 		}
-		ctx, cancel := context.WithTimeout(wsClient.ConnectionCtx(), 10*time.Minute)
+		// Use background context — rollback must complete even if WS disconnects
+		// mid-operation, otherwise the container is left stopped/removed with no recovery.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		resolvedID := cmd.ContainerID
 		resolved, err := dockerClient.ResolveContainerID(ctx, cmd.ContainerID)
@@ -295,7 +312,7 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		if cmd.KeepPrevious < 0 {
 			cmd.KeepPrevious = 1
 		}
-		ctx, cancel := context.WithTimeout(wsClient.ConnectionCtx(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		result := pruner.Prune(ctx, cmd.KeepPrevious, cmd.DryRun)
 		wsClient.Send(Message{Type: "PRUNE_RESULT", Payload: result})
@@ -314,7 +331,7 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			log.Printf("[handler] SCAN: invalid payload: %v", err)
 			return
 		}
-		ctx, cancel := context.WithTimeout(wsClient.ConnectionCtx(), 10*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		result, err := scanner.Scan(ctx, cmd.ContainerID, cmd.ContainerName, cmd.Image)
 		if err != nil {
@@ -331,17 +348,21 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		if err := json.Unmarshal(payload, &cmd); err != nil {
 			return
 		}
-		ctx, cancel := context.WithTimeout(wsClient.ConnectionCtx(), 2*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		resolvedID := cmd.ContainerID
 		if r, err := dockerClient.ResolveContainerID(ctx, cmd.ContainerID); err == nil {
 			resolvedID = r
 		}
+		log.Printf("[container] Starting %s", cmd.ContainerID)
 		err := dockerClient.cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
 		success := err == nil
 		errStr := ""
 		if err != nil {
 			errStr = err.Error()
+			log.Printf("[container] Start %s failed: %v", cmd.ContainerID, err)
+		} else {
+			log.Printf("[container] Started %s", cmd.ContainerID)
 		}
 		wsClient.Send(Message{Type: "CONTAINER_ACTION_RESULT", Payload: map[string]interface{}{
 			"action": "start", "containerId": cmd.ContainerID, "success": success, "error": errStr,
@@ -358,18 +379,22 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		if err := json.Unmarshal(payload, &cmd); err != nil {
 			return
 		}
-		ctx, cancel := context.WithTimeout(wsClient.ConnectionCtx(), 2*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		resolvedID := cmd.ContainerID
 		if r, err := dockerClient.ResolveContainerID(ctx, cmd.ContainerID); err == nil {
 			resolvedID = r
 		}
+		log.Printf("[container] Stopping %s", cmd.ContainerID)
 		timeout := 10
 		err := dockerClient.cli.ContainerStop(ctx, resolvedID, container.StopOptions{Timeout: &timeout})
 		success := err == nil
 		errStr := ""
 		if err != nil {
 			errStr = err.Error()
+			log.Printf("[container] Stop %s failed: %v", cmd.ContainerID, err)
+		} else {
+			log.Printf("[container] Stopped %s", cmd.ContainerID)
 		}
 		wsClient.Send(Message{Type: "CONTAINER_ACTION_RESULT", Payload: map[string]interface{}{
 			"action": "stop", "containerId": cmd.ContainerID, "success": success, "error": errStr,
@@ -386,19 +411,21 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		if err := json.Unmarshal(payload, &cmd); err != nil {
 			return
 		}
-		ctx, cancel := context.WithTimeout(wsClient.ConnectionCtx(), 2*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		resolvedID := cmd.ContainerID
 		if r, err := dockerClient.ResolveContainerID(ctx, cmd.ContainerID); err == nil {
 			resolvedID = r
 		}
+		log.Printf("[container] Deleting %s", cmd.ContainerID)
 		err := dockerClient.cli.ContainerRemove(ctx, resolvedID, container.RemoveOptions{Force: true})
 		success := err == nil
 		errStr := ""
 		if err != nil {
 			errStr = err.Error()
-		}
-		if success {
+			log.Printf("[container] Delete %s failed: %v", cmd.ContainerID, err)
+		} else {
+			log.Printf("[container] Deleted %s", cmd.ContainerID)
 			deleteSnapshot(cmd.ContainerID)
 		}
 		wsClient.Send(Message{Type: "CONTAINER_ACTION_RESULT", Payload: map[string]interface{}{

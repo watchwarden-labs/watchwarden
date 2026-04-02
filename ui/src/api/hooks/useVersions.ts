@@ -4,6 +4,7 @@ import { apiRequest } from '../client';
 export interface LocalVersion {
   digest: string | null;
   tag: string | null;
+  status: string;
   updatedAt: number;
   isCurrent: boolean;
 }

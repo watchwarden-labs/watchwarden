@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { startPostgres, stopPostgres, truncateAll } from '../../__tests__/pg-setup.js';
+import { startPostgres, stopPostgres } from '../../__tests__/pg-setup.js';
 import { sql } from '../../db/client.js';
 import { setConfig } from '../../db/queries.js';
 import { buildTestApp, getAuthToken, teardownTestApp } from './helpers.js';
