@@ -465,9 +465,11 @@ export class AgentHub {
                 agentId,
                 results,
               });
-              // Feed results into notification batcher
+              // Feed results into notification batcher — use agent name, not UUID
+              const agentForNotify = await getAgent(agentId);
+              const agentDisplayName = agentForNotify?.name ?? agentId;
               for (const r of results) {
-                addUpdateResult(agentId, {
+                addUpdateResult(agentDisplayName, {
                   containerId: r.containerId,
                   containerName: r.containerName,
                   success: r.success,

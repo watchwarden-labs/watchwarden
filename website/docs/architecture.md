@@ -115,6 +115,8 @@ volumes:
 
 Without this volume, snapshots are lost on agent restart and crash recovery is unavailable.
 
+If using a bind mount instead of a named volume, ensure the host directory is owned by `100:101` (the `warden` user): `sudo chown 100:101 /path/to/snapshots`
+
 ### Per-Container Mutex
 
 Every container operation (check, update, rollback) serializes on a per-container lock keyed by canonical name. The lock is released during image pull (which can take minutes) to avoid blocking health monitors and rollbacks.

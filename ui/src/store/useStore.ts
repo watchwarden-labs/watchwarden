@@ -57,6 +57,8 @@ interface WatchWardenState {
   toggleSidebar: () => void;
   agentViewMode: 'grid' | 'list';
   setAgentViewMode: (mode: 'grid' | 'list') => void;
+  theme: 'dark' | 'light';
+  toggleTheme: () => void;
 }
 
 let toastCounter = 0;
@@ -244,4 +246,13 @@ export const useStore = create<WatchWardenState>((set, get) => ({
     localStorage.setItem('watchwarden_view', mode);
     set({ agentViewMode: mode });
   },
+
+  theme: (localStorage.getItem('watchwarden_theme') as 'dark' | 'light') ?? 'dark',
+  toggleTheme: () =>
+    set((state) => {
+      const next = state.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('watchwarden_theme', next);
+      document.documentElement.classList.toggle('light', next === 'light');
+      return { theme: next };
+    }),
 }));

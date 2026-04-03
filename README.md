@@ -2,8 +2,27 @@
 
 **Distributed Docker container update manager.** Think Watchtower, but with multi-host support, a real-time dashboard, and centralized control.
 
-[![CI](https://github.com/alexneo2003/watchwarden/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/alexneo2003/watchwarden/actions)
+[![CI](https://github.com/watchwarden-labs/watchwarden/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/watchwarden-labs/watchwarden/actions)
+[![Release](https://img.shields.io/github/v/release/watchwarden-labs/watchwarden)](https://github.com/watchwarden-labs/watchwarden/releases/latest)
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-orange.svg)](LICENSE)
+[![Controller](https://ghcr-badge.egpl.dev/watchwarden-labs/watchwarden-controller/size?label=controller)](https://github.com/watchwarden-labs/watchwarden/pkgs/container/watchwarden-controller)
+[![Agent](https://ghcr-badge.egpl.dev/watchwarden-labs/watchwarden-agent/size?label=agent)](https://github.com/watchwarden-labs/watchwarden/pkgs/container/watchwarden-agent)
+[![UI](https://ghcr-badge.egpl.dev/watchwarden-labs/watchwarden-ui/size?label=ui)](https://github.com/watchwarden-labs/watchwarden/pkgs/container/watchwarden-ui)
+
+---
+
+## Project Status
+
+WatchWarden is currently in an **early-adopter / beta** stage.
+
+- The core architecture and features were initially developed with significant assistance from AI tools, then iterated on through manual review, refactoring, security audits, and automated tests (380+ tests across controller, agent, and UI).
+- Security features (API token authentication, scoped access, rate limiting, timing-safe comparisons) were designed with modern best practices and have passed focused security reviews.
+- The project is actively used by the maintainer across multiple Docker hosts, but **has not yet seen extensive large-scale production use** in diverse environments. Some edge cases in complex setups (unusual network modes, non-standard registries, large container counts) may still surface.
+
+**Before using WatchWarden for critical workloads:**
+- Test thoroughly in a staging or sandbox environment first.
+- Start with `com.watchwarden.policy=notify` on important containers before enabling auto-update.
+- Open issues with details about your environment if you encounter unexpected behavior.
 
 ---
 
@@ -153,7 +172,7 @@ docker run -d \
   -e WW_SCHEDULE="@every 1h" \
   -e WW_AUTO_UPDATE=true \
   --restart unless-stopped \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 Add notifications:
@@ -166,7 +185,7 @@ docker run -d \
   -e WW_TELEGRAM_TOKEN=123456:ABC-DEF \
   -e WW_TELEGRAM_CHAT_ID=-100123456 \
   --restart unless-stopped \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 Drop-in Watchtower replacement (same env vars):
@@ -179,7 +198,7 @@ docker run -d \
   -e WATCHTOWER_NOTIFICATION_TELEGRAM_TOKEN=123456:ABC-DEF \
   -e WATCHTOWER_NOTIFICATION_TELEGRAM_CHAT_ID=-100123456 \
   --restart unless-stopped \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 ### Multi-host deploy (Controller + UI + Agents)
@@ -189,7 +208,7 @@ docker run -d \
 Copy [`docker-compose.production.yml`](docker-compose.production.yml) to any machine with Docker and run:
 
 ```bash
-curl -O https://raw.githubusercontent.com/alexneo2003/watchwarden/main/docker-compose.production.yml
+curl -O https://raw.githubusercontent.com/watchwarden-labs/watchwarden/main/docker-compose.production.yml
 docker compose -f docker-compose.production.yml up -d
 ```
 
@@ -202,7 +221,7 @@ Pulls pre-built images and starts PostgreSQL + controller + UI + local agent. No
 ### Build from source
 
 ```bash
-git clone https://github.com/alexneo2003/watchwarden.git
+git clone https://github.com/watchwarden-labs/watchwarden.git
 cd watchwarden
 cp .env.example .env
 # Edit .env — set ADMIN_PASSWORD, JWT_SECRET, and ENCRYPTION_KEY
@@ -244,7 +263,7 @@ docker run -d \
   -v $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock \
   -e CONTROLLER_URL=ws://controller:3000 \
   -e AGENT_TOKEN=your-token \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 **Podman:**
@@ -254,7 +273,7 @@ podman run -d \
   -v $XDG_RUNTIME_DIR/podman/podman.sock:/var/run/docker.sock \
   -e CONTROLLER_URL=ws://controller:3000 \
   -e AGENT_TOKEN=your-token \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 **Docker Compose (rootless):**
@@ -283,18 +302,20 @@ docker run -d \
   -e AGENT_TOKEN=your-generated-token \
   -e AGENT_NAME=production-server \
   --restart unless-stopped \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 > **Snapshot volume**: The `-v watchwarden_snapshots:/var/lib/watchwarden/snapshots` mount persists rollback snapshots across agent restarts. Without it, snapshots are stored in memory only and lost on restart. The agent works without this volume but crash recovery after an agent restart won't be able to restore containers.
+>
+> **Bind mount permissions**: If using a bind mount (e.g. `-v /docker/watchwarden/snapshots:/var/lib/watchwarden/snapshots`) instead of a named volume, ensure the directory is owned by UID `100:101` (the `warden` user inside the container): `sudo chown 100:101 /docker/watchwarden/snapshots`
 
 ## Docker Images
 
 | Image | Description |
 |-------|-------------|
-| `alexneo/watchwarden-controller` | API server + WebSocket hub + scheduler |
-| `alexneo/watchwarden-agent` | Lightweight Go agent (one per Docker host) |
-| `alexneo/watchwarden-ui` | React dashboard served via Nginx |
+| `ghcr.io/watchwarden-labs/watchwarden-controller` | API server + WebSocket hub + scheduler |
+| `ghcr.io/watchwarden-labs/watchwarden-agent` | Lightweight Go agent (one per Docker host) |
+| `ghcr.io/watchwarden-labs/watchwarden-ui` | React dashboard served via Nginx |
 
 ### Tags
 
@@ -417,7 +438,7 @@ All standard Watchtower environment variables are automatically mapped to WatchW
 ### Setup
 
 ```bash
-git clone https://github.com/alexneo2003/watchwarden.git
+git clone https://github.com/watchwarden-labs/watchwarden.git
 cd watchwarden
 
 # Start PostgreSQL

@@ -59,6 +59,7 @@ export interface ContainerInfo {
   policy?: string;
   tag_pattern?: string;
   update_level?: string;
+  health_status?: string;
 }
 
 export interface NewAgent {
@@ -399,6 +400,7 @@ export interface IntegrationSummary {
 
 export interface IntegrationContainer {
   id: string;
+  stable_id: string;
   agent_id: string;
   agent_name: string;
   name: string;

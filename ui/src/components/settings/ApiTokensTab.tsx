@@ -53,6 +53,7 @@ export function ApiTokensTab() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [tokenName, setTokenName] = useState('');
+  const [selectedScopes, setSelectedScopes] = useState<string[]>(['full']);
   const [expiresDays, setExpiresDays] = useState(0);
   const [createdToken, setCreatedToken] = useState<CreateTokenResponse | null>(null);
   const [copied, setCopied] = useState(false);
@@ -62,6 +63,7 @@ export function ApiTokensTab() {
     createToken.mutate(
       {
         name: tokenName.trim(),
+        scopes: selectedScopes,
         expires_in_days: expiresDays || undefined,
       },
       {
@@ -93,6 +95,7 @@ export function ApiTokensTab() {
       setCreateOpen(false);
       setCreatedToken(null);
       setTokenName('');
+      setSelectedScopes(['full']);
       setExpiresDays(0);
       setCopied(false);
     } else {
@@ -210,6 +213,34 @@ export function ApiTokensTab() {
                   maxLength={128}
                   autoFocus
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Permissions</Label>
+                <div className="flex gap-2">
+                  {(
+                    [
+                      { value: ['full'], label: 'Full access' },
+                      { value: ['read'], label: 'Read only' },
+                      { value: ['write'], label: 'Write only' },
+                    ] as const
+                  ).map((opt) => {
+                    const isSelected =
+                      opt.value.length === selectedScopes.length &&
+                      opt.value.every((v) => selectedScopes.includes(v));
+                    return (
+                      <Button
+                        key={opt.label}
+                        type="button"
+                        variant={isSelected ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setSelectedScopes([...opt.value])}
+                        className="flex-1"
+                      >
+                        {opt.label}
+                      </Button>
+                    );
+                  })}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Expiration</Label>

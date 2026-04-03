@@ -1,10 +1,11 @@
 services:
   watchwarden:
-    image: alexneo/watchwarden-agent:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-agent:latest
     container_name: watchwarden
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - watchwarden_snapshots:/var/lib/watchwarden/snapshots
     environment:
       WW_SCHEDULE: "@every 6h"
       WW_AUTO_UPDATE: "true"
@@ -14,3 +15,6 @@ services:
       # WW_NTFY_URL: "https://ntfy.sh"
       # WW_NTFY_TOPIC: "watchwarden"
       # WW_SLACK_WEBHOOK: "https://hooks.slack.com/services/..."
+
+volumes:
+  watchwarden_snapshots:

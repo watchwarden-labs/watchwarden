@@ -38,7 +38,7 @@ services:
           cpus: '0.5'
 
   controller:
-    image: alexneo/watchwarden-controller:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-controller:latest
     container_name: watchwarden-controller
     restart: unless-stopped
     # Controller port is NOT exposed — nginx proxies /api/ and /ws/
@@ -75,7 +75,7 @@ services:
           cpus: '0.5'
 
   ui:
-    image: alexneo/watchwarden-ui:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-ui:latest
     container_name: watchwarden-ui
     restart: unless-stopped
     ports:
@@ -101,11 +101,12 @@ services:
           cpus: '0.25'
 
   agent:
-    image: alexneo/watchwarden-agent:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-agent:latest
     container_name: watchwarden-agent
     restart: unless-stopped
     volumes:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      - agent_snapshots:/var/lib/watchwarden/snapshots
     environment:
       CONTROLLER_URL: ws://controller:3000
       AGENT_TOKEN: ${LOCAL_AGENT_TOKEN:?Set LOCAL_AGENT_TOKEN}
@@ -131,6 +132,7 @@ services:
 
 volumes:
   postgres_data:
+  agent_snapshots:
 
 networks:
   backend:

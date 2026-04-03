@@ -17,7 +17,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 
 ```bash
 # Clone the repo
-git clone https://github.com/alexneo2003/watchwarden.git
+git clone https://github.com/watchwarden-labs/watchwarden.git
 cd watchwarden
 
 # Start PostgreSQL

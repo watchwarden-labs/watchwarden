@@ -67,7 +67,7 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
   const composeSnippet = result
     ? `services:
   watchwarden-agent:
-    image: alexneo/watchwarden-agent:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-agent:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:

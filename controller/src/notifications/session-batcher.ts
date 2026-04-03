@@ -16,16 +16,16 @@ interface ResultBatch {
   agentId: string;
   successes: Array<{ name: string; image: string; durationMs: number }>;
   failures: Array<{ name: string; error: string }>;
+  expectedCount: number; // 0 = unknown, flush on timer; >0 = flush when count reached
   timer: ReturnType<typeof setTimeout>;
   maxTimer: ReturnType<typeof setTimeout>;
   createdAt: number;
 }
 
 const resultBatches = new Map<string, ResultBatch>();
-// Sliding window: reset timer on each new result so the batch keeps growing
-// as long as results arrive within the window. Max wait caps total delay.
-const RESULT_BATCH_WINDOW_MS = 10_000; // wait 10s after last result before flushing
-const RESULT_BATCH_MAX_WAIT_MS = 3 * 60_000; // max 3 minutes from first result
+// Fallback timers in case expectedCount is not set or results are lost
+const RESULT_BATCH_WINDOW_MS = 15_000; // wait 15s after last result
+const RESULT_BATCH_MAX_WAIT_MS = 5 * 60_000; // max 5 minutes
 
 function flushResultBatch(agentId: string): void {
   const batch = resultBatches.get(agentId);
@@ -55,6 +55,33 @@ function flushResultBatch(agentId: string): void {
   }
 }
 
+/**
+ * Tell the batcher how many update results to expect for an agent.
+ * When all results arrive, the batch flushes immediately — no timer wait.
+ * Call this BEFORE the UPDATE command is sent to the agent.
+ */
+export function expectUpdateResults(agentId: string, count: number): void {
+  let batch = resultBatches.get(agentId);
+  if (!batch) {
+    const maxTimer = setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_MAX_WAIT_MS);
+    maxTimer.unref?.();
+    batch = {
+      agentId,
+      successes: [],
+      failures: [],
+      expectedCount: count,
+      timer: setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_WINDOW_MS),
+      maxTimer,
+      createdAt: Date.now(),
+    };
+    batch.timer.unref?.();
+    resultBatches.set(agentId, batch);
+  } else {
+    batch.expectedCount = count;
+  }
+  log.info('notify', `expecting ${count} update result(s) for agent ${agentId}`);
+}
+
 export function addUpdateResult(agentId: string, result: UpdateResultItem): void {
   let batch = resultBatches.get(agentId);
   if (!batch) {
@@ -64,6 +91,7 @@ export function addUpdateResult(agentId: string, result: UpdateResultItem): void
       agentId,
       successes: [],
       failures: [],
+      expectedCount: 0,
       timer: setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_WINDOW_MS),
       maxTimer,
       createdAt: Date.now(),
@@ -88,6 +116,16 @@ export function addUpdateResult(agentId: string, result: UpdateResultItem): void
       name: result.containerName,
       error: result.error ?? 'unknown',
     });
+  }
+
+  // If we know how many results to expect and all have arrived, flush immediately
+  const totalReceived = batch.successes.length + batch.failures.length;
+  if (batch.expectedCount > 0 && totalReceived >= batch.expectedCount) {
+    log.info(
+      'notify',
+      `all ${totalReceived}/${batch.expectedCount} update results received for ${agentId} — flushing`,
+    );
+    flushResultBatch(agentId);
   }
 }
 

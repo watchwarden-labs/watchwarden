@@ -52,3 +52,16 @@ WatchWarden needs write access because it:
 - Manages container lifecycle (start, stop, delete) from the UI
 
 The agent runs with `no-new-privileges` security option and the `warden` non-root user to minimize risk. For additional isolation, use a [Docker socket proxy](/docs/operations/security#docker-socket-proxy).
+
+## How This Project Was Built
+
+A significant portion of WatchWarden's initial implementation was developed with assistance from AI tools. This includes the controller, agent, UI, Home Assistant integration, and documentation.
+
+The codebase has since been through multiple rounds of:
+
+- **Manual review and refactoring** — restructuring for clarity, consistency, and maintainability.
+- **Automated testing** — 380+ tests across controller (Vitest + testcontainers), agent (Go testing + testify), and UI (Vitest + React Testing Library).
+- **Security audits** — dedicated reviews of authentication, token handling, input validation, rate limiting, and error responses. Findings were documented and remediated.
+- **Real-world testing** — the maintainer runs WatchWarden across multiple Docker hosts managing 20+ containers.
+
+WatchWarden is now maintained like any other open-source project: through code review, bug reports, and regular updates. AI assistance continues to be used as a development tool, the same way any other IDE feature or library would be.

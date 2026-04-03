@@ -195,7 +195,7 @@ docker compose -f docker-compose.production.yml up -d
 ```yaml
 services:
   agent:
-    image: alexneo/watchwarden-agent:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-agent:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:

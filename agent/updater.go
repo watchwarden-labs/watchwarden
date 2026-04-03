@@ -477,7 +477,11 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 
 	// Release lock during pull — pull is idempotent and doesn't modify container
 	// state. Other operations (CHECK, ROLLBACK) can proceed while we pull.
-	imageRef := snapshot.ImageRef
+	// Resolve the image ref to a floating tag (e.g. :0.16.0 → :latest after rollback)
+	imageRef := resolveCheckRef(ctx, u.docker, snapshot)
+	if imageRef != snapshot.ImageRef {
+		log.Printf("[update] %s: resolved %s to %s", snapshot.Name, snapshot.ImageRef, imageRef)
+	}
 	entry.mu.Unlock()
 
 	// 3. Pull new image (outside lock — BUG-06)
@@ -552,9 +556,9 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 		log.Printf("[update] ContainerRemove %s returned non-fatal error (container already gone): %v", containerID, err)
 	}
 
-	// 7. Create and start new container
+	// 7. Create and start new container with the resolved image ref
 	u.emitProgress(containerID, snapshot.Name, "starting", "")
-	newID, err := u.docker.RecreateContainer(ctx, snapshot, snapshot.ImageRef)
+	newID, err := u.docker.RecreateContainer(ctx, snapshot, imageRef)
 	if err != nil {
 		// Rollback: recreate with the OLD image digest, not the new one
 		_, rollbackErr := u.docker.RecreateContainer(ctx, snapshot, snapshot.ImageDigest)
@@ -796,9 +800,13 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 		}
 	}
 
-	// 3. Pull new image
+	// 3. Resolve image ref and pull new image
+	bgImageRef := resolveCheckRef(ctx, u.docker, snapshot)
+	if bgImageRef != snapshot.ImageRef {
+		log.Printf("[blue-green] %s: resolved %s to %s", snapshot.Name, snapshot.ImageRef, bgImageRef)
+	}
 	u.emitProgress(containerID, snapshot.Name, "pulling", "")
-	newDigest, err := u.docker.PullImage(ctx, snapshot.ImageRef)
+	newDigest, err := u.docker.PullImage(ctx, bgImageRef)
 	if err != nil {
 		return &UpdateResult{ContainerID: containerID, ContainerName: snapshot.Name, Success: false,
 			OldDigest: snapshot.ImageDigest, Error: fmt.Sprintf("pull failed: %v", err),
@@ -808,7 +816,7 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 	// 4. Create new container with temp name
 	tempName := snapshot.Name + "-ww-new"
 	u.emitProgress(containerID, snapshot.Name, "starting", "blue-green")
-	newID, err := u.docker.RecreateContainerNamed(ctx, snapshot, snapshot.ImageRef, tempName)
+	newID, err := u.docker.RecreateContainerNamed(ctx, snapshot, bgImageRef, tempName)
 	if err != nil {
 		// If blue-green fails due to port conflict, fall back to stop-first strategy
 		if strings.Contains(err.Error(), "port is already allocated") ||

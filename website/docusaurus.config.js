@@ -6,10 +6,10 @@ const config = {
   tagline: 'Zero-Downtime Docker Updates. Automated. Safe. Visual.',
   favicon: 'img/favicon.ico',
 
-  url: 'https://alexneo2003.github.io',
+  url: 'https://watchwarden-labs.github.io',
   baseUrl: '/watchwarden/',
 
-  organizationName: 'alexneo2003',
+  organizationName: 'watchwarden-labs',
   projectName: 'watchwarden',
 
   onBrokenLinks: 'throw',
@@ -31,12 +31,12 @@ const config = {
       ({
         docs: {
           sidebarPath: './sidebars.js',
-          editUrl: 'https://github.com/alexneo2003/watchwarden/tree/main/website/',
+          editUrl: 'https://github.com/watchwarden-labs/watchwarden/tree/main/website/',
         },
         blog: {
           showReadingTime: true,
           onInlineAuthors: 'ignore',
-          editUrl: 'https://github.com/alexneo2003/watchwarden/tree/main/website/',
+          editUrl: 'https://github.com/watchwarden-labs/watchwarden/tree/main/website/',
         },
         theme: {
           customCss: './src/css/custom.css',
@@ -69,7 +69,7 @@ const config = {
           },
           { to: '/blog', label: 'Blog', position: 'left' },
           {
-            href: 'https://github.com/alexneo2003/watchwarden',
+            href: 'https://github.com/watchwarden-labs/watchwarden',
             label: 'GitHub',
             position: 'right',
           },
@@ -92,11 +92,11 @@ const config = {
             items: [
               {
                 label: 'GitHub Issues',
-                href: 'https://github.com/alexneo2003/watchwarden/issues',
+                href: 'https://github.com/watchwarden-labs/watchwarden/issues',
               },
               {
                 label: 'GitHub Discussions',
-                href: 'https://github.com/alexneo2003/watchwarden/discussions',
+                href: 'https://github.com/watchwarden-labs/watchwarden/discussions',
               },
             ],
           },
@@ -105,8 +105,8 @@ const config = {
             items: [
               { label: 'Blog', to: '/blog' },
               {
-                label: 'Docker Hub',
-                href: 'https://hub.docker.com/u/alexneo',
+                label: 'GitHub Packages',
+                href: 'https://github.com/orgs/watchwarden-labs/packages',
               },
             ],
           },

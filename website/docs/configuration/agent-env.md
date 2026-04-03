@@ -59,7 +59,7 @@ docker run -d \
   -e WW_SCHEDULE="@every 6h" \
   -e WW_NTFY_URL=https://ntfy.sh \
   -e WW_NTFY_TOPIC=watchwarden-updates \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 ### Notification Templates

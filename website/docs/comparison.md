@@ -62,7 +62,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e WATCHTOWER_POLL_INTERVAL=3600 \
   -e WATCHTOWER_CLEANUP=true \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 All Watchtower environment variables are automatically mapped to their WatchWarden equivalents at startup. The agent logs which mappings were applied:
