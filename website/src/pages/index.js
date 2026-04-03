@@ -66,7 +66,7 @@ function Hero() {
           </Link>
           <Link
             className="button button--outline button--lg"
-            href="https://github.com/alexneo2003/watchwarden"
+            href="https://github.com/watchwarden-labs/watchwarden"
           >
             GitHub
           </Link>

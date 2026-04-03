@@ -1,4 +1,5 @@
-import { getContainersByAgent } from '../db/queries.js';
+import { getAgent, getContainersByAgent } from '../db/queries.js';
+import { expectUpdateResults } from '../notifications/session-batcher.js';
 import type { Container } from '../types.js';
 import type { AgentHub } from '../ws/hub.js';
 
@@ -128,6 +129,12 @@ export async function executeOrchestratedUpdate(
 ): Promise<void> {
   const batches = await resolveUpdateBatches(agentId, containerIds);
   const strategy = options?.strategy ?? 'stop-first';
+
+  // Tell the notification batcher how many results to expect so it can
+  // flush a single combined message once all containers report back.
+  const agentRecord = await getAgent(agentId);
+  const agentDisplayName = agentRecord?.name ?? agentId;
+  expectUpdateResults(agentDisplayName, containerIds.length);
 
   if (batches.length <= 1) {
     // Single batch or no labels — use regular UPDATE

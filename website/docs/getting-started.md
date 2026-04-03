@@ -8,6 +8,10 @@ import TabItem from '@theme/TabItem';
 
 # Getting Started
 
+:::info Project Status
+WatchWarden is in **early-adopter / beta** stage. The core features are implemented, tested (380+ automated tests), and security-reviewed — but the project has not yet seen extensive large-scale production use in diverse environments. Please test in your own staging environment before relying on it for critical workloads. See [Design Decisions](/docs/design-decisions#how-this-project-was-built) for background on development approach.
+:::
+
 WatchWarden runs in two modes. Pick the one that fits your setup.
 
 <Tabs>
@@ -22,7 +26,7 @@ docker run -d \
   -e WW_SCHEDULE="@every 6h" \
   -e WW_AUTO_UPDATE=true \
   --restart unless-stopped \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 Add Telegram notifications:
@@ -36,7 +40,7 @@ docker run -d \
   -e WW_TELEGRAM_TOKEN=123456:ABC-DEF \
   -e WW_TELEGRAM_CHAT_ID=-100123456 \
   --restart unless-stopped \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 With ntfy notifications:
@@ -50,7 +54,7 @@ docker run -d \
   -e WW_NTFY_URL=https://ntfy.sh \
   -e WW_NTFY_TOPIC=my-updates \
   --restart unless-stopped \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 **Key Solo Mode variables:**
@@ -81,7 +85,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   controller:
-    image: alexneo/watchwarden-controller:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-controller:latest
     ports:
       - "3000:3000"
     environment:
@@ -94,14 +98,14 @@ services:
         condition: service_healthy
 
   ui:
-    image: alexneo/watchwarden-ui:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-ui:latest
     ports:
       - "8080:8080"
     depends_on:
       - controller
 
   agent:
-    image: alexneo/watchwarden-agent:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-agent:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -141,7 +145,7 @@ docker run -d \
   -e AGENT_TOKEN=your-generated-token \
   -e AGENT_NAME=production-server \
   --restart unless-stopped \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 </TabItem>

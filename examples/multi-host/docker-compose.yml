@@ -15,7 +15,7 @@ services:
       retries: 5
 
   controller:
-    image: alexneo/watchwarden-controller:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-controller:latest
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -31,7 +31,7 @@ services:
         condition: service_healthy
 
   ui:
-    image: alexneo/watchwarden-ui:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-ui:latest
     restart: unless-stopped
     ports:
       - "8080:8080"

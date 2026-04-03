@@ -493,6 +493,31 @@ describe('API Tokens', () => {
       expect(checkRes.statusCode).toBe(202);
     });
 
+    it('read+write combined scope grants both GET and POST', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/api-tokens',
+        headers: authHeaders(),
+        payload: { name: 'Read+Write', scopes: ['read', 'write'] },
+      });
+      const { token } = JSON.parse(createRes.body);
+
+      const summaryRes = await app.inject({
+        method: 'GET',
+        url: '/api/integrations/watchwarden/summary',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(summaryRes.statusCode).toBe(200);
+
+      const checkRes = await app.inject({
+        method: 'POST',
+        url: '/api/integrations/watchwarden/containers/check',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { all: true },
+      });
+      expect(checkRes.statusCode).toBe(202);
+    });
+
     it('write-only token cannot access GET endpoints', async () => {
       const createRes = await app.inject({
         method: 'POST',

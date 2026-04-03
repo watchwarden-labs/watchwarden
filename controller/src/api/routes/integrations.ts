@@ -194,6 +194,7 @@ function toIntegrationContainer(
 ): IntegrationContainer {
   return {
     id: c.docker_id,
+    stable_id: `${c.agent_id}_${c.name}`,
     agent_id: c.agent_id,
     agent_name: agentName,
     name: c.name,

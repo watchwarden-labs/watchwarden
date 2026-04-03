@@ -21,9 +21,13 @@ services:
       - "com.watchwarden.depends_on=api"
 
   watchwarden:
-    image: alexneo/watchwarden-agent:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-agent:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - watchwarden_snapshots:/var/lib/watchwarden/snapshots
     environment:
       WW_SCHEDULE: "0 4 * * *"
       WW_AUTO_UPDATE: "true"
+
+volumes:
+  watchwarden_snapshots:

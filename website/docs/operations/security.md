@@ -48,6 +48,12 @@ The agent **cannot** use `read_only: true` because it writes snapshot files to `
 
 :::tip Snapshot persistence
 The `watchwarden_snapshots` volume persists rollback snapshots across agent restarts. Without it, the agent stores snapshots in memory only — crash recovery after an agent restart won't be able to restore containers to their pre-update state. The agent works without this volume, but adding it is strongly recommended for production.
+
+If using a **bind mount** instead of a named volume (e.g. `/docker/watchwarden/snapshots:/var/lib/watchwarden/snapshots`), ensure the directory is owned by UID `100:101` — the `warden` user inside the container:
+
+```bash
+sudo chown 100:101 /docker/watchwarden/snapshots
+```
 :::
 
 :::info Why not read-only socket?
@@ -65,7 +71,7 @@ docker run -d \
   -v $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock \
   -e CONTROLLER_URL=ws://controller:3000 \
   -e AGENT_TOKEN=your-token \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 **Podman:**
@@ -75,7 +81,7 @@ podman run -d \
   -v $XDG_RUNTIME_DIR/podman/podman.sock:/var/run/docker.sock \
   -e CONTROLLER_URL=ws://controller:3000 \
   -e AGENT_TOKEN=your-token \
-  alexneo/watchwarden-agent:latest
+  ghcr.io/watchwarden-labs/watchwarden-agent:latest
 ```
 
 **Docker Compose (rootless):**
@@ -102,7 +108,7 @@ services:
       POST: 1
 
   agent:
-    image: alexneo/watchwarden-agent:latest
+    image: ghcr.io/watchwarden-labs/watchwarden-agent:latest
     environment:
       DOCKER_HOST: tcp://socket-proxy:2375
     depends_on:

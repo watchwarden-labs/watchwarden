@@ -245,11 +245,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
 
-      - name: Log in to Docker Hub
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Controller
         uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
@@ -258,8 +259,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-controller:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-controller:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/watchwarden-controller:latest
+            ghcr.io/${{ github.repository_owner }}/watchwarden-controller:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=controller
           cache-to: type=gha,scope=controller,mode=max
           sbom: true
@@ -272,8 +273,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-agent:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-agent:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/watchwarden-agent:latest
+            ghcr.io/${{ github.repository_owner }}/watchwarden-agent:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=agent
           cache-to: type=gha,scope=agent,mode=max
           sbom: true
@@ -286,8 +287,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-ui:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-ui:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/watchwarden-ui:latest
+            ghcr.io/${{ github.repository_owner }}/watchwarden-ui:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=ui
           cache-to: type=gha,scope=ui,mode=max
           sbom: true
@@ -296,7 +297,7 @@ jobs:
       - name: Scan Controller image
         uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
         with:
-          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-controller:${{ steps.version.outputs.version }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/watchwarden-controller:${{ steps.version.outputs.version }}
           format: table
           severity: CRITICAL,HIGH
           exit-code: '0'
@@ -313,7 +314,7 @@ jobs:
           script: |
             const fs = require('fs');
             const version = '${{ steps.version.outputs.version }}';
-            const user = '${{ secrets.DOCKERHUB_USERNAME }}';
+            const registry = 'ghcr.io/${{ github.repository_owner }}';
 
             let notes = '';
             try {
@@ -325,9 +326,9 @@ jobs:
             notes += `\n## Docker Images\n\n`;
             notes += `| Service | Image |\n`;
             notes += `|---------|-------|\n`;
-            notes += `| Controller | \`${user}/watchwarden-controller:${version}\` |\n`;
-            notes += `| Agent | \`${user}/watchwarden-agent:${version}\` |\n`;
-            notes += `| UI | \`${user}/watchwarden-ui:${version}\` |\n\n`;
+            notes += `| Controller | \`${registry}/watchwarden-controller:${version}\` |\n`;
+            notes += `| Agent | \`${registry}/watchwarden-agent:${version}\` |\n`;
+            notes += `| UI | \`${registry}/watchwarden-ui:${version}\` |\n\n`;
             notes += `All images are also tagged as \`latest\`.\n\n`;
             notes += `### Quick deploy\n`;
             notes += `\`\`\`bash\n`;

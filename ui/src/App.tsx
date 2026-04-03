@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { apiRequest } from './api/client';
 import { Toaster } from './components/common/Toaster';
 import { Sidebar } from './components/layout/Sidebar';
@@ -24,8 +24,26 @@ const queryClient = new QueryClient({
   },
 });
 
+const ROUTE_TITLES: Record<string, string> = {
+  '/': 'Dashboard',
+  '/agents': 'Agents',
+  '/history': 'History',
+  '/audit': 'Audit Log',
+  '/settings': 'Settings',
+};
+
+function usePageTitle() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    // Match /agents/:id as "Agent Detail"
+    const title = ROUTE_TITLES[pathname] ?? (pathname.startsWith('/agents/') ? 'Agent Detail' : '');
+    document.title = title ? `WatchWarden | ${title}` : 'WatchWarden';
+  }, [pathname]);
+}
+
 function AuthenticatedApp() {
   useSocket();
+  usePageTitle();
 
   return (
     <div className="flex min-h-screen max-w-[1280px] mx-auto border-x border-border bg-grid">
@@ -50,7 +68,13 @@ function AuthenticatedApp() {
 function AppContent() {
   const authToken = useStore((s) => s.authToken);
   const setAuthToken = useStore((s) => s.setAuthToken);
+  const theme = useStore((s) => s.theme);
   const [checking, setChecking] = useState(() => !!localStorage.getItem('watchwarden_auth'));
+
+  // Apply theme class on mount and when theme changes
+  useEffect(() => {
+    document.documentElement.classList.toggle('light', theme === 'light');
+  }, [theme]);
 
   // On mount, verify the httpOnly cookie is still valid
   useEffect(() => {

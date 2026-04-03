@@ -19,9 +19,23 @@ fi
 
 echo "Formatting staged files with Biome..."
 
+# Use biome from the controller workspace (where it's installed as a devDependency)
+BIOME="node_modules/@biomejs/biome/bin/biome"
+if [ ! -f "$BIOME" ]; then
+  echo "Biome not found, skipping format"
+  exit 0
+fi
+
+# Force arm64 architecture on macOS to avoid Rosetta x64 mismatch
+if [ "$(uname -s)" = "Darwin" ]; then
+  BIOME_CMD="arch -arm64 node $BIOME"
+else
+  BIOME_CMD="node $BIOME"
+fi
+
 # Format the working-tree copies, then re-stage
 # shellcheck disable=SC2086
-npx @biomejs/biome check --config-path . --write $BIOME_FILES 2>/dev/null
+$BIOME_CMD check --config-path . --write $BIOME_FILES 2>/dev/null
 
 # Re-add the (possibly reformatted) files so the commit includes the fixes
 # shellcheck disable=SC2086
@@ -29,4 +43,4 @@ git add $BIOME_FILES
 
 # Now verify — if there are still lint errors (not just formatting), block the commit
 # shellcheck disable=SC2086
-npx @biomejs/biome check --config-path . $BIOME_FILES
+$BIOME_CMD check --config-path . $BIOME_FILES

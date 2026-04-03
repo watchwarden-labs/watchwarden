@@ -4,6 +4,7 @@ const sidebars = {
     'getting-started',
     'comparison',
     'architecture',
+    'ui-guide',
     'examples',
     {
       type: 'category',

@@ -1,4 +1,4 @@
-import { LogOut, Menu, Wifi, WifiOff } from 'lucide-react';
+import { LogOut, Menu, Moon, Sun, Wifi, WifiOff } from 'lucide-react';
 import { apiRequest } from '@/api/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,8 @@ export function TopBar() {
   const wsConnected = useStore((s) => s.wsConnected);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const setAuthToken = useStore((s) => s.setAuthToken);
+  const theme = useStore((s) => s.theme);
+  const toggleTheme = useStore((s) => s.toggleTheme);
 
   return (
     <header className="bg-card border-b border-border px-6 py-3 flex items-center justify-between">
@@ -27,6 +29,9 @@ export function TopBar() {
           )}
           {wsConnected ? 'Connected' : 'Disconnected'}
         </Badge>
+        <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </Button>
         <Button
           variant="ghost"
           size="icon"

@@ -159,11 +159,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
 
-      - name: Log in to Docker Hub
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Controller
         uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
@@ -172,8 +173,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-controller:beta
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-controller:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/watchwarden-controller:beta
+            ghcr.io/${{ github.repository_owner }}/watchwarden-controller:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=controller
           cache-to: type=gha,scope=controller,mode=max
 
@@ -184,8 +185,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-agent:beta
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-agent:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/watchwarden-agent:beta
+            ghcr.io/${{ github.repository_owner }}/watchwarden-agent:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=agent
           cache-to: type=gha,scope=agent,mode=max
 
@@ -196,8 +197,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-ui:beta
-            ${{ secrets.DOCKERHUB_USERNAME }}/watchwarden-ui:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/watchwarden-ui:beta
+            ghcr.io/${{ github.repository_owner }}/watchwarden-ui:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=ui
           cache-to: type=gha,scope=ui,mode=max
 
@@ -213,14 +214,14 @@ jobs:
         with:
           script: |
             const version = '${{ steps.version.outputs.version }}';
-            const user = '${{ secrets.DOCKERHUB_USERNAME }}';
+            const registry = 'ghcr.io/${{ github.repository_owner }}';
 
             let body = `## Docker Images\n\n`;
             body += `| Service | Image |\n`;
             body += `|---------|-------|\n`;
-            body += `| Controller | \`${user}/watchwarden-controller:${version}\` |\n`;
-            body += `| Agent | \`${user}/watchwarden-agent:${version}\` |\n`;
-            body += `| UI | \`${user}/watchwarden-ui:${version}\` |\n\n`;
+            body += `| Controller | \`${registry}/watchwarden-controller:${version}\` |\n`;
+            body += `| Agent | \`${registry}/watchwarden-agent:${version}\` |\n`;
+            body += `| UI | \`${registry}/watchwarden-ui:${version}\` |\n\n`;
             body += `All images are also tagged as \`beta\`.\n`;
 
             await github.rest.repos.createRelease({

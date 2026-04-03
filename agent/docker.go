@@ -188,6 +188,17 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 		tagPattern := c.Labels["com.watchwarden.tag_pattern"]
 		updateLevel := c.Labels["com.watchwarden.update_level"]
 
+		// Extract health status from Docker's status string (e.g. "Up 2h (healthy)")
+		healthStatus := "none"
+		statusStr := c.Status
+		if strings.Contains(statusStr, "(healthy)") {
+			healthStatus = "healthy"
+		} else if strings.Contains(statusStr, "(unhealthy)") {
+			healthStatus = "unhealthy"
+		} else if strings.Contains(statusStr, "(health: starting)") {
+			healthStatus = "starting"
+		}
+
 		result = append(result, ContainerInfo{
 			ID:            c.ID[:12],
 			DockerID:      c.ID,
@@ -195,6 +206,7 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 			Image:         imageName,
 			CurrentDigest: digest,
 			Status:        c.State,
+			HealthStatus:  healthStatus,
 			Excluded:      excluded,
 			ExcludeReason: excludeReason,
 			PinnedVersion: isPinnedVersionWithLabels(imageName, c.Labels),

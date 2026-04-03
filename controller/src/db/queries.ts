@@ -128,12 +128,13 @@ export async function upsertContainers(
       policy: c.policy ?? null,
       tag_pattern: c.tag_pattern ?? null,
       update_level: c.update_level ?? null,
+      health_status: c.health_status ?? null,
     }));
 
     // postgres.js sql(rows, col...) generates the column list + VALUES — no separate column list
     await tx`
     INSERT INTO containers
-    ${tx(rows, 'id', 'agent_id', 'docker_id', 'name', 'image', 'current_digest', 'status', 'excluded', 'exclude_reason', 'pinned_version', 'update_group', 'update_priority', 'depends_on', 'policy', 'tag_pattern', 'update_level')}
+    ${tx(rows, 'id', 'agent_id', 'docker_id', 'name', 'image', 'current_digest', 'status', 'excluded', 'exclude_reason', 'pinned_version', 'update_group', 'update_priority', 'depends_on', 'policy', 'tag_pattern', 'update_level', 'health_status')}
     ON CONFLICT (id) DO UPDATE SET
       docker_id = EXCLUDED.docker_id,
       name = EXCLUDED.name,
@@ -148,7 +149,8 @@ export async function upsertContainers(
       depends_on = EXCLUDED.depends_on,
       policy = EXCLUDED.policy,
       tag_pattern = EXCLUDED.tag_pattern,
-      update_level = EXCLUDED.update_level
+      update_level = EXCLUDED.update_level,
+      health_status = COALESCE(EXCLUDED.health_status, containers.health_status)
   `;
   }); // end sql.begin — DB-03
 }

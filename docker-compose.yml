@@ -21,7 +21,7 @@ services:
       - backend
 
   controller:
-    image: ${DOCKERHUB_USERNAME:-watchwarden}/watchwarden-controller:${TAG:-latest}
+    image: ghcr.io/watchwarden-labs/watchwarden-controller:${TAG:-latest}
     build:
       context: .
       dockerfile: controller/Dockerfile
@@ -48,7 +48,7 @@ services:
       - frontend
 
   ui:
-    image: ${DOCKERHUB_USERNAME:-watchwarden}/watchwarden-ui:${TAG:-latest}
+    image: ghcr.io/watchwarden-labs/watchwarden-ui:${TAG:-latest}
     build:
       context: .
       dockerfile: ui/Dockerfile
@@ -64,7 +64,7 @@ services:
       - frontend
 
   agent:
-    image: ${DOCKERHUB_USERNAME:-watchwarden}/watchwarden-agent:${TAG:-latest}
+    image: ghcr.io/watchwarden-labs/watchwarden-agent:${TAG:-latest}
     build: ./agent
     container_name: watchwarden-agent-local
     restart: unless-stopped
@@ -72,6 +72,7 @@ services:
       - "9090:8080"
     volumes:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      - agent_snapshots:/var/lib/watchwarden/snapshots
     environment:
       CONTROLLER_URL: "ws://controller:3000"
       AGENT_TOKEN: "${LOCAL_AGENT_TOKEN:-dev-local-agent-token-do-not-use-in-prod}"
@@ -88,6 +89,7 @@ services:
 
 volumes:
   postgres_data:
+  agent_snapshots:
 
 networks:
   backend:
