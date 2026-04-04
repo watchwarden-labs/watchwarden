@@ -477,7 +477,7 @@ describe('BUG-05: Manual update rejects when update already in flight', () => {
       method: 'POST',
       url: '/api/agents/bug05-agent/update',
       headers: authHeaders(),
-      payload: {},
+      payload: { containerIds: ['some-container-id'] },
     });
 
     expect(res.statusCode).toBe(202);
