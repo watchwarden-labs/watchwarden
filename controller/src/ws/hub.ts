@@ -35,6 +35,8 @@ interface ConnectedAgent {
 interface RegisterPayload {
   token: string;
   hostname: string;
+  agentName?: string;
+  version?: string;
   containers: ContainerInfo[];
   dockerVersion?: string;
   dockerApiVersion?: string;
@@ -179,6 +181,10 @@ export class AgentHub {
             agentId = result.id;
             authenticated = true;
             clearTimeout(authTimeout);
+            log.debug('hub', `Agent registered: ${payload.agentName ?? agentId}`, {
+              version: payload.version,
+              containers: payload.containers?.length,
+            });
 
             // OBS-05: close the old socket if this agent is reconnecting
             // before the previous connection's close event fires.
@@ -227,13 +233,14 @@ export class AgentHub {
               lastSeen: Date.now(),
             });
 
-            // Store Docker version info if provided
-            if (payload.dockerVersion || payload.dockerApiVersion) {
+            // Store Docker version info and agent version if provided
+            if (payload.dockerVersion || payload.dockerApiVersion || payload.version) {
               await updateAgentDockerInfo(agentId, {
                 dockerVersion: payload.dockerVersion,
                 dockerApiVersion: payload.dockerApiVersion,
                 os: payload.os,
                 arch: payload.arch,
+                agentVersion: payload.version,
               });
             }
 
@@ -269,6 +276,11 @@ export class AgentHub {
               const payload = message.payload as {
                 results: CheckResultItem[];
               };
+              const updatesFound = payload.results.filter((r) => r.hasUpdate).length;
+              log.debug(
+                'hub',
+                `CHECK_RESULT from ${agentId}: ${payload.results.length} results, ${updatesFound} updates`,
+              );
               for (const r of payload.results) {
                 await updateContainerDigests(
                   r.containerId,

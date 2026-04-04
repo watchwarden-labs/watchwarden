@@ -1,0 +1,84 @@
+name: Bug report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill in as much detail as possible.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A brief description of the bug.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide details about your setup.
+      value: |
+        - **Controller version**: (Settings → About)
+        - **Agent version(s)**: (Settings → About)
+        - **Deployment**: docker-compose / bare Docker / Kubernetes / other
+        - **Host OS**: (e.g. Ubuntu 24.04, Debian 12)
+        - **Docker version**: (docker --version)
+        - **HA integration version** (if applicable):
+        - **HA version** (if applicable):
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: debug
+    attributes:
+      label: Debug information
+      options:
+        - label: I have enabled `WW_LOG_LEVEL=debug` and collected logs
+        - label: I have attached a diagnostics bundle (Settings → About → Download diagnostics bundle)
+        - label: I have redacted secrets/tokens/passwords from attached files
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste relevant controller/agent logs here. Use `docker logs <container>` to collect.
+      render: shell
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration snippets
+      description: Relevant docker-compose.yml or environment variables (redact secrets and hostnames).
+      render: yaml

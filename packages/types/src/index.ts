@@ -14,6 +14,7 @@ export interface Agent {
   docker_api_version: string | null;
   os: string | null;
   arch: string | null;
+  agent_version: string | null;
   created_at: number;
   containers?: Container[];
 }

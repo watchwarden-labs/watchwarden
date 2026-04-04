@@ -67,6 +67,7 @@ export async function updateAgentDockerInfo(
     dockerApiVersion?: string;
     os?: string;
     arch?: string;
+    agentVersion?: string;
   },
 ): Promise<void> {
   await sql`
@@ -74,7 +75,8 @@ export async function updateAgentDockerInfo(
     SET docker_version = ${info.dockerVersion ?? null},
         docker_api_version = ${info.dockerApiVersion ?? null},
         os = ${info.os ?? null},
-        arch = ${info.arch ?? null}
+        arch = ${info.arch ?? null},
+        agent_version = COALESCE(${info.agentVersion ?? null}, agent_version)
     WHERE id = ${id}
   `;
 }
@@ -598,6 +600,7 @@ function mapAgent(row: Record<string, unknown>): Agent {
     docker_api_version: (row.docker_api_version as string | null) ?? null,
     os: (row.os as string | null) ?? null,
     arch: (row.arch as string | null) ?? null,
+    agent_version: (row.agent_version as string | null) ?? null,
     created_at: Number(row.created_at),
   };
 }

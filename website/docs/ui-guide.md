@@ -193,3 +193,43 @@ The UI supports both dark and light themes. Toggle between them using the sun/mo
 - **Light theme** — uses the same blue accent color with light backgrounds for daytime use
 
 The theme preference is saved in your browser and persists across sessions.
+
+## About & Diagnostics
+
+The **About** tab in Settings shows version information, debug logging controls, and diagnostics tools.
+
+<ThemeCompare
+  dark="/assets/ww_ui_settings_about_dark.png"
+  light="/assets/ww_ui_settings_about_light.png"
+  alt="Settings — About & Diagnostics"
+/>
+
+### Version info
+
+Displays the controller version and a table of all agents with:
+- Agent name and hostname
+- Online/offline status
+- Agent software version
+- Docker engine version
+- Platform (OS/architecture)
+
+### Debug logging
+
+Toggle debug logging directly from the UI — no container restart needed. Debug mode automatically reverts to normal after 15 minutes.
+
+You can also enable **"Include controller logs in diagnostics"** — this writes logs to an internal file used only for the diagnostics bundle. No external path or environment variable needed.
+
+All log output (stdout and file) is automatically redacted — API tokens, passwords, JWTs, and IP addresses are masked before being written.
+
+### Diagnostics bundle
+
+Click **Download diagnostics bundle** to get a ZIP archive containing:
+
+- `diagnostics.json` — controller/agent versions, container summary, environment info, log level, and redaction notes
+- `logs/controller.log` — recent controller logs (only if "Include controller logs" is enabled above)
+
+The bundle does not contain API tokens or passwords. Attach the ZIP to your [bug report](https://github.com/watchwarden-labs/watchwarden/issues/new?template=bug-report.yml).
+
+:::caution
+While logs are automatically redacted, please still review the archive before sharing publicly.
+:::
