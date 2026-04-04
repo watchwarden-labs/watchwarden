@@ -200,13 +200,17 @@ func TestCheckForUpdates_NoUpdate(t *testing.T) {
 }
 
 func TestCheckForUpdates_WithUpdate(t *testing.T) {
-	_, updater := newTestSetup()
+	mock, updater := newTestSetup()
+	// After pull, ImageInspectWithRaw should return the NEW digest
+	mock.imageInspect = image.InspectResponse{
+		RepoDigests: []string{"nginx@sha256:newdigest123"},
+	}
 
 	results, err := updater.CheckForUpdates(context.Background(), []string{"test-container-123"})
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.True(t, results[0].HasUpdate)
-	assert.Equal(t, "sha256:newdigest123", results[0].LatestDigest)
+	assert.Contains(t, results[0].LatestDigest, "sha256:newdigest123")
 }
 
 func TestUpdateContainer_Success(t *testing.T) {
