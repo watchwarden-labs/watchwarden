@@ -39,6 +39,9 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - name: Build shared types
+        run: npm run build
+        working-directory: packages/types
       - run: npm run lint
       - name: Run tests
         id: test
@@ -99,10 +102,10 @@ jobs:
         if: always()
         run: |
           if [ -f test-output.log ]; then
-            PASSED=$(grep -c '^--- PASS' test-output.log || echo "0")
-            FAILED=$(grep -c '^--- FAIL' test-output.log || echo "0")
-            echo "passed=${PASSED}" >> $GITHUB_OUTPUT
-            echo "failed=${FAILED}" >> $GITHUB_OUTPUT
+            PASSED=$(grep -c '^--- PASS' test-output.log || true)
+            FAILED=$(grep -c '^--- FAIL' test-output.log || true)
+            echo "passed=${PASSED:-0}" >> $GITHUB_OUTPUT
+            echo "failed=${FAILED:-0}" >> $GITHUB_OUTPUT
           else
             echo "passed=0" >> $GITHUB_OUTPUT
             echo "failed=0" >> $GITHUB_OUTPUT
@@ -135,6 +138,9 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
+      - name: Build shared types
+        run: npm run build
+        working-directory: packages/types
       - run: npm run lint
       - name: Run tests
         id: test
