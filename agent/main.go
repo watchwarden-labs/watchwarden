@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// Version is set at build time via -ldflags="-X main.Version=..."
+// Falls back to "dev" for local development builds.
+var Version = "dev"
+
 func main() {
 	// 1. Load and validate configuration
 	cfg := loadConfig()

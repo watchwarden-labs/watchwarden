@@ -184,6 +184,7 @@ func (w *WSClient) register() {
 		"token":      w.token,
 		"hostname":   hostname,
 		"agentName":  w.agentName,
+		"version":    Version,
 		"containers": containers,
 	}
 	if w.dockerVersion != nil {
