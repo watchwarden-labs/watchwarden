@@ -46,6 +46,9 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - name: Build shared types
+        run: npm run build
+        working-directory: packages/types
       - run: npm run lint
       - run: npm test
         env:
@@ -80,6 +83,9 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
+      - name: Build shared types
+        run: npm run build
+        working-directory: packages/types
       - run: npm run lint
       - run: npm test
 
