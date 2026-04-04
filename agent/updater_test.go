@@ -201,9 +201,22 @@ func TestCheckForUpdates_NoUpdate(t *testing.T) {
 
 func TestCheckForUpdates_WithUpdate(t *testing.T) {
 	mock, updater := newTestSetup()
-	// After pull, ImageInspectWithRaw should return the NEW digest
-	mock.imageInspect = image.InspectResponse{
-		RepoDigests: []string{"nginx@sha256:newdigest123"},
+	// InspectContainer calls ImageInspectWithRaw with the old image ID ("sha256:oldimage")
+	// PullImage calls ImageInspectWithRaw with the image ref ("nginx:latest")
+	// Return different RepoDigests depending on which is being inspected
+	callCount := 0
+	mock.imageInspectFn = func(imageID string) (image.InspectResponse, error) {
+		callCount++
+		if callCount <= 2 {
+			// First calls: InspectContainer snapshot — current digest
+			return image.InspectResponse{
+				RepoDigests: []string{"nginx@sha256:currentdigest"},
+			}, nil
+		}
+		// After pull: new digest
+		return image.InspectResponse{
+			RepoDigests: []string{"nginx@sha256:newdigest123"},
+		}, nil
 	}
 
 	results, err := updater.CheckForUpdates(context.Background(), []string{"test-container-123"})
