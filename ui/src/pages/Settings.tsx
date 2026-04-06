@@ -8,6 +8,7 @@ import { NotificationsTab } from '@/components/notifications/NotificationsTab';
 import { RegistriesTab } from '@/components/registries/RegistriesTab';
 import { AboutTab } from '@/components/settings/AboutTab';
 import { ApiTokensTab } from '@/components/settings/ApiTokensTab';
+import { RecoveryModeCard } from '@/components/settings/RecoveryModeCard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -163,6 +164,8 @@ function GeneralTab() {
           </div>
         </CardContent>
       </Card>
+
+      <RecoveryModeCard />
 
       <Card>
         <CardHeader>

@@ -57,6 +57,14 @@ const AUDIT_ROUTES: Record<string, { action: string; targetType: string }> = {
     action: 'policy.update',
     targetType: 'config',
   },
+  'POST /api/recovery-mode': {
+    action: 'recovery_mode.enable',
+    targetType: 'config',
+  },
+  'DELETE /api/recovery-mode': {
+    action: 'recovery_mode.disable',
+    targetType: 'config',
+  },
 };
 
 export function registerAuditHook(fastify: FastifyInstance): void {

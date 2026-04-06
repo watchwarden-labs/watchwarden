@@ -308,6 +308,31 @@ export async function getAllConfig(): Promise<Record<string, string>> {
   return config;
 }
 
+// --- Recovery Mode ---
+
+export async function isRecoveryModeActive(): Promise<boolean> {
+  const expiresAt = await getConfig('recovery_mode_expires_at');
+  if (!expiresAt) return false;
+  return Date.now() < Number(expiresAt);
+}
+
+export async function getRecoveryModeExpiry(): Promise<number | null> {
+  const expiresAt = await getConfig('recovery_mode_expires_at');
+  if (!expiresAt) return null;
+  const ts = Number(expiresAt);
+  return Date.now() < ts ? ts : null;
+}
+
+export async function enableRecoveryMode(ttlMinutes: number): Promise<number> {
+  const expiresAt = Date.now() + ttlMinutes * 60 * 1000;
+  await setConfig('recovery_mode_expires_at', String(expiresAt));
+  return expiresAt;
+}
+
+export async function disableRecoveryMode(): Promise<void> {
+  await sql`DELETE FROM config WHERE key = 'recovery_mode_expires_at'`;
+}
+
 // --- Registry Credentials ---
 
 export interface RegistryCredential {
@@ -604,6 +629,7 @@ function mapAgent(row: Record<string, unknown>): Agent {
     arch: (row.arch as string | null) ?? null,
     agent_version: (row.agent_version as string | null) ?? null,
     created_at: Number(row.created_at),
+    recovery_registered: !!row.recovery_registered,
   };
 }
 
