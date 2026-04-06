@@ -2,7 +2,7 @@
 
 **Distributed Docker container update manager.** Think Watchtower, but with multi-host support, a real-time dashboard, and centralized control.
 
-[![CI](https://github.com/watchwarden-labs/watchwarden/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/watchwarden-labs/watchwarden/actions)
+[![CI](https://github.com/watchwarden-labs/watchwarden/actions/workflows/release.yml/badge.svg)](https://github.com/watchwarden-labs/watchwarden/actions)
 [![Release](https://img.shields.io/github/v/release/watchwarden-labs/watchwarden)](https://github.com/watchwarden-labs/watchwarden/releases/latest)
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-orange.svg)](LICENSE)
 [![Controller](https://ghcr-badge.egpl.dev/watchwarden-labs/watchwarden-controller/size?label=controller)](https://github.com/watchwarden-labs/watchwarden/pkgs/container/watchwarden-controller)
