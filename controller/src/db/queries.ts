@@ -131,12 +131,13 @@ export async function upsertContainers(
       tag_pattern: c.tag_pattern ?? null,
       update_level: c.update_level ?? null,
       health_status: c.health_status ?? null,
+      is_stateful: !!c.is_stateful,
     }));
 
     // postgres.js sql(rows, col...) generates the column list + VALUES — no separate column list
     await tx`
     INSERT INTO containers
-    ${tx(rows, 'id', 'agent_id', 'docker_id', 'name', 'image', 'current_digest', 'status', 'excluded', 'exclude_reason', 'pinned_version', 'update_group', 'update_priority', 'depends_on', 'policy', 'tag_pattern', 'update_level', 'health_status')}
+    ${tx(rows, 'id', 'agent_id', 'docker_id', 'name', 'image', 'current_digest', 'status', 'excluded', 'exclude_reason', 'pinned_version', 'update_group', 'update_priority', 'depends_on', 'policy', 'tag_pattern', 'update_level', 'health_status', 'is_stateful')}
     ON CONFLICT (id) DO UPDATE SET
       docker_id = EXCLUDED.docker_id,
       name = EXCLUDED.name,
@@ -152,7 +153,8 @@ export async function upsertContainers(
       policy = EXCLUDED.policy,
       tag_pattern = EXCLUDED.tag_pattern,
       update_level = EXCLUDED.update_level,
-      health_status = COALESCE(EXCLUDED.health_status, containers.health_status)
+      health_status = COALESCE(EXCLUDED.health_status, containers.health_status),
+      is_stateful = EXCLUDED.is_stateful
   `;
   }); // end sql.begin — DB-03
 }
@@ -629,6 +631,7 @@ function mapContainer(row: Record<string, unknown>): Container {
     last_diff: row.last_diff as string | null,
     last_checked: row.last_checked ? Number(row.last_checked) : null,
     last_updated: row.last_updated ? Number(row.last_updated) : null,
+    is_stateful: row.is_stateful ? 1 : 0,
   };
 }
 

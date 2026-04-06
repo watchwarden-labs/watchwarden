@@ -1,6 +1,7 @@
 import {
   ArrowUpCircle,
   Ban,
+  Database,
   Loader2,
   Pin,
   Play,
@@ -94,6 +95,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
   const hasUpdate = container.has_update === 1;
   const isExcluded = container.excluded === 1;
   const isPinned = container.pinned_version === 1;
+  const isStateful = container.is_stateful === 1;
   const isRunning = container.status === 'running';
   const isAgentChecking = checkingAgents.has(agentId);
   const isChecking = pendingAction === 'check' || isAgentChecking;
@@ -223,6 +225,16 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                   <Pin size={12} className="text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent>Version pinned — auto-updates blocked</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {isStateful && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger render={<span />} className="cursor-default">
+                  <Database size={12} className="text-orange-500" />
+                </TooltipTrigger>
+                <TooltipContent>Stateful service — excluded from bulk updates</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
