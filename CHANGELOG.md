@@ -1,3 +1,17 @@
+## v0.1.2
+
+Released: 2026-04-06
+
+### Bug Fixes
+- fix: disable provenance for Docker builds in release workflow (ef9b3a6)
+- fix: update CI badge link in README to point to the correct workflow (3167c5c)
+
+### Other Changes
+- chore: update changelog for v0.1.1 (843df0e)
+- chore: update changelog for v0.1.1 (61e8ba4)
+- chore: update changelog for v0.1.1 (772eea4)
+- chore: update changelog for v0.1.1 (5b0402b)
+
 ## v0.1.1
 
 Released: 2026-04-04
