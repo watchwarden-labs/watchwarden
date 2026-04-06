@@ -1,10 +1,17 @@
 import fastifyWebsocket from '@fastify/websocket';
 import bcrypt from 'bcryptjs';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { startPostgres, stopPostgres } from '../../__tests__/pg-setup.js';
-import { getAgent, insertAgent, setConfig } from '../../db/queries.js';
+import {
+  disableRecoveryMode,
+  enableRecoveryMode,
+  getAgent,
+  insertAgent,
+  listAgents,
+  setConfig,
+} from '../../db/queries.js';
 import { AgentHub } from '../hub.js';
 
 function waitForMessage(ws: WebSocket): Promise<Record<string, unknown>> {
@@ -378,5 +385,133 @@ describe('AgentHub', () => {
     // Map should be empty after disconnect cleanup
     await new Promise((r) => setTimeout(r, 300));
     expect(pendingMap.size).toBe(0);
+  });
+
+  // --- Recovery Mode ---
+
+  describe('Recovery Mode', () => {
+    // Valid 64-char hex token (not registered in DB)
+    const recoveryToken = 'a'.repeat(64);
+
+    afterEach(async () => {
+      await disableRecoveryMode();
+      hub.resetRecoveryCount();
+    });
+
+    it('rejects unknown token when recovery mode is OFF', async () => {
+      const ws = connectAgent();
+      await waitForOpen(ws);
+      const closePromise = waitForClose(ws);
+
+      ws.send(
+        JSON.stringify({
+          type: 'REGISTER',
+          payload: { token: recoveryToken, hostname: 'recovery-host', containers: [] },
+        }),
+      );
+
+      const { code } = await closePromise;
+      expect(code).toBe(4001);
+    });
+
+    it('auto-registers unknown agent when recovery mode is ON', async () => {
+      await enableRecoveryMode(5);
+
+      const ws = connectAgent();
+      await waitForOpen(ws);
+
+      ws.send(
+        JSON.stringify({
+          type: 'REGISTER',
+          payload: {
+            token: recoveryToken,
+            hostname: 'recovery-host',
+            agentName: 'recovered-agent',
+            containers: [],
+          },
+        }),
+      );
+
+      // Wait for registration to process
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Agent should be online
+      const agents = await listAgents();
+      const recovered = agents.find((a) => a.name === 'recovered-agent');
+      expect(recovered).toBeDefined();
+      expect(recovered!.status).toBe('online');
+      expect(recovered!.recovery_registered).toBe(true);
+
+      ws.close();
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    it('rejects non-hex tokens even in recovery mode', async () => {
+      await enableRecoveryMode(5);
+
+      const ws = connectAgent();
+      await waitForOpen(ws);
+      const closePromise = waitForClose(ws);
+
+      ws.send(
+        JSON.stringify({
+          type: 'REGISTER',
+          payload: {
+            token: 'not-a-valid-hex-token',
+            hostname: 'bad-host',
+            containers: [],
+          },
+        }),
+      );
+
+      const { code } = await closePromise;
+      expect(code).toBe(4001);
+    });
+
+    it('deduplicates agents with same name in same recovery window', async () => {
+      await enableRecoveryMode(5);
+
+      // First connection
+      const ws1 = connectAgent();
+      await waitForOpen(ws1);
+      ws1.send(
+        JSON.stringify({
+          type: 'REGISTER',
+          payload: {
+            token: recoveryToken,
+            hostname: 'dedup-host',
+            agentName: 'dedup-agent',
+            containers: [],
+          },
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 500));
+      ws1.close();
+      await new Promise((r) => setTimeout(r, 200));
+
+      // Second connection with same token and name
+      const ws2 = connectAgent();
+      await waitForOpen(ws2);
+      ws2.send(
+        JSON.stringify({
+          type: 'REGISTER',
+          payload: {
+            token: recoveryToken,
+            hostname: 'dedup-host',
+            agentName: 'dedup-agent',
+            containers: [],
+          },
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Should reuse the same agent, not create a duplicate
+      const agents = await listAgents();
+      const matches = agents.filter((a) => a.name === 'dedup-agent');
+      expect(matches.length).toBe(1);
+
+      ws2.close();
+      await new Promise((r) => setTimeout(r, 200));
+    });
   });
 });
