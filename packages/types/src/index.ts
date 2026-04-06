@@ -16,6 +16,7 @@ export interface Agent {
   arch: string | null;
   agent_version: string | null;
   created_at: number;
+  recovery_registered?: boolean;
   containers?: Container[];
 }
 
