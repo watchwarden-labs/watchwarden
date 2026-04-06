@@ -45,6 +45,7 @@ type ContainerInfo struct {
 	TagPattern    string   `json:"tag_pattern,omitempty"`   // regex for tag matching (from label)
 	UpdateLevel   string   `json:"update_level,omitempty"`  // "major", "minor", "patch", "all" (from label)
 	HealthStatus  string   `json:"health_status,omitempty"` // "healthy", "unhealthy", "starting", "none"
+	IsStateful    bool     `json:"is_stateful,omitempty"`   // auto-detected database/stateful service
 }
 
 // ContainerSnapshot captures all parameters needed to recreate a container.
