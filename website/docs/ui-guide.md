@@ -125,7 +125,33 @@ Configure global update schedule, startup behavior, admin password, and agent re
 - **Global Schedule** — cron expression picker with presets (hourly, daily, weekly)
 - **Check on startup** — catch-up check if the last scheduled check was more than 24 hours ago
 - **Admin Password** — change the dashboard login password
+- **Recovery Mode** — time-limited window for automatic agent re-registration after database loss (see below)
 - **Register New Agent** — generate a token and get a ready-to-use docker run snippet
+
+### Recovery Mode
+
+If the controller's database is lost (e.g. the PostgreSQL volume is accidentally deleted), all agent registrations are gone and deployed agents can no longer authenticate. Recovery mode lets you restore connectivity without manually re-registering every agent.
+
+**How it works:**
+
+1. Go to **Settings → General → Recovery Mode**
+2. Click **Enable** and choose a duration (5, 15, 30, or 60 minutes)
+3. Confirm in the dialog — recovery mode activates with a visible countdown
+4. Already-deployed agents will automatically reconnect and re-register using their existing tokens
+5. Recovery mode expires automatically when the timer runs out, or you can disable it manually
+
+**Security:**
+
+- **Off by default** — normal operation uses strict bcrypt token authentication
+- **Time-bounded** — auto-expires after the chosen duration
+- **Token required** — agents must present a valid 64-character hex token (not arbitrary strings)
+- **Rate limited** — maximum 20 recovery registrations per window
+- **Audit logged** — every auto-registration is recorded with IP address, agent name, and hostname
+- **Flagged for review** — recovery-registered agents display an orange "Recovery" badge in the Agents page so you can verify they are legitimate
+
+:::caution
+Only enable recovery mode immediately after a database loss. During the recovery window, any machine on your network with a valid-format token can register as an agent. Keep the window as short as possible and review the Audit Log afterward.
+:::
 
 ### Notifications
 
