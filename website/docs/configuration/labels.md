@@ -41,6 +41,43 @@ services:
     # Not labeled → not monitored
 ```
 
+## Stateful Container Protection
+
+WatchWarden auto-detects 30+ known database and stateful images (postgres, mysql, mongo, redis, elasticsearch, kafka, rabbitmq, etc.) and marks them with an `is_stateful` flag. Stateful containers are **automatically skipped** during "Update All" and auto-update operations to prevent data loss. Individual explicit updates still work.
+
+| Label | Values | Description |
+|-------|--------|-------------|
+| `com.watchwarden.stateful` | `true` / `false` | Override the auto-detection. `true` marks a container as stateful (skipped in bulk updates), `false` treats it as non-stateful even if the image matches a known database. |
+
+The label takes priority over auto-detection.
+
+### Example
+
+```yaml
+services:
+  # Auto-detected as stateful — skipped by "Update All"
+  database:
+    image: postgres:18
+
+  # Not a known stateful image, but you want to protect it from bulk updates
+  custom-store:
+    image: mycompany/data-service:latest
+    labels:
+      - "com.watchwarden.stateful=true"
+
+  # Redis used as a disposable cache — safe to bulk-update
+  cache:
+    image: redis:7-alpine
+    labels:
+      - "com.watchwarden.stateful=false"
+```
+
+### Auto-detected stateful images
+
+The agent recognizes these base image names (and variants with `-` suffixes like `postgres-alpine`):
+
+`postgres`, `postgresql`, `mysql`, `mariadb`, `mongo`, `mongodb`, `redis`, `valkey`, `memcached`, `elasticsearch`, `opensearch`, `meilisearch`, `influxdb`, `clickhouse`, `cockroach`, `timescaledb`, `cassandra`, `neo4j`, `couchdb`, `couchbase`, `mssql`, `oracle`, `etcd`, `consul`, `vault`, `zookeeper`, `kafka`, `rabbitmq`, `nats`, `minio`, `rqlite`, `surrealdb`, `arangodb`, `dgraph`, `foundationdb`, `vitess`
+
 ## Update Group Labels
 
 Control the order in which containers are updated within a group.
