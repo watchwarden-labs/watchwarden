@@ -270,8 +270,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/watchwarden-controller:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=controller
           cache-to: type=gha,scope=controller,mode=max
-          sbom: true
-          provenance: mode=max
+          provenance: false
 
       - name: Build and push Agent
         uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
@@ -284,8 +283,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/watchwarden-agent:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=agent
           cache-to: type=gha,scope=agent,mode=max
-          sbom: true
-          provenance: mode=max
+          provenance: false
 
       - name: Build and push UI
         uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
@@ -299,8 +297,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/watchwarden-ui:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=ui
           cache-to: type=gha,scope=ui,mode=max
-          sbom: true
-          provenance: mode=max
+          provenance: false
 
       - name: Scan Controller image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
