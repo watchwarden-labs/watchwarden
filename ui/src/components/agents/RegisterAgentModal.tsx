@@ -29,6 +29,7 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
     token: string;
   } | null>(null);
   const [copied, setCopied] = useState<'token' | 'compose' | null>(null);
+  const [includeSnapshots, setIncludeSnapshots] = useState(false);
   const registerAgent = useRegisterAgent();
   const addToast = useStore((s) => s.addToast);
 
@@ -68,6 +69,7 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
     setHostname('');
     setResult(null);
     setCopied(null);
+    setIncludeSnapshots(false);
     onOpenChange(false);
   };
 
@@ -81,12 +83,12 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
   watchwarden-agent:
     image: ghcr.io/watchwarden-labs/watchwarden-agent:latest
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock${includeSnapshots ? '\n      - agent_snapshots:/var/lib/watchwarden/snapshots' : ''}
     environment:
       CONTROLLER_URL: "${controllerWsUrl}"
       AGENT_TOKEN: "${result.token}"
       AGENT_NAME: "${name || 'my-server'}"
-    restart: unless-stopped`
+    restart: unless-stopped${includeSnapshots ? '\n\nvolumes:\n  agent_snapshots:' : ''}`
     : '';
 
   return (
@@ -187,6 +189,17 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
                 <pre className="bg-background p-3 rounded text-xs font-mono text-foreground overflow-x-auto select-all">
                   {composeSnippet}
                 </pre>
+                <label className="flex items-center gap-2 pt-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeSnapshots}
+                    onChange={(e) => setIncludeSnapshots(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Include snapshot volume (needed for Blue-Green / rollback)
+                  </span>
+                </label>
               </CardContent>
             </Card>
           </div>
