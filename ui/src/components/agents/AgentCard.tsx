@@ -28,6 +28,14 @@ export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps
           <div className="flex items-center gap-2">
             <StatusDot status={agent.status} />
             <h3 className="font-semibold">{agent.name}</h3>
+            {agent.recovery_registered && (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 border-orange-400/30 text-orange-500"
+              >
+                Recovery
+              </Badge>
+            )}
           </div>
           {updateCount > 0 && (
             <Badge
