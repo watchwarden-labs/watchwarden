@@ -42,6 +42,7 @@ export interface Container {
   policy: string | null;
   tag_pattern: string | null;
   update_level: string | null;
+  is_stateful: number;
 }
 
 export interface ContainerInfo {
@@ -61,6 +62,7 @@ export interface ContainerInfo {
   tag_pattern?: string;
   update_level?: string;
   health_status?: string;
+  is_stateful?: boolean;
 }
 
 export interface NewAgent {
