@@ -6,10 +6,12 @@ import {
   getConfig,
   getContainersByAgent,
   getEffectivePolicy,
+  insertAgent,
   insertAuditLog,
   insertScanResult,
   insertUpdateLog,
   insertUpdateLogAndDigests,
+  isRecoveryModeActive,
   listAgents,
   listAgentsByTokenPrefix,
   listRegistryCredentials,
@@ -171,7 +173,12 @@ export class AgentHub {
             }
 
             const payload = message.payload as RegisterPayload;
-            const result = await this.authenticateAgent(payload.token);
+            let result = await this.authenticateAgent(payload.token);
+
+            // Recovery mode: if normal auth fails, try auto-registering the agent
+            if (!result) {
+              result = await this.tryRecoveryRegister(payload, socket);
+            }
 
             if (!result) {
               socket.close(4001, 'Invalid token');
@@ -333,6 +340,8 @@ export class AgentHub {
                     // Per-container policy overrides: "manual" and "notify" skip auto-update
                     if (dbContainer?.policy === 'manual' || dbContainer?.policy === 'notify')
                       return false;
+                    // Stateful containers (databases) are never auto-updated
+                    if (dbContainer?.is_stateful) return false;
                     return true;
                   })
                   .map((r) => r.containerId);
@@ -848,6 +857,93 @@ export class AgentHub {
       }
     }
     return null;
+  }
+
+  /** Rate limiter for recovery registrations within a single recovery window. */
+  private recoveryCount = 0;
+  private static readonly MAX_RECOVERY_PER_WINDOW = 20;
+  private static readonly VALID_TOKEN_RE = /^[0-9a-f]{64}$/;
+
+  /**
+   * Attempt to auto-register an agent via recovery mode.
+   * Only works when recovery mode is active, the token has valid format,
+   * and the per-window rate limit hasn't been exceeded.
+   */
+  private async tryRecoveryRegister(
+    payload: RegisterPayload,
+    socket: WebSocket,
+  ): Promise<{ id: string } | null> {
+    // Check token format first (cheap, no DB hit)
+    if (!AgentHub.VALID_TOKEN_RE.test(payload.token)) return null;
+
+    // Check if recovery mode is active
+    const active = await isRecoveryModeActive();
+    if (!active) return null;
+
+    // Rate limit
+    if (this.recoveryCount >= AgentHub.MAX_RECOVERY_PER_WINDOW) {
+      log.warn('hub', 'Recovery mode rate limit exceeded, rejecting registration');
+      return null;
+    }
+
+    // Dedup: check if an agent with the same name already exists (re-registration in same window)
+    const agentName = payload.agentName || payload.hostname || 'recovered-agent';
+    const existingAgents = await listAgents();
+    const duplicate = existingAgents.find((a) => a.name === agentName);
+    if (duplicate) {
+      // Try authenticating against the existing duplicate (may have been recovery-registered moments ago)
+      const valid = await bcrypt.compare(payload.token, duplicate.token_hash);
+      if (valid) return { id: duplicate.id };
+      // Different token, same name — append short ID suffix
+    }
+
+    const agentId = randomUUID();
+    const tokenHash = await bcrypt.hash(payload.token, 10);
+    const tokenPrefix = payload.token.slice(0, 8);
+    const finalName = duplicate ? `${agentName}-${agentId.slice(0, 8)}` : agentName;
+
+    await insertAgent({
+      id: agentId,
+      name: finalName,
+      hostname: payload.hostname,
+      token_hash: tokenHash,
+      token_prefix: tokenPrefix,
+    });
+
+    // Mark as recovery-registered
+    const { sql } = await import('../db/client.js');
+    await sql`UPDATE agents SET recovery_registered = TRUE WHERE id = ${agentId}`;
+
+    this.recoveryCount++;
+
+    // Audit log
+    const remoteAddr =
+      (socket as unknown as { _socket?: { remoteAddress?: string } })._socket?.remoteAddress ??
+      'unknown';
+    await insertAuditLog({
+      actor: 'system:recovery',
+      action: 'agent.recovery_register',
+      targetType: 'agent',
+      targetId: agentId,
+      details: {
+        agentName: finalName,
+        hostname: payload.hostname,
+        ip: remoteAddr,
+      },
+      ipAddress: remoteAddr,
+    });
+
+    log.info(
+      'hub',
+      `Recovery mode: auto-registered agent "${finalName}" (${agentId}) from ${remoteAddr}`,
+    );
+
+    return { id: agentId };
+  }
+
+  /** Reset recovery registration counter (call when recovery mode is enabled/disabled). */
+  resetRecoveryCount(): void {
+    this.recoveryCount = 0;
   }
 
   private async syncCredentialsToAgent(agentId: string): Promise<void> {

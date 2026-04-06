@@ -1,8 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 import cron from 'node-cron';
 import {
+  disableRecoveryMode,
+  enableRecoveryMode,
   getAllConfig,
   getEffectivePolicy,
+  getRecoveryModeExpiry,
   setConfig,
   upsertUpdatePolicy,
 } from '../../db/queries.js';
@@ -88,6 +91,38 @@ const configRoutes: FastifyPluginAsync = async (fastify) => {
       strategy: strategy ?? existing.strategy ?? 'stop-first',
     });
     return { message: 'Policy updated' };
+  });
+
+  // --- Recovery Mode ---
+
+  fastify.get('/api/recovery-mode', async () => {
+    const expiresAt = await getRecoveryModeExpiry();
+    if (!expiresAt) {
+      return { enabled: false, expiresAt: null, remainingSeconds: null };
+    }
+    return {
+      enabled: true,
+      expiresAt,
+      remainingSeconds: Math.max(0, Math.round((expiresAt - Date.now()) / 1000)),
+    };
+  });
+
+  fastify.post<{ Body: { ttlMinutes?: number } }>('/api/recovery-mode', async (request, reply) => {
+    const ttl = request.body?.ttlMinutes ?? 15;
+    if (ttl < 1 || ttl > 60) {
+      return reply.code(400).send({ error: 'TTL must be between 1 and 60 minutes' });
+    }
+    const expiresAt = await enableRecoveryMode(ttl);
+    return {
+      enabled: true,
+      expiresAt,
+      remainingSeconds: ttl * 60,
+    };
+  });
+
+  fastify.delete('/api/recovery-mode', async () => {
+    await disableRecoveryMode();
+    return { enabled: false };
   });
 };
 

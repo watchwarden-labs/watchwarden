@@ -131,12 +131,13 @@ export async function upsertContainers(
       tag_pattern: c.tag_pattern ?? null,
       update_level: c.update_level ?? null,
       health_status: c.health_status ?? null,
+      is_stateful: !!c.is_stateful,
     }));
 
     // postgres.js sql(rows, col...) generates the column list + VALUES — no separate column list
     await tx`
     INSERT INTO containers
-    ${tx(rows, 'id', 'agent_id', 'docker_id', 'name', 'image', 'current_digest', 'status', 'excluded', 'exclude_reason', 'pinned_version', 'update_group', 'update_priority', 'depends_on', 'policy', 'tag_pattern', 'update_level', 'health_status')}
+    ${tx(rows, 'id', 'agent_id', 'docker_id', 'name', 'image', 'current_digest', 'status', 'excluded', 'exclude_reason', 'pinned_version', 'update_group', 'update_priority', 'depends_on', 'policy', 'tag_pattern', 'update_level', 'health_status', 'is_stateful')}
     ON CONFLICT (id) DO UPDATE SET
       docker_id = EXCLUDED.docker_id,
       name = EXCLUDED.name,
@@ -152,7 +153,8 @@ export async function upsertContainers(
       policy = EXCLUDED.policy,
       tag_pattern = EXCLUDED.tag_pattern,
       update_level = EXCLUDED.update_level,
-      health_status = COALESCE(EXCLUDED.health_status, containers.health_status)
+      health_status = COALESCE(EXCLUDED.health_status, containers.health_status),
+      is_stateful = EXCLUDED.is_stateful
   `;
   }); // end sql.begin — DB-03
 }
@@ -304,6 +306,31 @@ export async function getAllConfig(): Promise<Record<string, string>> {
     config[row.key as string] = row.value as string;
   }
   return config;
+}
+
+// --- Recovery Mode ---
+
+export async function isRecoveryModeActive(): Promise<boolean> {
+  const expiresAt = await getConfig('recovery_mode_expires_at');
+  if (!expiresAt) return false;
+  return Date.now() < Number(expiresAt);
+}
+
+export async function getRecoveryModeExpiry(): Promise<number | null> {
+  const expiresAt = await getConfig('recovery_mode_expires_at');
+  if (!expiresAt) return null;
+  const ts = Number(expiresAt);
+  return Date.now() < ts ? ts : null;
+}
+
+export async function enableRecoveryMode(ttlMinutes: number): Promise<number> {
+  const expiresAt = Date.now() + ttlMinutes * 60 * 1000;
+  await setConfig('recovery_mode_expires_at', String(expiresAt));
+  return expiresAt;
+}
+
+export async function disableRecoveryMode(): Promise<void> {
+  await sql`DELETE FROM config WHERE key = 'recovery_mode_expires_at'`;
 }
 
 // --- Registry Credentials ---
@@ -602,6 +629,7 @@ function mapAgent(row: Record<string, unknown>): Agent {
     arch: (row.arch as string | null) ?? null,
     agent_version: (row.agent_version as string | null) ?? null,
     created_at: Number(row.created_at),
+    recovery_registered: !!row.recovery_registered,
   };
 }
 
@@ -629,6 +657,7 @@ function mapContainer(row: Record<string, unknown>): Container {
     last_diff: row.last_diff as string | null,
     last_checked: row.last_checked ? Number(row.last_checked) : null,
     last_updated: row.last_updated ? Number(row.last_updated) : null,
+    is_stateful: row.is_stateful ? 1 : 0,
   };
 }
 

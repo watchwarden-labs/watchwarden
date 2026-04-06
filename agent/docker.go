@@ -100,6 +100,39 @@ func isPinnedVersion(image string) bool {
 	return semverish.MatchString(tag)
 }
 
+// statefulImages lists base image names of known database/stateful services.
+// These are excluded from bulk "Update All" and auto-update to prevent data loss.
+var statefulImages = []string{
+	"postgres", "postgresql", "mysql", "mariadb", "mongo", "mongodb",
+	"redis", "valkey", "memcached", "elasticsearch", "opensearch",
+	"meilisearch", "influxdb", "clickhouse", "cockroach",
+	"timescaledb", "cassandra", "neo4j", "couchdb", "couchbase",
+	"mssql", "oracle", "etcd", "consul", "vault", "zookeeper",
+	"kafka", "rabbitmq", "nats", "minio", "rqlite", "surrealdb",
+	"arangodb", "dgraph", "foundationdb", "vitess",
+}
+
+// isStatefulImage detects if a container image is a known database/stateful service.
+func isStatefulImage(imageName string) bool {
+	base := imageName
+	if atIdx := strings.Index(base, "@"); atIdx > 0 {
+		base = base[:atIdx]
+	}
+	if colonIdx := strings.LastIndex(base, ":"); colonIdx > 0 {
+		base = base[:colonIdx]
+	}
+	if slashIdx := strings.LastIndex(base, "/"); slashIdx >= 0 {
+		base = base[slashIdx+1:]
+	}
+	base = strings.ToLower(base)
+	for _, s := range statefulImages {
+		if base == s || strings.HasPrefix(base, s+"-") {
+			return true
+		}
+	}
+	return false
+}
+
 // friendlyImageName returns a short, readable image name.
 // "nginx@sha256:abc123..." → "nginx"
 // "sha256:abc123..." → containerName
@@ -199,6 +232,12 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 			healthStatus = "starting"
 		}
 
+		// Detect stateful containers (databases, caches) — label override takes priority
+		isStateful := isStatefulImage(imageName)
+		if val, ok := c.Labels["com.watchwarden.stateful"]; ok {
+			isStateful = val == "true"
+		}
+
 		result = append(result, ContainerInfo{
 			ID:            c.ID[:12],
 			DockerID:      c.ID,
@@ -216,6 +255,7 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 			Policy:        policy,
 			TagPattern:    tagPattern,
 			UpdateLevel:   updateLevel,
+			IsStateful:    isStateful,
 		})
 	}
 	return result, nil
