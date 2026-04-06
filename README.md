@@ -61,6 +61,7 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 - **Health-based auto-rollback** — rolls back automatically if a container becomes unhealthy after update, respects healthcheck `start_period` for slow-starting containers
 - **Crash-loop detection** — detects and rolls back containers stuck in restart loops (requires 3+ restarts in 60s to avoid false positives)
 - **AutoRemove container support** — safely updates `--rm` containers by handling Docker API 409/404 during removal
+- **Stateful container protection** — auto-detects 30+ known database/stateful images (postgres, mysql, mongo, redis, etc.) and skips them during "Update All" and auto-update to prevent data loss. Individual explicit updates still work. Override with `com.watchwarden.stateful=true|false` label.
 - **Volume pre-flight check** — verifies all bind mount sources exist before attempting an update
 
 ### Security & Compliance
@@ -109,6 +110,7 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 | Vulnerability Scanning | ✅ Trivy-based CVE scanning | ❌ None |
 | Image Signing (Cosign) | ✅ Verify before pull | ❌ None |
 | Image Diff Preview | ✅ Before update | ❌ None |
+| Stateful Container Protection | ✅ Auto-skips databases in bulk updates | ❌ None |
 | Pinned Version Detection | ✅ Blocks explicit tags, allows floating | ❌ None |
 | Config-only Change Detection | ✅ Detects entrypoint/env changes | ❌ None |
 | AutoRemove (`--rm`) Support | ✅ Handles 409/404 gracefully | ❌ Breaks |
@@ -425,6 +427,7 @@ All standard Watchtower environment variables are automatically mapped to WatchW
 | `com.watchwarden.tag_pattern` | `^v3\.\d+$` | Filter tags by regex for update checks |
 | `com.watchwarden.update_level` | `major` / `minor` / `patch` / `all` | Semver level filter for updates (requires `tag_pattern`) |
 | `com.watchwarden.pinned` | `true` | Force-pin a floating tag (skip update checks) |
+| `com.watchwarden.stateful` | `true` / `false` | Override stateful auto-detection (stateful containers are skipped by bulk updates) |
 
 ## Development
 
