@@ -471,6 +471,9 @@ describe('AgentHub', () => {
     it('deduplicates agents with same name in same recovery window', async () => {
       await enableRecoveryMode(5);
 
+      // Use a unique token for dedup test (different from recoveryToken)
+      const dedupToken = 'b'.repeat(64);
+
       // First connection
       const ws1 = connectAgent();
       await waitForOpen(ws1);
@@ -478,7 +481,7 @@ describe('AgentHub', () => {
         JSON.stringify({
           type: 'REGISTER',
           payload: {
-            token: recoveryToken,
+            token: dedupToken,
             hostname: 'dedup-host',
             agentName: 'dedup-agent',
             containers: [],
@@ -489,14 +492,14 @@ describe('AgentHub', () => {
       ws1.close();
       await new Promise((r) => setTimeout(r, 200));
 
-      // Second connection with same token and name
+      // Second connection with same token and name — should reuse existing agent
       const ws2 = connectAgent();
       await waitForOpen(ws2);
       ws2.send(
         JSON.stringify({
           type: 'REGISTER',
           payload: {
-            token: recoveryToken,
+            token: dedupToken,
             hostname: 'dedup-host',
             agentName: 'dedup-agent',
             containers: [],
