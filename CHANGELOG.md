@@ -1,3 +1,22 @@
+## v0.2.0
+
+Released: 2026-04-06
+
+### Features
+- feat: add agent recovery mode for DB loss scenarios (bbae524)
+- feat: add stateful container protection to prevent data loss during updates (429d057)
+- feat: add snapshot volume checkbox to agent registration snippet (5dded26)
+
+### Bug Fixes
+- fix(test): use unique token for dedup recovery test (22feade)
+- fix: update pull request trigger branches to include develop (b3fcd54)
+- fix: copy button fallback for non-HTTPS contexts (b2ae3fd)
+- fix: protect stateful containers from bulk updates (bfcbe5f)
+
+### Other Changes
+- test: add recovery mode API and WebSocket tests (0543317)
+- docs: add Recovery Mode section to UI guide (7068c2b)
+
 ## v0.1.2
 
 Released: 2026-04-06
