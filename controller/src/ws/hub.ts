@@ -333,6 +333,8 @@ export class AgentHub {
                     // Per-container policy overrides: "manual" and "notify" skip auto-update
                     if (dbContainer?.policy === 'manual' || dbContainer?.policy === 'notify')
                       return false;
+                    // Stateful containers (databases) are never auto-updated
+                    if (dbContainer?.is_stateful) return false;
                     return true;
                   })
                   .map((r) => r.containerId);

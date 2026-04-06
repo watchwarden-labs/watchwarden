@@ -161,20 +161,28 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
         });
       } else {
         // All containers with updates — filter to only those that actually need updating
+        // Stateful containers (databases, caches) are excluded from bulk updates to prevent data loss
         const containers = await getContainersByAgent(request.params.id);
+        const skippedStateful = containers
+          .filter((c) => !c.excluded && c.has_update && c.is_stateful)
+          .map((c) => c.name);
         const allIds = containers
-          .filter((c) => !c.excluded && c.has_update)
+          .filter((c) => !c.excluded && c.has_update && !c.is_stateful)
           .map((c) => c.docker_id);
         if (allIds.length === 0) {
           hub.setUpdateInFlight(request.params.id, false);
-          return reply.code(200).send({ message: 'No containers have updates' });
+          const msg = skippedStateful.length
+            ? `No stateless containers to update (skipped stateful: ${skippedStateful.join(', ')})`
+            : 'No containers have updates';
+          return reply.code(200).send({ message: msg });
         }
         const { executeOrchestratedUpdate } = await import('../../scheduler/orchestrator.js');
         await executeOrchestratedUpdate(hub, request.params.id, allIds, {
           strategy: policy.strategy ?? 'stop-first',
         });
       }
-      return reply.code(202).send({ message: 'Update initiated' });
+      const msg = 'Update initiated';
+      return reply.code(202).send({ message: msg });
     },
   );
 
