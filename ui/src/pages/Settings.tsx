@@ -21,7 +21,7 @@ export function Settings() {
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <h1 className="text-2xl font-bold">Settings</h1>
       <Tabs defaultValue="general">
-        <TabsList className="flex-wrap">
+        <TabsList className="w-full overflow-x-auto justify-start">
           <TabsTrigger value="general">
             <Clock size={14} className="mr-1" /> General
           </TabsTrigger>
