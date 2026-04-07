@@ -34,6 +34,10 @@ type Updater struct {
 	// haven't called mu.Lock() yet.
 	containerLocks   map[string]*containerLockEntry
 	containerLocksMu sync.Mutex
+	// selfContainerID is the Docker container ID of the agent process itself.
+	// When non-empty, self-updates are deferred to run last and the agent
+	// expects to be killed mid-operation (Docker restart policy brings it back).
+	selfContainerID string
 }
 
 // NewUpdater creates an Updater with the given Docker client.
@@ -41,11 +45,24 @@ type Updater struct {
 func NewUpdater(docker *DockerClient) *Updater {
 	snaps := make(map[string]*ContainerSnapshot)
 	loadSnapshots(snaps)
-	return &Updater{
-		docker:         docker,
-		snapshots:      snaps,
-		containerLocks: make(map[string]*containerLockEntry),
+	selfID := getSelfContainerID(context.Background(), docker.cli)
+	if selfID != "" {
+		log.Printf("[updater] detected self container ID: %s", selfID[:12])
 	}
+	return &Updater{
+		docker:          docker,
+		snapshots:       snaps,
+		containerLocks:  make(map[string]*containerLockEntry),
+		selfContainerID: selfID,
+	}
+}
+
+// IsSelfContainer returns true if the given container ID is the agent's own container.
+func (u *Updater) IsSelfContainer(containerID string) bool {
+	if u.selfContainerID == "" {
+		return false
+	}
+	return containerID == u.selfContainerID || strings.HasPrefix(u.selfContainerID, containerID)
 }
 
 // StartLockCleanup periodically removes idle per-container lock entries.

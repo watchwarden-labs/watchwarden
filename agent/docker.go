@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,6 +20,21 @@ import (
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 )
+
+// getSelfContainerID returns the full Docker container ID of the agent process,
+// or empty string if not running in a container. Docker sets HOSTNAME to the
+// short container ID — we verify by inspecting it.
+func getSelfContainerID(ctx context.Context, cli DockerAPI) string {
+	hostname := os.Getenv("HOSTNAME")
+	if hostname == "" || len(hostname) < 12 {
+		return ""
+	}
+	info, err := cli.ContainerInspect(ctx, hostname)
+	if err != nil {
+		return ""
+	}
+	return info.ID
+}
 
 // FIX-1.4: contextReader wraps an io.Reader so that Read calls return
 // immediately with ctx.Err() when the context is cancelled, preventing
