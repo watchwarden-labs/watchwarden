@@ -237,11 +237,18 @@ jobs:
           # Save release notes for GitHub release
           cat /tmp/changelog-entry.md > /tmp/release-notes.md
 
-      - name: Commit changelog
+      - name: Stamp version into package.json files
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SEMVER="${VERSION#v}"
+          npm --no-git-tag-version version "$SEMVER" --allow-same-version -w controller
+          npm --no-git-tag-version version "$SEMVER" --allow-same-version -w ui
+
+      - name: Commit changelog and version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
+          git add CHANGELOG.md controller/package.json ui/package.json
           git diff --cached --quiet || git commit -m "chore: update changelog for ${{ steps.version.outputs.version }}"
           git push
 
@@ -278,6 +285,7 @@ jobs:
           context: ./agent
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: VERSION=${{ steps.version.outputs.version }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/watchwarden-agent:latest
             ghcr.io/${{ github.repository_owner }}/watchwarden-agent:${{ steps.version.outputs.version }}
