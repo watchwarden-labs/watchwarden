@@ -54,7 +54,7 @@ export function Agents() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Agents</h1>
         <Button onClick={() => setRegisterOpen(true)}>
@@ -64,7 +64,7 @@ export function Agents() {
 
       <RegisterAgentModal open={registerOpen} onOpenChange={setRegisterOpen} />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <Tabs value={filter} onValueChange={setFilter}>
           <TabsList>
             {FILTERS.map((f) => (
@@ -152,10 +152,10 @@ export function Agents() {
             <TableHeader>
               <TableRow>
                 <TableHead>Agent</TableHead>
-                <TableHead>Hostname</TableHead>
-                <TableHead>Containers</TableHead>
-                <TableHead>Schedule</TableHead>
-                <TableHead>Last Seen</TableHead>
+                <TableHead className="hidden md:table-cell">Hostname</TableHead>
+                <TableHead className="hidden sm:table-cell">Containers</TableHead>
+                <TableHead className="hidden lg:table-cell">Schedule</TableHead>
+                <TableHead className="hidden lg:table-cell">Last Seen</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
