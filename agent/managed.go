@@ -155,7 +155,21 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		// Use background context — updates must complete even if WS disconnects
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
+
+		// Separate self-update from other containers — self must run LAST
+		// because the agent process will die during self-update.
+		var normalIDs []string
+		var selfID string
 		for _, id := range cmd.ContainerIDs {
+			if updater.IsSelfContainer(id) {
+				selfID = id
+			} else {
+				normalIDs = append(normalIDs, id)
+			}
+		}
+
+		// Update normal containers first
+		for _, id := range normalIDs {
 			currentID := id
 			func() {
 				defer func() {
@@ -186,6 +200,29 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 				wsClient.SendCritical(ctx, Message{Type: "UPDATE_RESULT", Payload: result})
 			}()
 		}
+
+		// Self-update: the agent will die during this operation.
+		// Docker's restart policy will bring it back with the new image.
+		if selfID != "" {
+			log.Printf("[handler] self-update: updating own container %s (agent will restart)", selfID[:12])
+			var result *UpdateResult
+			var updateErr error
+			if cmd.Strategy == "start-first" {
+				result, updateErr = updater.BlueGreenUpdate(ctx, selfID)
+			} else {
+				result, updateErr = updater.UpdateContainer(ctx, selfID)
+			}
+			// If we get here, the update failed (process should have been killed on success)
+			if result == nil && updateErr != nil {
+				result = &UpdateResult{
+					ContainerID: selfID,
+					Success:     false,
+					Error:       updateErr.Error(),
+				}
+			}
+			wsClient.SendCritical(ctx, Message{Type: "UPDATE_RESULT", Payload: result})
+		}
+
 		if containers, err := dockerClient.ListContainers(ctx); err == nil {
 			wsClient.Send(Message{Type: "HEARTBEAT", Payload: map[string]interface{}{"containers": containers}})
 		}
