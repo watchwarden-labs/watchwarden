@@ -159,6 +159,10 @@ export async function upsertContainers(
   }); // end sql.begin — DB-03
 }
 
+export async function markContainersUnknown(agentId: string): Promise<void> {
+  await sql`UPDATE containers SET status = 'unknown' WHERE agent_id = ${agentId}`;
+}
+
 export async function getContainersByAgent(agentId: string): Promise<Container[]> {
   const rows = await sql`SELECT * FROM containers WHERE agent_id = ${agentId}`;
   return rows.map(mapContainer);

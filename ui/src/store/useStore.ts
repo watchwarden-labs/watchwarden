@@ -55,6 +55,8 @@ interface WatchWardenState {
   // UI state
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+  mobileSidebarOpen: boolean;
+  setMobileSidebarOpen: (open: boolean) => void;
   agentViewMode: 'grid' | 'list';
   setAgentViewMode: (mode: 'grid' | 'list') => void;
   theme: 'dark' | 'light';
@@ -240,6 +242,8 @@ export const useStore = create<WatchWardenState>((set, get) => ({
 
   sidebarCollapsed: false,
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  mobileSidebarOpen: false,
+  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
 
   agentViewMode: (localStorage.getItem('watchwarden_view') as 'grid' | 'list') ?? 'grid',
   setAgentViewMode: (mode) => {

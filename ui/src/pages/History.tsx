@@ -41,11 +41,11 @@ export function HistoryPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <h1 className="text-2xl font-bold">Update History</h1>
 
       {stats && (
-        <div className="flex gap-4 text-sm">
+        <div className="flex flex-wrap gap-4 text-sm">
           <span>
             Total: <strong>{stats.totalUpdates}</strong>
           </span>
@@ -55,7 +55,7 @@ export function HistoryPage() {
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <Input
           placeholder="Filter by agent ID..."
           value={agentFilter}
@@ -85,11 +85,11 @@ export function HistoryPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-8" />
-              <TableHead>Time</TableHead>
-              <TableHead>Agent</TableHead>
+              <TableHead className="hidden sm:table-cell">Time</TableHead>
+              <TableHead className="hidden md:table-cell">Agent</TableHead>
               <TableHead>Container</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Duration</TableHead>
+              <TableHead className="hidden md:table-cell">Duration</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -117,10 +117,10 @@ export function HistoryPage() {
                           <ChevronRight size={14} className="text-muted-foreground" />
                         ))}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground whitespace-nowrap">
                       {formatDistanceToNow(entry.created_at, { addSuffix: true })}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                       {entry.agent_id}
                     </TableCell>
                     <TableCell className="text-sm">{entry.container_name}</TableCell>
@@ -132,7 +132,7 @@ export function HistoryPage() {
                         {entry.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                       {entry.duration_ms ? `${(entry.duration_ms / 1000).toFixed(1)}s` : '—'}
                     </TableCell>
                   </TableRow>

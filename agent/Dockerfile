@@ -12,7 +12,9 @@ FROM alpine:3.21
 # su-exec: lightweight privilege-drop tool (like gosu but ~10KB)
 RUN apk add --no-cache ca-certificates tzdata su-exec && \
     addgroup -S warden && \
-    adduser -S warden -G warden
+    adduser -S warden -G warden && \
+    mkdir -p /var/lib/watchwarden/snapshots && \
+    chown -R warden:warden /var/lib/watchwarden
 COPY --from=builder /watchwarden-agent /usr/local/bin/watchwarden-agent
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

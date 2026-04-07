@@ -32,7 +32,7 @@ export function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-96 shadow-glow-accent">
+      <Card className="w-full mx-4 sm:mx-auto sm:w-96 shadow-glow-accent">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl text-primary">WatchWarden</CardTitle>
           <CardDescription>Enter admin password to continue</CardDescription>
