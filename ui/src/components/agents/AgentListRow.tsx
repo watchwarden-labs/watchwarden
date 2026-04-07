@@ -34,8 +34,8 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
           <span className="font-medium">{agent.name}</span>
         </Link>
       </TableCell>
-      <TableCell className="text-muted-foreground">{agent.hostname}</TableCell>
-      <TableCell>
+      <TableCell className="hidden md:table-cell text-muted-foreground">{agent.hostname}</TableCell>
+      <TableCell className="hidden sm:table-cell">
         <div className="flex items-center gap-2">
           <span>{containerCount}</span>
           {updateCount > 0 && (
@@ -45,7 +45,7 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
           )}
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden lg:table-cell">
         {agent.schedule_override ? (
           <span className="flex items-center gap-1 text-xs font-mono text-muted-foreground">
             <Clock size={10} /> {agent.schedule_override}
@@ -54,11 +54,11 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
           <span className="text-xs text-muted-foreground">Global</span>
         )}
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
+      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
         {agent.last_seen ? formatDistanceToNow(agent.last_seen, { addSuffix: true }) : 'Never'}
       </TableCell>
       <TableCell>
-        <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex gap-1 justify-end md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           <Button
             variant="secondary"
             size="sm"
