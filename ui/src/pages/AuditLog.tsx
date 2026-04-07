@@ -90,7 +90,7 @@ export default function AuditLog() {
   }, [agents]);
 
   return (
-    <div className="space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -112,7 +112,7 @@ export default function AuditLog() {
                 setActionFilter(e.target.value);
                 setPage(0);
               }}
-              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring w-[200px]"
+              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring w-full sm:w-[200px]"
             >
               <option value="all">All Actions</option>
               <option value="agent.register">Register Agent</option>
@@ -137,11 +137,11 @@ export default function AuditLog() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8" />
-                    <TableHead>Time</TableHead>
+                    <TableHead className="hidden sm:table-cell">Time</TableHead>
                     <TableHead>Action</TableHead>
-                    <TableHead>Actor</TableHead>
+                    <TableHead className="hidden sm:table-cell">Actor</TableHead>
                     <TableHead>Target</TableHead>
-                    <TableHead>IP</TableHead>
+                    <TableHead className="hidden md:table-cell">IP</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -163,7 +163,7 @@ export default function AuditLog() {
                                 <ChevronRight size={14} className="text-muted-foreground" />
                               ))}
                           </TableCell>
-                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                          <TableCell className="hidden sm:table-cell text-sm text-muted-foreground whitespace-nowrap">
                             {formatTime(log.created_at)}
                           </TableCell>
                           <TableCell>
@@ -174,7 +174,9 @@ export default function AuditLog() {
                               {ACTION_LABELS[log.action] ?? log.action}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-sm">{log.actor}</TableCell>
+                          <TableCell className="hidden sm:table-cell text-sm">
+                            {log.actor}
+                          </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {log.target_type}
                             {log.target_id && (
@@ -185,7 +187,7 @@ export default function AuditLog() {
                               </span>
                             )}
                           </TableCell>
-                          <TableCell className="text-sm text-muted-foreground font-mono">
+                          <TableCell className="hidden md:table-cell text-sm text-muted-foreground font-mono">
                             {log.ip_address ?? '—'}
                           </TableCell>
                         </TableRow>

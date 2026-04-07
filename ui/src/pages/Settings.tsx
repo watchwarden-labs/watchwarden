@@ -18,10 +18,10 @@ import { useStore } from '@/store/useStore';
 
 export function Settings() {
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <h1 className="text-2xl font-bold">Settings</h1>
       <Tabs defaultValue="general">
-        <TabsList>
+        <TabsList className="w-full overflow-x-auto justify-start">
           <TabsTrigger value="general">
             <Clock size={14} className="mr-1" /> General
           </TabsTrigger>
@@ -130,7 +130,7 @@ function GeneralTab() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-2">
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 type="password"
                 value={newPassword}

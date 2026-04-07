@@ -90,11 +90,11 @@ export function Dashboard() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4" data-testid="stats-strip">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" data-testid="stats-strip">
         <Card>
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">Total Agents</p>
@@ -242,10 +242,10 @@ export function Dashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Agent</TableHead>
-                  <TableHead>Hostname</TableHead>
-                  <TableHead>Containers</TableHead>
-                  <TableHead>Schedule</TableHead>
-                  <TableHead>Last Seen</TableHead>
+                  <TableHead className="hidden md:table-cell">Hostname</TableHead>
+                  <TableHead className="hidden sm:table-cell">Containers</TableHead>
+                  <TableHead className="hidden lg:table-cell">Schedule</TableHead>
+                  <TableHead className="hidden lg:table-cell">Last Seen</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -279,10 +279,10 @@ export function Dashboard() {
                 <TableRow>
                   <TableHead className="w-8" />
                   <TableHead>Container</TableHead>
-                  <TableHead>Agent</TableHead>
+                  <TableHead className="hidden md:table-cell">Agent</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Time</TableHead>
+                  <TableHead className="hidden md:table-cell">Duration</TableHead>
+                  <TableHead className="hidden sm:table-cell">Time</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -317,7 +317,7 @@ export function Dashboard() {
                         <TableCell className="font-medium text-sm">
                           {entry.container_name}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                           {entry.agent_id}
                         </TableCell>
                         <TableCell>
@@ -330,10 +330,10 @@ export function Dashboard() {
                             {entry.status === 'rolled_back' ? 'rollback' : entry.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                           {entry.duration_ms ? `${(entry.duration_ms / 1000).toFixed(1)}s` : '—'}
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        <TableCell className="hidden sm:table-cell text-xs text-muted-foreground whitespace-nowrap">
                           {formatDistanceToNow(entry.created_at, { addSuffix: true })}
                         </TableCell>
                       </TableRow>
