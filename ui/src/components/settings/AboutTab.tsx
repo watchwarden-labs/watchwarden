@@ -145,8 +145,8 @@ export function AboutTab() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-sm font-medium">Enable debug logging</p>
               <p className="text-xs text-muted-foreground">
                 Temporarily increases log verbosity for 15 minutes, then reverts to normal.
@@ -156,6 +156,7 @@ export function AboutTab() {
               checked={isDebug}
               onCheckedChange={handleDebugToggle}
               disabled={updateLogging.isPending}
+              className="shrink-0"
             />
           </div>
           {isDebug && debugUntil && (
@@ -164,8 +165,8 @@ export function AboutTab() {
               {formatDistanceToNow(new Date(debugUntil), { addSuffix: true })}
             </div>
           )}
-          <div className="flex items-center justify-between pt-2 border-t border-border">
-            <div>
+          <div className="flex items-start sm:items-center justify-between gap-3 pt-2 border-t border-border">
+            <div className="min-w-0">
               <p className="text-sm font-medium">Include controller logs in diagnostics</p>
               <p className="text-xs text-muted-foreground">
                 Writes logs to an internal file used only for the diagnostics bundle. Not for
@@ -176,6 +177,7 @@ export function AboutTab() {
               checked={fileLogging}
               onCheckedChange={handleFileLoggingToggle}
               disabled={updateLogging.isPending}
+              className="shrink-0"
             />
           </div>
           <p className="text-xs text-muted-foreground">
@@ -206,7 +208,7 @@ export function AboutTab() {
               hostnames or IPs before sharing publicly.
             </AlertDescription>
           </Alert>
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <Button onClick={handleDownload} disabled={downloading}>
               {downloading ? (
                 <Loader2 size={14} className="animate-spin mr-1" />

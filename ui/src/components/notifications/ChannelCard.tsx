@@ -216,7 +216,7 @@ export function ChannelCard({ channel, onEdit, compact }: ChannelCardProps) {
   return (
     <Card>
       <CardContent className="pt-0">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center shrink-0">
               <Icon size={18} className={iconColor} />
@@ -225,7 +225,7 @@ export function ChannelCard({ channel, onEdit, compact }: ChannelCardProps) {
               <p className="font-medium text-sm">{channel.name}</p>
               <p className="text-xs text-muted-foreground capitalize">{channel.type}</p>
             </div>
-            <div className="flex gap-1.5 ml-4">
+            <div className="hidden sm:flex gap-1.5 ml-4">
               {events.map((e) => (
                 <Badge
                   key={e}
