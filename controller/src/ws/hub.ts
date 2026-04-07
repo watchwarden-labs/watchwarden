@@ -15,6 +15,7 @@ import {
   listAgents,
   listAgentsByTokenPrefix,
   listRegistryCredentials,
+  markContainersUnknown,
   updateAgentDockerInfo,
   updateAgentStatus,
   updateContainerDiff,
@@ -726,6 +727,7 @@ export class AgentHub {
             }
           }
           await updateAgentStatus(agentId, 'offline', Date.now());
+          await markContainersUnknown(agentId);
           this.broadcaster?.broadcast({
             type: 'AGENT_STATUS',
             agentId,
@@ -989,6 +991,7 @@ export class AgentHub {
         conn.ws.close(4003, 'Heartbeat timeout');
         this.connections.delete(id);
         await updateAgentStatus(id, 'offline', now);
+        await markContainersUnknown(id);
         this.broadcaster?.broadcast({
           type: 'AGENT_STATUS',
           agentId: id,
