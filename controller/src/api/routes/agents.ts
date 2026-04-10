@@ -12,6 +12,7 @@ import {
   insertAgent,
   listAgents,
   updateAgentConfig,
+  updateContainerOrchestration,
   updateContainerPolicy,
 } from '../../db/queries.js';
 import { expectCheckResults } from '../../notifications/session-batcher.js';
@@ -445,10 +446,10 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch<{
     Params: { agentId: string; containerId: string };
-    Body: { policy: string | null; update_level: string | null };
+    Body: { policy: string | null; update_level: string | null; tag_pattern?: string | null };
   }>('/api/agents/:agentId/containers/:containerId', async (request, reply) => {
     const { agentId, containerId } = request.params;
-    const { policy, update_level } = request.body;
+    const { policy, update_level, tag_pattern } = request.body;
 
     const agent = await getAgent(agentId);
     if (!agent) return reply.code(404).send({ error: 'Agent not found' });
@@ -465,9 +466,40 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
         error: 'Invalid update_level. Must be one of: all, major, minor, patch',
       });
     }
+    if (tag_pattern !== undefined && tag_pattern !== null) {
+      try {
+        new RegExp(tag_pattern);
+      } catch {
+        return reply
+          .code(400)
+          .send({ error: 'Invalid tag_pattern: not a valid regular expression' });
+      }
+    }
 
-    await updateContainerPolicy(containerId, { policy, update_level });
+    await updateContainerPolicy(containerId, { policy, update_level, tag_pattern });
     return reply.code(200).send({ message: 'Container policy updated' });
+  });
+
+  fastify.patch<{
+    Params: { agentId: string; containerId: string };
+    Body: { group: string | null; priority: number; dependsOn: string[] };
+  }>('/api/agents/:agentId/containers/:containerId/orchestration', async (request, reply) => {
+    const { agentId, containerId } = request.params;
+    const { group, priority, dependsOn } = request.body;
+
+    const agent = await getAgent(agentId);
+    if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+
+    if (!Number.isInteger(priority) || priority < 1 || priority > 999) {
+      return reply.code(400).send({ error: 'priority must be an integer between 1 and 999' });
+    }
+
+    await updateContainerOrchestration(containerId, {
+      update_group: group || null,
+      update_priority: priority,
+      depends_on: dependsOn.length > 0 ? JSON.stringify(dependsOn) : null,
+    });
+    return reply.code(200).send({ message: 'Container orchestration updated' });
   });
 
   fastify.post<{

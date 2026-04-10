@@ -192,15 +192,44 @@ export function useUpdateContainerPolicy() {
       containerId,
       policy,
       updateLevel,
+      tagPattern,
     }: {
       agentId: string;
       containerId: string;
       policy: string | null;
       updateLevel: string | null;
+      tagPattern?: string | null;
     }) =>
       apiRequest<void>(`/agents/${agentId}/containers/${containerId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ policy, update_level: updateLevel }),
+        body: JSON.stringify({ policy, update_level: updateLevel, tag_pattern: tagPattern }),
+      }),
+    onSuccess: (_, { agentId }) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['agents', agentId] });
+    },
+  });
+}
+
+export function useUpdateContainerOrchestration() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      agentId,
+      containerId,
+      group,
+      priority,
+      dependsOn,
+    }: {
+      agentId: string;
+      containerId: string;
+      group: string | null;
+      priority: number;
+      dependsOn: string[];
+    }) =>
+      apiRequest<void>(`/agents/${agentId}/containers/${containerId}/orchestration`, {
+        method: 'PATCH',
+        body: JSON.stringify({ group, priority, dependsOn }),
       }),
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
