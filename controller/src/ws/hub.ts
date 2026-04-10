@@ -16,6 +16,7 @@ import {
   listAgentsByTokenPrefix,
   listRegistryCredentials,
   markContainersUnknown,
+  setUpdateFirstSeen,
   updateAgentDockerInfo,
   updateAgentStatus,
   updateContainerDiff,
@@ -295,7 +296,13 @@ export class AgentHub {
                 'hub',
                 `CHECK_RESULT from ${agentId}: ${payload.results.length} results, ${updatesFound} updates`,
               );
+              // Fetch current container state before the loop so we can detect
+              // has_update flips for update_first_seen stamping.
+              const agentContainersPre = await getContainersByAgent(agentId);
               for (const r of payload.results) {
+                const existing = agentContainersPre.find(
+                  (c) => c.docker_id === r.containerId || c.id === r.containerId,
+                );
                 await updateContainerDigests(
                   r.containerId,
                   r.currentDigest ?? '',
@@ -307,6 +314,13 @@ export class AgentHub {
                 await updateContainerDiff(r.containerId, diffJson);
                 // Cache for use in update_log when UPDATE_RESULT arrives
                 this.pendingDiffs.set(r.containerId, diffJson);
+                // Track when an update first becomes visible (for min_age_hours enforcement).
+                const wasUpdate = existing?.has_update === 1;
+                if (r.hasUpdate && !wasUpdate) {
+                  await setUpdateFirstSeen(r.containerId, Date.now());
+                } else if (!r.hasUpdate && wasUpdate) {
+                  await setUpdateFirstSeen(r.containerId, null);
+                }
               }
               await updateAgentStatus(agentId, 'online', Date.now());
               const updatesAvailable = payload.results.filter((r) => r.hasUpdate).length;
@@ -339,8 +353,10 @@ export class AgentHub {
                 this.autoUpdateInFlight.add(agentId);
                 // Auto-update path: send UPDATE, skip "updates available" notification
                 // (update_success/failed notification will follow from UPDATE_RESULT).
-                // Fetch container data to check per-container policies
+                // Fetch container data to check per-container policies.
+                // Re-fetch after the loop so update_first_seen is already written.
                 const agentContainersForUpdate = await getContainersByAgent(agentId);
+                const policy = await getEffectivePolicy(agentId);
                 const globalUpdateLevel = (await getConfig('global_update_level')) ?? '';
                 const containerIds = payload.results
                   .filter((r) => {
@@ -353,6 +369,19 @@ export class AgentHub {
                       return false;
                     // Stateful containers (databases) are never auto-updated
                     if (dbContainer?.is_stateful) return false;
+                    // Min-age gate: skip if the update hasn't been visible long enough
+                    if (policy.min_age_hours > 0) {
+                      const firstSeen = dbContainer?.update_first_seen ?? null;
+                      if (!firstSeen) return false;
+                      const ageMs = Date.now() - firstSeen;
+                      if (ageMs < policy.min_age_hours * 60 * 60 * 1000) {
+                        log.info(
+                          'hub',
+                          `skipping auto-update for ${dbContainer?.name ?? r.containerId}: update too young (${Math.round(ageMs / 3600000)}h < ${policy.min_age_hours}h required)`,
+                        );
+                        return false;
+                      }
+                    }
                     // Semver level enforcement: per-container takes precedence over global
                     const effectiveLevel = dbContainer?.update_level || globalUpdateLevel;
                     if (effectiveLevel && effectiveLevel !== 'all') {
@@ -378,7 +407,6 @@ export class AgentHub {
                   this.autoUpdateInFlight.delete(agentId);
                   break;
                 }
-                const policy = await getEffectivePolicy(agentId);
                 this.sendToAgent(agentId, {
                   type: 'UPDATE',
                   payload: {
@@ -396,7 +424,7 @@ export class AgentHub {
                 });
               } else if (updatesAvailable > 0) {
                 // Notification path: auto-update is OFF, notify the operator.
-                const agentContainers = await getContainersByAgent(agentId);
+                const agentContainers = agentContainersPre;
                 const withUpdates = payload.results
                   .filter((r) => r.hasUpdate)
                   .map((r) => {

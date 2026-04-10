@@ -21,6 +21,7 @@ export function useUpdatePolicyMutation() {
       autoRollbackEnabled?: boolean;
       maxUnhealthySeconds?: number;
       strategy?: string;
+      minAgeHours?: number;
     }) =>
       apiRequest<void>('/update-policies', {
         method: 'PUT',

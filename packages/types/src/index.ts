@@ -44,6 +44,7 @@ export interface Container {
   tag_pattern: string | null;
   update_level: string | null;
   is_stateful: number;
+  update_first_seen: number | null;
 }
 
 export interface ContainerInfo {
@@ -119,6 +120,7 @@ export interface UpdatePolicy {
   auto_rollback_enabled: boolean;
   max_unhealthy_seconds: number;
   strategy: string;
+  min_age_hours: number;
   created_at: number;
 }
 
