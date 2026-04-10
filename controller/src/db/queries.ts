@@ -150,9 +150,9 @@ export async function upsertContainers(
       update_group = EXCLUDED.update_group,
       update_priority = EXCLUDED.update_priority,
       depends_on = EXCLUDED.depends_on,
-      policy = EXCLUDED.policy,
-      tag_pattern = EXCLUDED.tag_pattern,
-      update_level = EXCLUDED.update_level,
+      policy = COALESCE(EXCLUDED.policy, containers.policy),
+      tag_pattern = COALESCE(EXCLUDED.tag_pattern, containers.tag_pattern),
+      update_level = COALESCE(EXCLUDED.update_level, containers.update_level),
       health_status = COALESCE(EXCLUDED.health_status, containers.health_status),
       is_stateful = EXCLUDED.is_stateful
   `;
