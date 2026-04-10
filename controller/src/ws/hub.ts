@@ -364,9 +364,9 @@ export class AgentHub {
                     const dbContainer = agentContainersForUpdate.find(
                       (c) => c.docker_id === r.containerId || c.id === r.containerId,
                     );
-                    // Per-container policy overrides: "manual" and "notify" skip auto-update
-                    if (dbContainer?.policy === 'manual' || dbContainer?.policy === 'notify')
-                      return false;
+                    // Per-container policy overrides: label wins over UI setting
+                    const effectivePolicy = dbContainer?.label_policy ?? dbContainer?.policy;
+                    if (effectivePolicy === 'manual' || effectivePolicy === 'notify') return false;
                     // Stateful containers (databases) are never auto-updated
                     if (dbContainer?.is_stateful) return false;
                     // Min-age gate: skip if the update hasn't been visible long enough
@@ -382,8 +382,11 @@ export class AgentHub {
                         return false;
                       }
                     }
-                    // Semver level enforcement: per-container takes precedence over global
-                    const effectiveLevel = dbContainer?.update_level || globalUpdateLevel;
+                    // Semver level enforcement: label wins over UI setting, both win over global
+                    const effectiveLevel =
+                      dbContainer?.label_update_level ||
+                      dbContainer?.update_level ||
+                      globalUpdateLevel;
                     if (effectiveLevel && effectiveLevel !== 'all') {
                       const currentTag = extractTag(dbContainer?.image ?? '');
                       const candidateTag = extractTag(r.latestDigest ?? '');

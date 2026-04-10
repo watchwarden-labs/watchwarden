@@ -19,7 +19,7 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 | **Rollback** | ✅ Any version + snapshot restore | ❌ None |
 | **Health-based Auto-Rollback** | ✅ Stability window + crash-loop | ❌ None |
 | **Crash-loop Detection** | ✅ Auto-detects and rolls back | ❌ None |
-| **Update Groups / Dependencies** | ✅ Label-based ordering | ❌ None |
+| **Update Groups / Dependencies** | ✅ Label-based or UI-editable, with label-lock protection | ❌ None |
 | **Image Diff Preview** | ✅ Before update | ❌ None |
 | **Pinned Version Detection** | ✅ Blocks explicit tags | ❌ None |
 | **Vulnerability Scanning** | ✅ Trivy-based CVE scanning | ❌ None |
@@ -34,8 +34,12 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 | **Image Pruning** | ✅ Keeps N-1 for rollback | ✅ Cleanup flag |
 | **Private Registry Auth** | ✅ Encrypted + env vars | ✅ Config file |
 | **Database** | ✅ PostgreSQL (Managed) | ❌ Stateless |
-| **Per-container Policies** | ✅ Label-driven (auto/notify/manual) | ❌ Global only |
-| **Tag Pattern Matching** | ✅ Regex + semver level filtering | ❌ None |
+| **Per-container Policies** | ✅ Label or UI, label wins with lock badge | ❌ Global only |
+| **Tag Pattern Matching** | ✅ Regex + UI presets + semver level filtering | ❌ None |
+| **Registry ETag Caching** | ✅ 304 shortcut, bandwidth-efficient | ❌ Polls every time |
+| **Registry Rate-limit Backoff** | ✅ 429/503 retry with Retry-After header | ❌ None |
+| **Diagnostics Bundle** | ✅ ZIP with logs + registry info | ❌ None |
+| **Update History Image Tags** | ✅ Shows `image:tag` not just SHA256 | ❌ None |
 | **Prometheus Metrics** | ✅ /metrics endpoint | ❌ None |
 | **ntfy Notifications** | ✅ Dedicated sender | ❌ None |
 | **Notification Templates** | ✅ Custom formatting + link templates | ❌ Fixed format |
