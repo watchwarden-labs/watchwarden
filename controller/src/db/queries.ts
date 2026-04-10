@@ -185,10 +185,11 @@ export async function updateContainerDigests(
 
 export async function insertUpdateLog(entry: NewUpdateLog): Promise<number> {
   const [row] = await sql`
-    INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, status, error, duration_ms, created_at)
+    INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, old_image, new_image, status, error, duration_ms, created_at)
     VALUES (${entry.agent_id}, ${entry.container_id}, ${entry.container_name},
-      ${entry.old_digest ?? null}, ${entry.new_digest ?? null}, ${entry.status},
-      ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${Date.now()})
+      ${entry.old_digest ?? null}, ${entry.new_digest ?? null},
+      ${entry.old_image ?? null}, ${entry.new_image ?? null},
+      ${entry.status}, ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${Date.now()})
     RETURNING id
   `;
   return Number(row?.id ?? 0);
@@ -207,10 +208,11 @@ export async function insertUpdateLogAndDigests(
   await sql.begin(async (txBase) => {
     const tx = txBase as unknown as TxSql;
     const [row] = await tx`
-      INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, status, error, duration_ms, created_at)
+      INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, old_image, new_image, status, error, duration_ms, created_at)
       VALUES (${entry.agent_id}, ${entry.container_id}, ${entry.container_name},
-        ${entry.old_digest ?? null}, ${entry.new_digest ?? null}, ${entry.status},
-        ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${Date.now()})
+        ${entry.old_digest ?? null}, ${entry.new_digest ?? null},
+        ${entry.old_image ?? null}, ${entry.new_image ?? null},
+        ${entry.status}, ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${Date.now()})
       RETURNING id
     `;
     logId = Number(row?.id ?? 0);
@@ -230,17 +232,21 @@ export async function getHistory(
   const offset = filters.offset ?? 0;
 
   // Build WHERE fragment using postgres.js tagged template fragments (no sql.unsafe)
-  const agentFilter = filters.agentId ? sql`AND agent_id = ${filters.agentId}` : sql``;
-  const statusFilter = filters.status ? sql`AND status = ${filters.status}` : sql``;
+  // Qualify all columns with table prefix to avoid ambiguity with the agents JOIN
+  const agentFilter = filters.agentId ? sql`AND ul.agent_id = ${filters.agentId}` : sql``;
+  const statusFilter = filters.status ? sql`AND ul.status = ${filters.status}` : sql``;
 
   const [totalRow] = await sql`
-		SELECT COUNT(*) as count FROM update_log WHERE TRUE ${agentFilter} ${statusFilter}
+		SELECT COUNT(*) as count FROM update_log ul WHERE TRUE ${agentFilter} ${statusFilter}
 	`;
   const total = Number(totalRow?.count ?? 0);
 
   const data = await sql`
-		SELECT * FROM update_log WHERE TRUE ${agentFilter} ${statusFilter}
-		ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}
+		SELECT ul.*, a.name as agent_name
+		FROM update_log ul
+		LEFT JOIN agents a ON ul.agent_id = a.id
+		WHERE TRUE ${agentFilter} ${statusFilter}
+		ORDER BY ul.created_at DESC LIMIT ${limit} OFFSET ${offset}
 	`;
 
   return { data: data.map(mapUpdateLog), total };
@@ -669,10 +675,13 @@ function mapUpdateLog(row: Record<string, unknown>): UpdateLog {
   return {
     id: Number(row.id),
     agent_id: row.agent_id as string,
+    agent_name: (row.agent_name as string | null) ?? null,
     container_id: row.container_id as string,
     container_name: row.container_name as string,
     old_digest: row.old_digest as string | null,
     new_digest: row.new_digest as string | null,
+    old_image: (row.old_image as string | null) ?? null,
+    new_image: (row.new_image as string | null) ?? null,
     status: row.status as 'success' | 'failed' | 'rolled_back',
     error: row.error as string | null,
     duration_ms: row.duration_ms ? Number(row.duration_ms) : null,

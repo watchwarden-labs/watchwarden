@@ -1,3 +1,16 @@
+## v0.2.1
+
+Released: 2026-04-07
+
+### Features
+- feat: add version stamping to package.json and update changelog in release workflow (a50e392)
+- feat: fully responsive/mobile UI (a5c8543)
+
+### Bug Fixes
+- fix: responsive issues on Settings page (1aa9c8a)
+- fix: mark container status as unknown when agent goes offline (9089680)
+- fix: handle agent self-update and snapshot permission (6f54da8)
+
 ## v0.2.0
 
 Released: 2026-04-06
