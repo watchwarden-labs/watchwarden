@@ -232,11 +232,12 @@ export async function getHistory(
   const offset = filters.offset ?? 0;
 
   // Build WHERE fragment using postgres.js tagged template fragments (no sql.unsafe)
-  const agentFilter = filters.agentId ? sql`AND agent_id = ${filters.agentId}` : sql``;
-  const statusFilter = filters.status ? sql`AND status = ${filters.status}` : sql``;
+  // Qualify all columns with table prefix to avoid ambiguity with the agents JOIN
+  const agentFilter = filters.agentId ? sql`AND ul.agent_id = ${filters.agentId}` : sql``;
+  const statusFilter = filters.status ? sql`AND ul.status = ${filters.status}` : sql``;
 
   const [totalRow] = await sql`
-		SELECT COUNT(*) as count FROM update_log WHERE TRUE ${agentFilter} ${statusFilter}
+		SELECT COUNT(*) as count FROM update_log ul WHERE TRUE ${agentFilter} ${statusFilter}
 	`;
   const total = Number(totalRow?.count ?? 0);
 
