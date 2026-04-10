@@ -474,7 +474,7 @@ function StabilityPolicyCard({ agentId }: { agentId: string }) {
           />
           <Label>Auto-rollback on unhealthy</Label>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Stability window (seconds)</Label>
             <Input
@@ -497,6 +497,22 @@ function StabilityPolicyCard({ agentId }: { agentId: string }) {
                 updatePolicy.mutate({
                   scope: `agent:${agentId}`,
                   maxUnhealthySeconds: Number(e.target.value),
+                })
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">
+              Min age before auto-update (hours)
+            </Label>
+            <Input
+              type="number"
+              min={0}
+              defaultValue={policy.min_age_hours ?? 0}
+              onBlur={(e) =>
+                updatePolicy.mutate({
+                  scope: `agent:${agentId}`,
+                  minAgeHours: Number(e.target.value),
                 })
               }
             />

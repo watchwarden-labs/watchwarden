@@ -64,6 +64,10 @@ Each container row shows:
 - **Action buttons** — Check, Update, Rollback, View Logs, Start/Stop, Delete
 - **Container labels** — policy, tag pattern, update group, pinned version, and exclusion status
 
+Click the pencil icon next to the policy badge to edit the container's update policy and semver update level directly from the UI (no label changes required):
+- **Policy** — Auto (follow global), Notify only, or Manual (skip checks)
+- **Max update level** — restrict updates to Patch, Minor, or Major semver bumps
+
 The **Containers** and **Configuration** tabs let you switch between the container list and agent-specific settings.
 
 ### Agent Configuration
@@ -78,7 +82,7 @@ The Configuration tab provides per-agent settings that override the global defau
 
 - **Schedule Override** — set a custom cron schedule for this agent (overrides the global schedule)
 - **Auto Update** — enable automatic updates when new images are detected
-- **Stability & Auto Rollback** — configure the health monitoring window and automatic rollback behavior after updates
+- **Stability & Auto Rollback** — configure health monitoring window, automatic rollback, and minimum update age (hold back auto-updates until a new image has been available for N hours)
 - **Update Strategy** — choose between stop-first (default) or start-first (blue-green) deployment
 - **Image Pruning** — clean up old images after successful updates to reclaim disk space
 
@@ -96,6 +100,7 @@ Full audit trail of every container update, rollback, and failure across all age
 
 Features:
 - **Expandable rows** — click to reveal old/new digests, duration, and error messages
+- **Image diff badge** — if the update had configuration changes (env, ports, entrypoint, volumes), a diff badge appears in the expanded row; click it to open the full diff view
 - **Filters** — by agent ID and status (success, failed, rolled back)
 - **Pagination** — browse through all historical updates
 - **Success rate** — overall success percentage displayed at the top
@@ -123,6 +128,7 @@ Configure global update schedule, startup behavior, admin password, and agent re
 />
 
 - **Global Schedule** — cron expression picker with presets (hourly, daily, weekly)
+- **Default Update Level** — global semver cap (`patch`, `minor`, `major`, or no restriction) applied to all containers without a per-container level set
 - **Check on startup** — catch-up check if the last scheduled check was more than 24 hours ago
 - **Admin Password** — change the dashboard login password
 - **Recovery Mode** — time-limited window for automatic agent re-registration after database loss (see below)

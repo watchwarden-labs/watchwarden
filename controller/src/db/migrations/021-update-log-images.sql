@@ -1,0 +1,2 @@
+ALTER TABLE update_log ADD COLUMN IF NOT EXISTS old_image TEXT;
+ALTER TABLE update_log ADD COLUMN IF NOT EXISTS new_image TEXT;

@@ -139,7 +139,7 @@ describe('session-batcher', () => {
     });
   });
 
-  it('dispatchCheckResults deduplicates same container within 1 hour', () => {
+  it('dispatchCheckResults deduplicates same container within 24 hours', () => {
     const u = uid();
 
     dispatchCheckResults(
@@ -164,6 +164,31 @@ describe('session-batcher', () => {
     vi.advanceTimersByTime(5_000);
     // The container was deduplicated, so the batch had 0 new containers.
     // flushCheckBatch filters out agents with no containers — no dispatch.
+    expect(notifier.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('dispatchCheckResults deduplicates same container even when image changes (rolling :latest)', () => {
+    const u = uid();
+
+    dispatchCheckResults(
+      `agent-1-${u}`,
+      [{ name: `nginx-${u}`, image: 'nginx:latest' }],
+      `agent-1-${u}`,
+    );
+
+    vi.advanceTimersByTime(5_000);
+    expect(notifier.dispatch).toHaveBeenCalledTimes(1);
+
+    vi.mocked(notifier.dispatch).mockClear();
+
+    // Same container, different image digest / tag — should still be deduped by name
+    dispatchCheckResults(
+      `agent-1-${u}`,
+      [{ name: `nginx-${u}`, image: 'nginx:latest' }],
+      `agent-1-${u}`,
+    );
+
+    vi.advanceTimersByTime(5_000);
     expect(notifier.dispatch).not.toHaveBeenCalled();
   });
 

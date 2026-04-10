@@ -130,9 +130,10 @@ export function addUpdateResult(agentId: string, result: UpdateResultItem): void
 }
 
 // Deduplicate: track which container updates we already notified about
-// Key: "agentId:containerName:image" → timestamp. Entries expire after 1 hour.
+// Key: "agentId:containerName" → timestamp. Entries expire after 24 hours.
+// Image/digest is intentionally excluded so rolling :latest tags don't bypass dedup.
 const notifiedUpdates = new Map<string, number>();
-const DEDUP_TTL_MS = 60 * 60 * 1000; // 1 hour
+const DEDUP_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_DEDUP_ENTRIES = 10000;
 
 function pruneNotified(): void {
@@ -259,7 +260,7 @@ export function dispatchCheckResults(
   // Deduplicate: only include containers we haven't notified about yet
   pruneNotified();
   const newContainers = containers.filter((c) => {
-    const key = `${agentId ?? agentName}:${c.name}:${c.image}`;
+    const key = `${agentId ?? agentName}:${c.name}`;
     if (notifiedUpdates.has(key)) return false;
     notifiedUpdates.set(key, Date.now());
     return true;

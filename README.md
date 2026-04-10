@@ -50,14 +50,16 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 
 ### Updates & Rollback
 - **Automatic updates** — schedule checks globally or per-agent, with optional auto-update
+- **Minimum update age** — hold back auto-updates until an available update has been visible for N hours (configurable per agent), avoiding races with newly-broken tags
 - **Blue-green updates** — start new container first, verify health, then stop old (zero-downtime). Automatically falls back to stop-first if port conflicts are detected (e.g. containers with direct port mappings)
 - **Rollback** — roll back to any previous version or pick a specific tag from the registry
 - **Update groups** — label-based dependency ordering (`com.watchwarden.group`, `com.watchwarden.depends_on`)
-- **Per-container policies** — label-driven control: `com.watchwarden.policy=auto|notify|manual` per container
+- **Per-container policies** — label-driven control: `com.watchwarden.policy=auto|notify|manual` per container; editable from the UI without labels
+- **Semver update levels** — restrict how far images can be upgraded (`patch`, `minor`, `major`) per container or globally via Settings; enforced before auto-update
 - **Tag pattern matching** — filter registry tags by regex via `com.watchwarden.tag_pattern` label
 - **Pinned version detection** — blocks accidental updates for containers with explicit version tags (e.g. `postgres:16.2-alpine`), while correctly treating floating tags (`alpine`, `lts`, `stable`) as updatable
 - **Config-only change detection** — detects image updates even when only entrypoint/env/labels changed (same manifest digest, different image ID)
-- **Image diff preview** — shows env, port, entrypoint, and volume changes before updating
+- **Image diff preview** — shows env, port, entrypoint, and volume changes before updating; diff is also persisted in update history so you can review configuration changes post-update
 - **Health-based auto-rollback** — rolls back automatically if a container becomes unhealthy after update, respects healthcheck `start_period` for slow-starting containers
 - **Crash-loop detection** — detects and rolls back containers stuck in restart loops (requires 3+ restarts in 60s to avoid false positives)
 - **AutoRemove container support** — safely updates `--rm` containers by handling Docker API 409/404 during removal
@@ -78,7 +80,7 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 - **TypeScript SDK** — `@watchwarden/sdk` for programmatic access
 
 ### Observability
-- **Prometheus metrics** — `/metrics` endpoint on the controller exposes container counts, update status, and agent health in standard Prometheus format
+- **Prometheus metrics** — `/metrics` endpoint with per-container labeled gauges (`container_info`, `container_has_update`, `container_last_updated_ms`) and aggregate counters for agents, update counts by status
 
 ### Notifications
 - **Telegram, Slack, Webhook, ntfy** — configurable channels with batched, deduplicated messages

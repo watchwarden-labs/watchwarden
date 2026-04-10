@@ -75,6 +75,8 @@ type UpdateResult struct {
 	Success       bool   `json:"success"`
 	OldDigest     string `json:"oldDigest,omitempty"`
 	NewDigest     string `json:"newDigest,omitempty"`
+	OldImage      string `json:"oldImage,omitempty"`
+	NewImage      string `json:"newImage,omitempty"`
 	Error         string `json:"error,omitempty"`
 	DurationMs    int64  `json:"durationMs,omitempty"`
 	IsRollback    bool   `json:"isRollback,omitempty"`

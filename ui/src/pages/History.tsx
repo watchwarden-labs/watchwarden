@@ -1,11 +1,19 @@
 import { formatDistanceToNow } from 'date-fns';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { useHistory, useHistoryStats } from '@/api/hooks/useHistory';
 import { DigestBadge } from '@/components/common/DigestBadge';
 import { Pagination } from '@/components/common/Pagination';
+import { DiffBadge, type ImageDiff, ImageDiffView } from '@/components/diff/ImageDiffView';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -15,6 +23,35 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+function ImageVersionLabel({ image, digest }: { image: string | null; digest: string | null }) {
+  if (!image && !digest) return <span className="text-muted-foreground">—</span>;
+
+  // For old records without image tag, extract name from "image@sha256:hash" digest format
+  const label = image ?? (digest?.includes('@sha256:') ? digest.split('@sha256:')[0] : null);
+
+  if (label) {
+    return (
+      <span className="inline-flex items-center gap-1 font-mono text-xs">
+        {label}
+        {digest && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger render={<span />} className="cursor-help inline-flex shrink-0">
+                <Info size={12} className="text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-none">
+                <span className="font-mono break-all">{digest}</span>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </span>
+    );
+  }
+  return <DigestBadge digest={digest} />;
+}
 
 export function HistoryPage() {
   const [agentFilter, setAgentFilter] = useState('');
@@ -102,7 +139,21 @@ export function HistoryPage() {
             )}
             {history?.data.map((entry) => {
               const isExpanded = expandedRows.has(entry.id);
-              const hasDetails = !!(entry.old_digest || entry.new_digest || entry.error);
+              const parsedDiff: ImageDiff | null = entry.diff
+                ? (() => {
+                    try {
+                      return JSON.parse(entry.diff) as ImageDiff;
+                    } catch {
+                      return null;
+                    }
+                  })()
+                : null;
+              const hasDetails = !!(
+                entry.old_digest ||
+                entry.new_digest ||
+                entry.error ||
+                parsedDiff
+              );
               return (
                 <Fragment key={entry.id}>
                   <TableRow
@@ -121,7 +172,7 @@ export function HistoryPage() {
                       {formatDistanceToNow(entry.created_at, { addSuffix: true })}
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                      {entry.agent_id}
+                      {entry.agent_name ?? entry.agent_id}
                     </TableCell>
                     <TableCell className="text-sm">{entry.container_name}</TableCell>
                     <TableCell>
@@ -141,16 +192,22 @@ export function HistoryPage() {
                       <TableCell />
                       <TableCell colSpan={5} className="bg-muted/30 py-3">
                         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs font-mono">
-                          {entry.old_digest && (
+                          {(entry.old_digest || entry.old_image) && (
                             <>
-                              <span className="text-muted-foreground">Old digest</span>
-                              <DigestBadge digest={entry.old_digest} />
+                              <span className="text-muted-foreground">Old version</span>
+                              <ImageVersionLabel
+                                image={entry.old_image ?? null}
+                                digest={entry.old_digest ?? null}
+                              />
                             </>
                           )}
-                          {entry.new_digest && (
+                          {(entry.new_digest || entry.new_image) && (
                             <>
-                              <span className="text-muted-foreground">New digest</span>
-                              <DigestBadge digest={entry.new_digest} />
+                              <span className="text-muted-foreground">New version</span>
+                              <ImageVersionLabel
+                                image={entry.new_image ?? null}
+                                digest={entry.new_digest ?? null}
+                              />
                             </>
                           )}
                           {entry.duration_ms && (
@@ -163,6 +220,26 @@ export function HistoryPage() {
                             <>
                               <span className="text-muted-foreground">Error</span>
                               <span className="text-destructive break-all">{entry.error}</span>
+                            </>
+                          )}
+                          {parsedDiff && (
+                            <>
+                              <span className="text-muted-foreground">Image diff</span>
+                              <Dialog>
+                                <DialogTrigger
+                                  render={<button type="button" className="w-fit cursor-pointer" />}
+                                >
+                                  <DiffBadge diff={parsedDiff} />
+                                </DialogTrigger>
+                                <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+                                  <DialogHeader>
+                                    <DialogTitle>
+                                      Image changes — {entry.container_name}
+                                    </DialogTitle>
+                                  </DialogHeader>
+                                  <ImageDiffView diff={parsedDiff} />
+                                </DialogContent>
+                              </Dialog>
                             </>
                           )}
                         </div>
