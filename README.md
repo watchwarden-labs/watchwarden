@@ -53,7 +53,8 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 - **Blue-green updates** — start new container first, verify health, then stop old (zero-downtime). Automatically falls back to stop-first if port conflicts are detected (e.g. containers with direct port mappings)
 - **Rollback** — roll back to any previous version or pick a specific tag from the registry
 - **Update groups** — label-based dependency ordering (`com.watchwarden.group`, `com.watchwarden.depends_on`)
-- **Per-container policies** — label-driven control: `com.watchwarden.policy=auto|notify|manual` per container
+- **Per-container policies** — label-driven control: `com.watchwarden.policy=auto|notify|manual` per container; editable from the UI without labels
+- **Semver update levels** — restrict how far images can be upgraded (`patch`, `minor`, `major`) per container or globally via Settings; enforced before auto-update
 - **Tag pattern matching** — filter registry tags by regex via `com.watchwarden.tag_pattern` label
 - **Pinned version detection** — blocks accidental updates for containers with explicit version tags (e.g. `postgres:16.2-alpine`), while correctly treating floating tags (`alpine`, `lts`, `stable`) as updatable
 - **Config-only change detection** — detects image updates even when only entrypoint/env/labels changed (same manifest digest, different image ID)
