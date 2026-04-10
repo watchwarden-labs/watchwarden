@@ -46,6 +46,11 @@ function renderInTable(ui: React.ReactElement) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 }
 
+// Helper: expand the row by clicking the chevron
+function expandRow() {
+  fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
+}
+
 describe('ContainerRow', () => {
   it('renders container name and image', () => {
     renderInTable(<ContainerRow agentId="agent-1" container={baseContainer} />);
@@ -116,5 +121,133 @@ describe('ContainerRow', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Update' }));
     expect(onUpdate).toHaveBeenCalledOnce();
+  });
+
+  // ── Expandable row ──────────────────────────────────────────────────────────
+
+  it('row is collapsed by default — config panel not visible', () => {
+    renderInTable(<ContainerRow agentId="agent-1" container={baseContainer} />);
+    expect(screen.queryByText('Update Policy')).not.toBeInTheDocument();
+    expect(screen.queryByText('Orchestration')).not.toBeInTheDocument();
+  });
+
+  it('clicking chevron expands the config panel', () => {
+    renderInTable(<ContainerRow agentId="agent-1" container={baseContainer} />);
+    expandRow();
+    expect(screen.getByText('Update Policy')).toBeInTheDocument();
+    expect(screen.getByText('Orchestration')).toBeInTheDocument();
+  });
+
+  it('clicking chevron again collapses the panel', () => {
+    renderInTable(<ContainerRow agentId="agent-1" container={baseContainer} />);
+    expandRow();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
+    expect(screen.queryByText('Update Policy')).not.toBeInTheDocument();
+  });
+
+  // ── Collapsed row badges ────────────────────────────────────────────────────
+
+  it('shows NOTIFY badge when ui policy=notify', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, policy: 'notify' }} />,
+    );
+    expect(screen.getByText('NOTIFY')).toBeInTheDocument();
+  });
+
+  it('shows NOTIFY badge from label_policy even when ui policy is null', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, label_policy: 'notify' }} />,
+    );
+    expect(screen.getByText('NOTIFY')).toBeInTheDocument();
+  });
+
+  it('label_policy takes precedence over ui policy in badge', () => {
+    renderInTable(
+      <ContainerRow
+        agentId="agent-1"
+        container={{ ...baseContainer, label_policy: 'manual', policy: 'notify' }}
+      />,
+    );
+    expect(screen.getByText('MANUAL')).toBeInTheDocument();
+    expect(screen.queryByText('NOTIFY')).not.toBeInTheDocument();
+  });
+
+  it('shows group badge from label_group when ui update_group is null', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, label_group: 'backend' }} />,
+    );
+    expect(screen.getByText('backend')).toBeInTheDocument();
+  });
+
+  it('shows priority badge from label_priority when ui update_priority is default', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, label_priority: 5 }} />,
+    );
+    expect(screen.getByText('p5')).toBeInTheDocument();
+  });
+
+  it('does not show priority badge when label_priority is 100 (default)', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, label_priority: 100 }} />,
+    );
+    expect(screen.queryByText('p100')).not.toBeInTheDocument();
+  });
+
+  // ── Docker label lock in expanded panel ────────────────────────────────────
+
+  it('shows editable policy form when no label_policy set', () => {
+    renderInTable(<ContainerRow agentId="agent-1" container={baseContainer} />);
+    expandRow();
+    expect(screen.getByLabelText(/Auto — follow agent/)).toBeInTheDocument();
+  });
+
+  it('shows lock notice and hides radio inputs when label_policy is set', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, label_policy: 'notify' }} />,
+    );
+    expandRow();
+    expect(screen.queryByLabelText(/Auto — follow agent/)).not.toBeInTheDocument();
+    expect(screen.getByText(/com\.watchwarden\.policy/)).toBeInTheDocument();
+  });
+
+  it('shows lock notice and hides group input when label_group is set', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, label_group: 'backend' }} />,
+    );
+    expandRow();
+    expect(screen.queryByPlaceholderText(/e\.g\. backend/)).not.toBeInTheDocument();
+    expect(screen.getByText(/com\.watchwarden\.group/)).toBeInTheDocument();
+  });
+
+  it('shows lock notice and hides priority input when label_priority is set', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, label_priority: 10 }} />,
+    );
+    expandRow();
+    expect(screen.getByText(/com\.watchwarden\.priority/)).toBeInTheDocument();
+  });
+
+  it('hides Save policy button when all policy fields are label-controlled', () => {
+    renderInTable(
+      <ContainerRow
+        agentId="agent-1"
+        container={{
+          ...baseContainer,
+          label_policy: 'notify',
+          label_update_level: 'minor',
+          label_tag_pattern: '^v\\d+$',
+        }}
+      />,
+    );
+    expandRow();
+    expect(screen.queryByRole('button', { name: /Save policy/i })).not.toBeInTheDocument();
+  });
+
+  it('shows Save policy button when at least one policy field is not label-controlled', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, label_policy: 'notify' }} />,
+    );
+    expandRow();
+    expect(screen.getByRole('button', { name: /Save policy/i })).toBeInTheDocument();
   });
 });
