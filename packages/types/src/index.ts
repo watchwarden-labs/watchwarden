@@ -94,6 +94,7 @@ export interface UpdateLog {
   status: 'success' | 'failed' | 'rolled_back';
   error: string | null;
   duration_ms: number | null;
+  diff: string | null;
   created_at: number;
 }
 
@@ -108,6 +109,7 @@ export interface NewUpdateLog {
   status: 'success' | 'failed' | 'rolled_back';
   error?: string | null;
   duration_ms?: number | null;
+  diff?: string | null;
 }
 
 export interface UpdatePolicy {
