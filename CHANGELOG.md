@@ -1,10 +1,3 @@
-## Unreleased
-
-### Features
-- feat: persist image diff in update_log and show in Update History UI — breaking-change badges and full diff view now available in history expanded rows
-
----
-
 ## v0.2.1
 
 Released: 2026-04-07
