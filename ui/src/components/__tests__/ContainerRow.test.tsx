@@ -28,6 +28,12 @@ const baseContainer: Container = {
   policy: null,
   tag_pattern: null,
   update_level: null,
+  label_policy: null,
+  label_tag_pattern: null,
+  label_update_level: null,
+  label_group: null,
+  label_priority: null,
+  label_depends_on: null,
   is_stateful: 0,
   update_first_seen: null,
 };
