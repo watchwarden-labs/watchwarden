@@ -100,6 +100,7 @@ Full audit trail of every container update, rollback, and failure across all age
 
 Features:
 - **Expandable rows** — click to reveal old/new digests, duration, and error messages
+- **Image diff badge** — if the update had configuration changes (env, ports, entrypoint, volumes), a diff badge appears in the expanded row; click it to open the full diff view
 - **Filters** — by agent ID and status (success, failed, rolled back)
 - **Pagination** — browse through all historical updates
 - **Success rate** — overall success percentage displayed at the top

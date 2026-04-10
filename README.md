@@ -58,7 +58,7 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 - **Tag pattern matching** — filter registry tags by regex via `com.watchwarden.tag_pattern` label
 - **Pinned version detection** — blocks accidental updates for containers with explicit version tags (e.g. `postgres:16.2-alpine`), while correctly treating floating tags (`alpine`, `lts`, `stable`) as updatable
 - **Config-only change detection** — detects image updates even when only entrypoint/env/labels changed (same manifest digest, different image ID)
-- **Image diff preview** — shows env, port, entrypoint, and volume changes before updating
+- **Image diff preview** — shows env, port, entrypoint, and volume changes before updating; diff is also persisted in update history so you can review configuration changes post-update
 - **Health-based auto-rollback** — rolls back automatically if a container becomes unhealthy after update, respects healthcheck `start_period` for slow-starting containers
 - **Crash-loop detection** — detects and rolls back containers stuck in restart loops (requires 3+ restarts in 60s to avoid false positives)
 - **AutoRemove container support** — safely updates `--rm` containers by handling Docker API 409/404 during removal
