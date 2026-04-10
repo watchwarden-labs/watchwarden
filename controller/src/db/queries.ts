@@ -580,10 +580,13 @@ export async function updateContainerDiff(containerId: string, diff: string | nu
 
 export async function updateContainerPolicy(
   containerId: string,
-  data: { policy: string | null; update_level: string | null },
+  data: { policy: string | null; update_level: string | null; tag_pattern?: string | null },
 ): Promise<void> {
   await sql`
-    UPDATE containers SET policy = ${data.policy}, update_level = ${data.update_level}
+    UPDATE containers
+    SET policy = ${data.policy},
+        update_level = ${data.update_level},
+        tag_pattern = ${data.tag_pattern !== undefined ? data.tag_pattern : sql`tag_pattern`}
     WHERE id = ${containerId} OR docker_id = ${containerId}
   `;
 }

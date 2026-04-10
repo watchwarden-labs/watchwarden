@@ -445,10 +445,10 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch<{
     Params: { agentId: string; containerId: string };
-    Body: { policy: string | null; update_level: string | null };
+    Body: { policy: string | null; update_level: string | null; tag_pattern?: string | null };
   }>('/api/agents/:agentId/containers/:containerId', async (request, reply) => {
     const { agentId, containerId } = request.params;
-    const { policy, update_level } = request.body;
+    const { policy, update_level, tag_pattern } = request.body;
 
     const agent = await getAgent(agentId);
     if (!agent) return reply.code(404).send({ error: 'Agent not found' });
@@ -465,8 +465,17 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
         error: 'Invalid update_level. Must be one of: all, major, minor, patch',
       });
     }
+    if (tag_pattern !== undefined && tag_pattern !== null) {
+      try {
+        new RegExp(tag_pattern);
+      } catch {
+        return reply
+          .code(400)
+          .send({ error: 'Invalid tag_pattern: not a valid regular expression' });
+      }
+    }
 
-    await updateContainerPolicy(containerId, { policy, update_level });
+    await updateContainerPolicy(containerId, { policy, update_level, tag_pattern });
     return reply.code(200).send({ message: 'Container policy updated' });
   });
 
