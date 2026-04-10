@@ -211,6 +211,33 @@ export function useUpdateContainerPolicy() {
   });
 }
 
+export function useUpdateContainerOrchestration() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      agentId,
+      containerId,
+      group,
+      priority,
+      dependsOn,
+    }: {
+      agentId: string;
+      containerId: string;
+      group: string | null;
+      priority: number;
+      dependsOn: string[];
+    }) =>
+      apiRequest<void>(`/agents/${agentId}/containers/${containerId}/orchestration`, {
+        method: 'PATCH',
+        body: JSON.stringify({ group, priority, dependsOn }),
+      }),
+    onSuccess: (_, { agentId }) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['agents', agentId] });
+    },
+  });
+}
+
 export function useUpdateAgentConfig() {
   const queryClient = useQueryClient();
   return useMutation({
