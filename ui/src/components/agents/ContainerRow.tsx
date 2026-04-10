@@ -5,6 +5,7 @@ import {
   Database,
   Info,
   Loader2,
+  Lock,
   Pin,
   Play,
   RefreshCw,
@@ -47,7 +48,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useStore } from '@/store/useStore';
 
@@ -57,6 +57,47 @@ interface ContainerRowProps {
   agentId: string;
   container: Container;
   onUpdate?: () => void;
+}
+
+/** Label above a config field — shows a lock + "Docker label" badge when the field is label-sourced. */
+function LabelRow({
+  label,
+  lockedValue,
+}: {
+  label: string;
+  lockedValue: string | null | undefined;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-sm font-medium">{label}</span>
+      {lockedValue != null && (
+        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-amber-400/40 text-amber-600 bg-amber-400/10">
+          <Lock size={9} />
+          Docker label
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Read-only display shown when a value is controlled by a Docker label. */
+function LabelLockNotice({
+  value,
+  field,
+  mono = false,
+}: {
+  value: string;
+  field: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1 px-3 py-2 rounded-md bg-amber-400/5 border border-amber-400/20 text-sm">
+      <span className={mono ? 'font-mono text-foreground' : 'text-foreground'}>{value}</span>
+      <span className="text-[11px] text-muted-foreground">
+        Set via <code className="font-mono">{field}</code> label — edit your Compose file to change.
+      </span>
+    </div>
+  );
 }
 
 function StatusDot({ status }: { status: string }) {
@@ -664,98 +705,132 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                 Update Policy
               </p>
 
+              {/* Policy radio */}
               <div className="space-y-1.5">
-                {(['auto', 'notify', 'manual'] as const).map((p) => (
-                  <label
-                    key={p}
-                    htmlFor={`policy-${container.id}-${p}`}
-                    className="flex items-center gap-2 cursor-pointer text-sm"
-                  >
-                    <input
-                      id={`policy-${container.id}-${p}`}
-                      type="radio"
-                      name={`policy-${container.id}`}
-                      value={p}
-                      checked={editPolicy === p}
-                      onChange={() => setEditPolicy(p)}
-                      className="w-4 h-4 cursor-pointer"
-                    />
-                    <span>
-                      {p === 'auto' && 'Auto — follow agent / global setting'}
-                      {p === 'notify' && 'Notify only — never auto-update'}
-                      {p === 'manual' && 'Manual — skip checks entirely'}
-                    </span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor={`level-${container.id}`}>Max update level</Label>
-                <select
-                  id={`level-${container.id}`}
-                  value={editLevel}
-                  onChange={(e) => setEditLevel(e.target.value)}
-                  disabled={editPolicy === 'manual'}
-                  className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground disabled:opacity-50"
-                >
-                  <option value="">Default (inherit global)</option>
-                  <option value="all">All versions</option>
-                  <option value="major">Major + minor + patch</option>
-                  <option value="minor">Minor + patch only</option>
-                  <option value="patch">Patch only</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor={`tagpattern-${container.id}`}>Tag pattern</Label>
-                <div className="flex flex-wrap gap-1 mb-1">
-                  {[
-                    { label: 'semver', value: '^\\d+\\.\\d+\\.\\d+$' },
-                    { label: 'v-semver', value: '^v\\d+\\.\\d+\\.\\d+$' },
-                    { label: 'date', value: '^\\d{4}\\.\\d{2}\\.\\d{2}$' },
-                    { label: 'numeric', value: '^\\d+$' },
-                  ].map((preset) => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => setEditTagPattern(preset.value)}
-                      className={`text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
-                        editTagPattern === preset.value
-                          ? 'bg-primary/10 border-primary/40 text-primary'
-                          : 'border-border text-muted-foreground hover:border-primary/30'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                  {editTagPattern && (
-                    <button
-                      type="button"
-                      onClick={() => setEditTagPattern('')}
-                      className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive transition-colors cursor-pointer"
-                    >
-                      clear
-                    </button>
-                  )}
-                </div>
-                <input
-                  id={`tagpattern-${container.id}`}
-                  type="text"
-                  value={editTagPattern}
-                  onChange={(e) => setEditTagPattern(e.target.value)}
-                  placeholder={String.raw`Regex, e.g. ^\d+\.\d+\.\d+$`}
-                  disabled={editPolicy === 'manual'}
-                  className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm font-mono text-foreground placeholder:text-muted-foreground disabled:opacity-50"
-                />
-              </div>
-
-              <Button size="sm" disabled={updatePolicy.isPending} onClick={handleSavePolicy}>
-                {updatePolicy.isPending ? (
-                  <Loader2 size={13} className="animate-spin" />
+                <LabelRow label="Policy" lockedValue={container.label_policy} />
+                {container.label_policy ? (
+                  <LabelLockNotice value={container.label_policy} field="com.watchwarden.policy" />
                 ) : (
-                  'Save policy'
+                  <div className="space-y-1">
+                    {(['auto', 'notify', 'manual'] as const).map((p) => (
+                      <label
+                        key={p}
+                        htmlFor={`policy-${container.id}-${p}`}
+                        className="flex items-center gap-2 cursor-pointer text-sm"
+                      >
+                        <input
+                          id={`policy-${container.id}-${p}`}
+                          type="radio"
+                          name={`policy-${container.id}`}
+                          value={p}
+                          checked={editPolicy === p}
+                          onChange={() => setEditPolicy(p)}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                        <span>
+                          {p === 'auto' && 'Auto — follow agent / global setting'}
+                          {p === 'notify' && 'Notify only — never auto-update'}
+                          {p === 'manual' && 'Manual — skip checks entirely'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 )}
-              </Button>
+              </div>
+
+              {/* Max update level */}
+              <div className="space-y-1.5">
+                <LabelRow label="Max update level" lockedValue={container.label_update_level} />
+                {container.label_update_level ? (
+                  <LabelLockNotice
+                    value={container.label_update_level}
+                    field="com.watchwarden.update_level"
+                  />
+                ) : (
+                  <select
+                    id={`level-${container.id}`}
+                    value={editLevel}
+                    onChange={(e) => setEditLevel(e.target.value)}
+                    disabled={editPolicy === 'manual'}
+                    className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground disabled:opacity-50"
+                  >
+                    <option value="">Default (inherit global)</option>
+                    <option value="all">All versions</option>
+                    <option value="major">Major + minor + patch</option>
+                    <option value="minor">Minor + patch only</option>
+                    <option value="patch">Patch only</option>
+                  </select>
+                )}
+              </div>
+
+              {/* Tag pattern */}
+              <div className="space-y-1.5">
+                <LabelRow label="Tag pattern" lockedValue={container.label_tag_pattern} />
+                {container.label_tag_pattern ? (
+                  <LabelLockNotice
+                    value={container.label_tag_pattern}
+                    field="com.watchwarden.tag_pattern"
+                    mono
+                  />
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { label: 'semver', value: '^\\d+\\.\\d+\\.\\d+$' },
+                        { label: 'v-semver', value: '^v\\d+\\.\\d+\\.\\d+$' },
+                        { label: 'date', value: '^\\d{4}\\.\\d{2}\\.\\d{2}$' },
+                        { label: 'numeric', value: '^\\d+$' },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => setEditTagPattern(preset.value)}
+                          className={`text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                            editTagPattern === preset.value
+                              ? 'bg-primary/10 border-primary/40 text-primary'
+                              : 'border-border text-muted-foreground hover:border-primary/30'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                      {editTagPattern && (
+                        <button
+                          type="button"
+                          onClick={() => setEditTagPattern('')}
+                          className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive transition-colors cursor-pointer"
+                        >
+                          clear
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      id={`tagpattern-${container.id}`}
+                      type="text"
+                      value={editTagPattern}
+                      onChange={(e) => setEditTagPattern(e.target.value)}
+                      placeholder={String.raw`Regex, e.g. ^\d+\.\d+\.\d+$`}
+                      disabled={editPolicy === 'manual'}
+                      className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm font-mono text-foreground placeholder:text-muted-foreground disabled:opacity-50"
+                    />
+                  </>
+                )}
+              </div>
+
+              {/* Save policy — hidden when all three fields are label-controlled */}
+              {!(
+                container.label_policy &&
+                container.label_update_level &&
+                container.label_tag_pattern
+              ) && (
+                <Button size="sm" disabled={updatePolicy.isPending} onClick={handleSavePolicy}>
+                  {updatePolicy.isPending ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    'Save policy'
+                  )}
+                </Button>
+              )}
             </div>
 
             {/* Orchestration */}
@@ -764,59 +839,104 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                 Orchestration
               </p>
 
+              {/* Group */}
               <div className="space-y-1.5">
-                <Label htmlFor={`group-${container.id}`}>Update group</Label>
-                <input
-                  id={`group-${container.id}`}
-                  type="text"
-                  value={editGroup}
-                  onChange={(e) => setEditGroup(e.target.value)}
-                  placeholder="e.g. backend, frontend"
-                  className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Containers in the same group are updated together.
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor={`priority-${container.id}`}>Priority</Label>
-                <input
-                  id={`priority-${container.id}`}
-                  type="number"
-                  min={1}
-                  max={999}
-                  value={editPriority}
-                  onChange={(e) => setEditPriority(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Lower = updated first within the group (default: 100).
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor={`depson-${container.id}`}>Depends on</Label>
-                <input
-                  id={`depson-${container.id}`}
-                  type="text"
-                  value={editDependsOn}
-                  onChange={(e) => setEditDependsOn(e.target.value)}
-                  placeholder="e.g. postgres, redis"
-                  className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Comma-separated container names that must update first.
-                </p>
-              </div>
-
-              <Button size="sm" disabled={updateOrch.isPending} onClick={handleSaveOrch}>
-                {updateOrch.isPending ? (
-                  <Loader2 size={13} className="animate-spin" />
+                <LabelRow label="Update group" lockedValue={container.label_group} />
+                {container.label_group ? (
+                  <LabelLockNotice value={container.label_group} field="com.watchwarden.group" />
                 ) : (
-                  'Save orchestration'
+                  <>
+                    <input
+                      id={`group-${container.id}`}
+                      type="text"
+                      value={editGroup}
+                      onChange={(e) => setEditGroup(e.target.value)}
+                      placeholder="e.g. backend, frontend"
+                      className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Containers in the same group are updated together.
+                    </p>
+                  </>
                 )}
-              </Button>
+              </div>
+
+              {/* Priority */}
+              <div className="space-y-1.5">
+                <LabelRow
+                  label="Priority"
+                  lockedValue={
+                    container.label_priority != null ? String(container.label_priority) : null
+                  }
+                />
+                {container.label_priority != null ? (
+                  <LabelLockNotice
+                    value={String(container.label_priority)}
+                    field="com.watchwarden.priority"
+                  />
+                ) : (
+                  <>
+                    <input
+                      id={`priority-${container.id}`}
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={editPriority}
+                      onChange={(e) => setEditPriority(e.target.value)}
+                      className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Lower = updated first within the group (default: 100).
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {/* Depends on */}
+              <div className="space-y-1.5">
+                <LabelRow label="Depends on" lockedValue={container.label_depends_on} />
+                {container.label_depends_on ? (
+                  <LabelLockNotice
+                    value={(() => {
+                      try {
+                        return (JSON.parse(container.label_depends_on) as string[]).join(', ');
+                      } catch {
+                        return container.label_depends_on;
+                      }
+                    })()}
+                    field="com.watchwarden.depends_on"
+                  />
+                ) : (
+                  <>
+                    <input
+                      id={`depson-${container.id}`}
+                      type="text"
+                      value={editDependsOn}
+                      onChange={(e) => setEditDependsOn(e.target.value)}
+                      placeholder="e.g. postgres, redis"
+                      className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Comma-separated container names that must update first.
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {/* Save orchestration — hidden when all three fields are label-controlled */}
+              {!(
+                container.label_group &&
+                container.label_priority != null &&
+                container.label_depends_on
+              ) && (
+                <Button size="sm" disabled={updateOrch.isPending} onClick={handleSaveOrch}>
+                  {updateOrch.isPending ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    'Save orchestration'
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>

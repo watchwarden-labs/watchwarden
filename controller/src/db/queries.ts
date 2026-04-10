@@ -112,7 +112,10 @@ export async function upsertContainers(
     await tx`SELECT 1 FROM containers WHERE agent_id = ${agentId} FOR UPDATE`;
     await tx`DELETE FROM containers WHERE agent_id = ${agentId} AND id != ALL(${reportedIds})`;
 
-    // Bulk upsert — single round-trip for all containers
+    // Bulk upsert — single round-trip for all containers.
+    // label_* columns always reflect the current Docker label state (overwritten every heartbeat).
+    // policy/tag_pattern/update_level/update_group/update_priority/depends_on are UI-controlled:
+    // they are never written by the heartbeat — COALESCE preserves whatever the user set via API.
     const rows = containers.map((c) => ({
       id: c.id,
       agent_id: agentId,
@@ -124,12 +127,20 @@ export async function upsertContainers(
       excluded: !!c.excluded,
       exclude_reason: c.exclude_reason ?? null,
       pinned_version: !!c.pinned_version,
-      update_group: c.group ?? null,
-      update_priority: c.priority ?? 100,
-      depends_on: c.depends_on?.length ? JSON.stringify(c.depends_on) : null,
-      policy: c.policy ?? null,
-      tag_pattern: c.tag_pattern ?? null,
-      update_level: c.update_level ?? null,
+      // Label-sourced values — always overwritten from Docker labels
+      label_group: c.group ?? null,
+      label_priority: c.priority ?? null,
+      label_depends_on: c.depends_on?.length ? JSON.stringify(c.depends_on) : null,
+      label_policy: c.policy ?? null,
+      label_tag_pattern: c.tag_pattern ?? null,
+      label_update_level: c.update_level ?? null,
+      // UI-controlled values — null here so COALESCE preserves existing user settings
+      update_group: null as string | null,
+      update_priority: null as number | null,
+      depends_on: null as string | null,
+      policy: null as string | null,
+      tag_pattern: null as string | null,
+      update_level: null as string | null,
       health_status: c.health_status ?? null,
       is_stateful: !!c.is_stateful,
     }));
@@ -137,7 +148,7 @@ export async function upsertContainers(
     // postgres.js sql(rows, col...) generates the column list + VALUES — no separate column list
     await tx`
     INSERT INTO containers
-    ${tx(rows, 'id', 'agent_id', 'docker_id', 'name', 'image', 'current_digest', 'status', 'excluded', 'exclude_reason', 'pinned_version', 'update_group', 'update_priority', 'depends_on', 'policy', 'tag_pattern', 'update_level', 'health_status', 'is_stateful')}
+    ${tx(rows, 'id', 'agent_id', 'docker_id', 'name', 'image', 'current_digest', 'status', 'excluded', 'exclude_reason', 'pinned_version', 'label_group', 'label_priority', 'label_depends_on', 'label_policy', 'label_tag_pattern', 'label_update_level', 'update_group', 'update_priority', 'depends_on', 'policy', 'tag_pattern', 'update_level', 'health_status', 'is_stateful')}
     ON CONFLICT (id) DO UPDATE SET
       docker_id = EXCLUDED.docker_id,
       name = EXCLUDED.name,
@@ -147,12 +158,20 @@ export async function upsertContainers(
       excluded = EXCLUDED.excluded,
       exclude_reason = EXCLUDED.exclude_reason,
       pinned_version = EXCLUDED.pinned_version,
-      update_group = COALESCE(EXCLUDED.update_group, containers.update_group),
-      update_priority = COALESCE(EXCLUDED.update_priority, containers.update_priority),
-      depends_on = COALESCE(EXCLUDED.depends_on, containers.depends_on),
-      policy = COALESCE(EXCLUDED.policy, containers.policy),
-      tag_pattern = COALESCE(EXCLUDED.tag_pattern, containers.tag_pattern),
-      update_level = COALESCE(EXCLUDED.update_level, containers.update_level),
+      -- label_* always reflect current Docker label state
+      label_group = EXCLUDED.label_group,
+      label_priority = EXCLUDED.label_priority,
+      label_depends_on = EXCLUDED.label_depends_on,
+      label_policy = EXCLUDED.label_policy,
+      label_tag_pattern = EXCLUDED.label_tag_pattern,
+      label_update_level = EXCLUDED.label_update_level,
+      -- UI columns: heartbeat sends null, COALESCE preserves user-set values
+      update_group = COALESCE(containers.update_group, EXCLUDED.update_group),
+      update_priority = COALESCE(containers.update_priority, EXCLUDED.update_priority),
+      depends_on = COALESCE(containers.depends_on, EXCLUDED.depends_on),
+      policy = COALESCE(containers.policy, EXCLUDED.policy),
+      tag_pattern = COALESCE(containers.tag_pattern, EXCLUDED.tag_pattern),
+      update_level = COALESCE(containers.update_level, EXCLUDED.update_level),
       health_status = COALESCE(EXCLUDED.health_status, containers.health_status),
       is_stateful = EXCLUDED.is_stateful
   `;
@@ -704,6 +723,12 @@ function mapContainer(row: Record<string, unknown>): Container {
     policy: row.policy as string | null,
     tag_pattern: row.tag_pattern as string | null,
     update_level: row.update_level as string | null,
+    label_policy: row.label_policy as string | null,
+    label_tag_pattern: row.label_tag_pattern as string | null,
+    label_update_level: row.label_update_level as string | null,
+    label_group: row.label_group as string | null,
+    label_priority: row.label_priority != null ? Number(row.label_priority) : null,
+    label_depends_on: row.label_depends_on as string | null,
     last_diff: row.last_diff as string | null,
     last_checked: row.last_checked ? Number(row.last_checked) : null,
     last_updated: row.last_updated ? Number(row.last_updated) : null,
