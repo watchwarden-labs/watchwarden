@@ -127,6 +127,9 @@ export class AgentHub {
   // FIX-1.3: track in-flight auto-update per agent to prevent duplicate UPDATE
   // commands when two CHECK_RESULTs race (e.g. from a reconnect replay).
   private autoUpdateInFlight = new Set<string>();
+  // Cache diffs from CHECK_RESULT keyed by containerId so they can be stored
+  // in update_log when the corresponding UPDATE_RESULT arrives.
+  private pendingDiffs = new Map<string, string | null>();
 
   constructor(broadcaster?: UiBroadcaster) {
     this.broadcaster = broadcaster ?? null;
@@ -300,7 +303,10 @@ export class AgentHub {
                   r.hasUpdate,
                 );
                 // Store image diff if present
-                await updateContainerDiff(r.containerId, r.diff ? JSON.stringify(r.diff) : null);
+                const diffJson = r.diff ? JSON.stringify(r.diff) : null;
+                await updateContainerDiff(r.containerId, diffJson);
+                // Cache for use in update_log when UPDATE_RESULT arrives
+                this.pendingDiffs.set(r.containerId, diffJson);
               }
               await updateAgentStatus(agentId, 'online', Date.now());
               const updatesAvailable = payload.results.filter((r) => r.hasUpdate).length;
@@ -477,6 +483,8 @@ export class AgentHub {
                 },
               ];
               for (const r of results) {
+                const diff = this.pendingDiffs.get(r.containerId) ?? null;
+                this.pendingDiffs.delete(r.containerId);
                 if (r.success && r.newDigest) {
                   // DB-02: log + digest update are atomic — no divergence on crash.
                   await insertUpdateLogAndDigests(
@@ -491,6 +499,7 @@ export class AgentHub {
                       status: isRollback ? 'rolled_back' : 'success',
                       error: r.error,
                       duration_ms: r.durationMs,
+                      diff,
                     },
                     r.containerId,
                     r.newDigest,
@@ -507,6 +516,7 @@ export class AgentHub {
                     status: isRollback ? 'rolled_back' : 'failed',
                     error: r.error,
                     duration_ms: r.durationMs,
+                    diff,
                   });
                 }
               }

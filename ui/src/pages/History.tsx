@@ -4,8 +4,16 @@ import { Fragment, useState } from 'react';
 import { useHistory, useHistoryStats } from '@/api/hooks/useHistory';
 import { DigestBadge } from '@/components/common/DigestBadge';
 import { Pagination } from '@/components/common/Pagination';
+import { DiffBadge, type ImageDiff, ImageDiffView } from '@/components/diff/ImageDiffView';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -131,12 +139,20 @@ export function HistoryPage() {
             )}
             {history?.data.map((entry) => {
               const isExpanded = expandedRows.has(entry.id);
+              const parsedDiff: ImageDiff | null = entry.diff
+                ? (() => {
+                    try {
+                      return JSON.parse(entry.diff) as ImageDiff;
+                    } catch {
+                      return null;
+                    }
+                  })()
+                : null;
               const hasDetails = !!(
                 entry.old_digest ||
                 entry.new_digest ||
-                entry.old_image ||
-                entry.new_image ||
-                entry.error
+                entry.error ||
+                parsedDiff
               );
               return (
                 <Fragment key={entry.id}>
@@ -204,6 +220,26 @@ export function HistoryPage() {
                             <>
                               <span className="text-muted-foreground">Error</span>
                               <span className="text-destructive break-all">{entry.error}</span>
+                            </>
+                          )}
+                          {parsedDiff && (
+                            <>
+                              <span className="text-muted-foreground">Image diff</span>
+                              <Dialog>
+                                <DialogTrigger
+                                  render={<button type="button" className="w-fit cursor-pointer" />}
+                                >
+                                  <DiffBadge diff={parsedDiff} />
+                                </DialogTrigger>
+                                <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+                                  <DialogHeader>
+                                    <DialogTitle>
+                                      Image changes — {entry.container_name}
+                                    </DialogTitle>
+                                  </DialogHeader>
+                                  <ImageDiffView diff={parsedDiff} />
+                                </DialogContent>
+                              </Dialog>
                             </>
                           )}
                         </div>

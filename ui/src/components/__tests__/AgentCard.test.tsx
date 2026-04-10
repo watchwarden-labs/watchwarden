@@ -42,6 +42,7 @@ const mockAgent: Agent = {
       tag_pattern: null,
       update_level: null,
       is_stateful: 0,
+      update_first_seen: Date.now(),
     },
     {
       id: 'c-2',
@@ -67,6 +68,7 @@ const mockAgent: Agent = {
       tag_pattern: null,
       update_level: null,
       is_stateful: 0,
+      update_first_seen: Date.now(),
     },
   ],
 };
