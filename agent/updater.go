@@ -486,6 +486,7 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 				ContainerName: snapshot.Name,
 				Success:       false,
 				OldDigest:     snapshot.ImageDigest,
+				OldImage:      snapshot.ImageRef,
 				Error:         err.Error(),
 				DurationMs:    time.Since(start).Milliseconds(),
 			}, err
@@ -510,6 +511,7 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 			ContainerName: snapshot.Name,
 			Success:       false,
 			OldDigest:     snapshot.ImageDigest,
+			OldImage:      snapshot.ImageRef,
 			Error:         fmt.Sprintf("pull failed: %v", err),
 			DurationMs:    time.Since(start).Milliseconds(),
 		}, err
@@ -551,6 +553,7 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 			ContainerName: snapshot.Name,
 			Success:       false,
 			OldDigest:     snapshot.ImageDigest,
+			OldImage:      snapshot.ImageRef,
 			Error:         fmt.Sprintf("stop failed: %v", err),
 			DurationMs:    time.Since(start).Milliseconds(),
 		}, err
@@ -566,6 +569,7 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 				ContainerName: snapshot.Name,
 				Success:       false,
 				OldDigest:     snapshot.ImageDigest,
+				OldImage:      snapshot.ImageRef,
 				Error:         fmt.Sprintf("remove failed: %v", err),
 				DurationMs:    time.Since(start).Milliseconds(),
 			}, err
@@ -588,6 +592,7 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 			ContainerName: snapshot.Name,
 			Success:       false,
 			OldDigest:     snapshot.ImageDigest,
+			OldImage:      snapshot.ImageRef,
 			Error:         errMsg,
 			DurationMs:    time.Since(start).Milliseconds(),
 		}, err
@@ -599,6 +604,8 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 		Success:       true,
 		OldDigest:     snapshot.ImageDigest,
 		NewDigest:     newDigest,
+		OldImage:      snapshot.ImageRef,
+		NewImage:      imageRef,
 		DurationMs:    time.Since(start).Milliseconds(),
 	}, nil
 }
@@ -643,6 +650,8 @@ func (u *Updater) RollbackContainer(ctx context.Context, containerID string) (*U
 		ContainerName: snapshot.Name,
 		Success:       true,
 		OldDigest:     snapshot.ImageDigest,
+		OldImage:      snapshot.ImageRef,
+		NewImage:      snapshot.ImageRef,
 		DurationMs:    time.Since(start).Milliseconds(),
 		IsRollback:    true,
 	}, nil
@@ -769,6 +778,8 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 		Success:       true,
 		OldDigest:     snapshot.ImageDigest,
 		NewDigest:     newDigest,
+		OldImage:      snapshot.ImageRef,
+		NewImage:      targetImage,
 		DurationMs:    time.Since(start).Milliseconds(),
 		IsRollback:    true,
 	}, nil
@@ -916,6 +927,8 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 		Success:       true,
 		OldDigest:     snapshot.ImageDigest,
 		NewDigest:     newDigest,
+		OldImage:      snapshot.ImageRef,
+		NewImage:      bgImageRef,
 		DurationMs:    time.Since(start).Milliseconds(),
 	}, nil
 }

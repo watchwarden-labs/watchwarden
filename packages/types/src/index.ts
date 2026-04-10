@@ -84,10 +84,13 @@ export interface AgentConfigUpdate {
 export interface UpdateLog {
   id: number;
   agent_id: string;
+  agent_name: string | null;
   container_id: string;
   container_name: string;
   old_digest: string | null;
   new_digest: string | null;
+  old_image: string | null;
+  new_image: string | null;
   status: 'success' | 'failed' | 'rolled_back';
   error: string | null;
   duration_ms: number | null;
@@ -100,6 +103,8 @@ export interface NewUpdateLog {
   container_name: string;
   old_digest?: string | null;
   new_digest?: string | null;
+  old_image?: string | null;
+  new_image?: string | null;
   status: 'success' | 'failed' | 'rolled_back';
   error?: string | null;
   duration_ms?: number | null;
