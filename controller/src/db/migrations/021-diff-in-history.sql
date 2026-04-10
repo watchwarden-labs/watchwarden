@@ -1,0 +1,1 @@
+ALTER TABLE update_log ADD COLUMN IF NOT EXISTS diff TEXT;
