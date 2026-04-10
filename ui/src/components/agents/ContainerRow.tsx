@@ -3,6 +3,7 @@ import {
   Ban,
   Database,
   Loader2,
+  Pencil,
   Pin,
   Play,
   RefreshCw,
@@ -18,6 +19,7 @@ import {
   useContainerDelete,
   useContainerStart,
   useContainerStop,
+  useUpdateContainerPolicy,
 } from '@/api/hooks/useAgents';
 import { ContainerLogsDialog } from '@/components/agents/ContainerLogsDialog';
 import { DigestBadge } from '@/components/common/DigestBadge';
@@ -38,12 +40,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useStore } from '@/store/useStore';
 
@@ -80,6 +85,9 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
+  const [policyOpen, setPolicyOpen] = useState(false);
+  const [editPolicy, setEditPolicy] = useState<string>(container.policy ?? 'auto');
+  const [editLevel, setEditLevel] = useState<string>(container.update_level ?? '');
   const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'delete' | 'check' | null>(
     null,
   );
@@ -91,6 +99,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
   const startContainer = useContainerStart();
   const stopContainer = useContainerStop();
   const deleteContainer = useContainerDelete();
+  const updatePolicy = useUpdateContainerPolicy();
 
   const hasUpdate = container.has_update === 1;
   const isExcluded = container.excluded === 1;
@@ -238,44 +247,152 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
               </Tooltip>
             </TooltipProvider>
           )}
-          {container.policy && container.policy !== 'auto' && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger render={<span />} className="cursor-default">
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] px-1.5 py-0 ${
-                      container.policy === 'manual'
-                        ? 'border-muted-foreground text-muted-foreground'
-                        : 'border-primary/30 text-primary'
-                    }`}
+          {/* Policy / update-level — click pencil to edit */}
+          <Dialog
+            open={policyOpen}
+            onOpenChange={(open) => {
+              setPolicyOpen(open);
+              if (open) {
+                setEditPolicy(container.policy ?? 'auto');
+                setEditLevel(container.update_level ?? '');
+              }
+            }}
+          >
+            <div className="flex items-center gap-1">
+              {container.policy && container.policy !== 'auto' && (
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] px-1.5 py-0 ${
+                    container.policy === 'manual'
+                      ? 'border-muted-foreground text-muted-foreground'
+                      : 'border-primary/30 text-primary'
+                  }`}
+                >
+                  {container.policy === 'manual' ? 'MANUAL' : 'NOTIFY'}
+                </Badge>
+              )}
+              {container.update_level && container.update_level !== 'all' && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0 border-violet-400/40 text-violet-500"
+                >
+                  {container.update_level.toUpperCase()}
+                </Badge>
+              )}
+              {container.tag_pattern && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger render={<span />} className="cursor-default">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0 border-blue-400/30 text-blue-500"
+                      >
+                        TAG
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>Tag pattern: {container.tag_pattern}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              <DialogTrigger
+                render={
+                  <button
+                    type="button"
+                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity cursor-pointer"
+                    aria-label="Edit policy"
+                  />
+                }
+              >
+                <Pencil size={11} className="text-muted-foreground" />
+              </DialogTrigger>
+            </div>
+
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Update policy — {container.name}</DialogTitle>
+                <DialogDescription>
+                  Override how this container is treated during auto-updates.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Policy</p>
+                  <div className="flex flex-col gap-1.5">
+                    {(['auto', 'notify', 'manual'] as const).map((p) => (
+                      <label
+                        key={p}
+                        htmlFor={`policy-${p}`}
+                        className="flex items-center gap-2 cursor-pointer text-sm"
+                      >
+                        <input
+                          id={`policy-${p}`}
+                          type="radio"
+                          name="policy"
+                          value={p}
+                          checked={editPolicy === p}
+                          onChange={() => setEditPolicy(p)}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                        <span>
+                          {p === 'auto' && 'Auto — follow agent / global setting'}
+                          {p === 'notify' && 'Notify only — never auto-update'}
+                          {p === 'manual' && 'Manual — skip checks entirely'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-update-level">Max update level</Label>
+                  <select
+                    id="edit-update-level"
+                    value={editLevel}
+                    onChange={(e) => setEditLevel(e.target.value)}
+                    disabled={editPolicy === 'manual'}
+                    className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground disabled:opacity-50"
                   >
-                    {container.policy === 'manual' ? 'MANUAL' : 'NOTIFY'}
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {container.policy === 'manual'
-                    ? 'Updates managed manually — set via com.watchwarden.policy=manual'
-                    : 'Notify only — set via com.watchwarden.policy=notify'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          {container.tag_pattern && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger render={<span />} className="cursor-default">
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 border-blue-400/30 text-blue-500"
-                  >
-                    TAG
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>Tag pattern: {container.tag_pattern}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+                    <option value="">Default (inherit global)</option>
+                    <option value="all">All versions</option>
+                    <option value="major">Major+minor+patch</option>
+                    <option value="minor">Minor+patch only</option>
+                    <option value="patch">Patch only</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Only applies to semver-tagged images (e.g. 1.2.3).
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+                <Button
+                  disabled={updatePolicy.isPending}
+                  onClick={() => {
+                    updatePolicy.mutate(
+                      {
+                        agentId,
+                        containerId: container.id,
+                        policy: editPolicy === 'auto' ? null : editPolicy,
+                        updateLevel: editLevel || null,
+                      },
+                      {
+                        onSuccess: () => setPolicyOpen(false),
+                        onError: (err) =>
+                          addToast({
+                            type: 'error',
+                            message: `Failed to save policy: ${err instanceof Error ? err.message : String(err)}`,
+                          }),
+                      },
+                    );
+                  }}
+                >
+                  {updatePolicy.isPending ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           {hasUpdate && !isExcluded && !isPinned && (
             <Badge className="bg-warning/15 text-warning border-warning/30 text-[10px] px-1.5 py-0">
               UPDATE
