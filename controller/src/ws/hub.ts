@@ -25,6 +25,7 @@ import {
 } from '../db/queries.js';
 import { decrypt } from '../lib/crypto.js';
 import { log } from '../lib/logger.js';
+import { extractTag, semverMatchesLevel } from '../lib/semver.js';
 import { addUpdateResult, dispatchCheckResults } from '../notifications/session-batcher.js';
 import type { ContainerInfo } from '../types.js';
 import type { UiBroadcaster } from './ui-broadcaster.js';
@@ -334,6 +335,7 @@ export class AgentHub {
                 // (update_success/failed notification will follow from UPDATE_RESULT).
                 // Fetch container data to check per-container policies
                 const agentContainersForUpdate = await getContainersByAgent(agentId);
+                const globalUpdateLevel = (await getConfig('global_update_level')) ?? '';
                 const containerIds = payload.results
                   .filter((r) => {
                     if (!r.hasUpdate) return false;
@@ -345,6 +347,23 @@ export class AgentHub {
                       return false;
                     // Stateful containers (databases) are never auto-updated
                     if (dbContainer?.is_stateful) return false;
+                    // Semver level enforcement: per-container takes precedence over global
+                    const effectiveLevel = dbContainer?.update_level || globalUpdateLevel;
+                    if (effectiveLevel && effectiveLevel !== 'all') {
+                      const currentTag = extractTag(dbContainer?.image ?? '');
+                      const candidateTag = extractTag(r.latestDigest ?? '');
+                      // Only enforce when both sides have parseable tags (not sha256 digests)
+                      if (currentTag && candidateTag) {
+                        if (!semverMatchesLevel(currentTag, candidateTag, effectiveLevel)) {
+                          log.info(
+                            'hub',
+                            `skipping auto-update for ${dbContainer?.name ?? r.containerId}: ` +
+                              `${currentTag} → ${candidateTag} blocked by update_level=${effectiveLevel}`,
+                          );
+                          return false;
+                        }
+                      }
+                    }
                     return true;
                   })
                   .map((r) => r.containerId);

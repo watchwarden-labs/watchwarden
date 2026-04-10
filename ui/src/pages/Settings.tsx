@@ -126,6 +126,45 @@ function GeneralTab() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Default Update Level</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Maximum allowed update level</p>
+              <p className="text-xs text-muted-foreground">
+                Global default for containers without a per-container update level set. Limits how
+                far semver-tagged images can be updated.
+              </p>
+            </div>
+            <select
+              className="text-sm border rounded px-2 py-1 bg-background"
+              value={config?.global_update_level ?? ''}
+              onChange={(e) =>
+                updateConfig.mutate(
+                  { key: 'global_update_level', value: e.target.value },
+                  {
+                    onError: () =>
+                      addToast({
+                        type: 'error',
+                        message: 'Failed to update setting',
+                      }),
+                  },
+                )
+              }
+            >
+              <option value="">Any (no restriction)</option>
+              <option value="all">All versions</option>
+              <option value="major">Major only</option>
+              <option value="minor">Minor only</option>
+              <option value="patch">Patch only</option>
+            </select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Admin Password</CardTitle>
         </CardHeader>
         <CardContent>
