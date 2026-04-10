@@ -53,10 +53,10 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 - **Minimum update age** — hold back auto-updates until an available update has been visible for N hours (configurable per agent), avoiding races with newly-broken tags
 - **Blue-green updates** — start new container first, verify health, then stop old (zero-downtime). Automatically falls back to stop-first if port conflicts are detected (e.g. containers with direct port mappings)
 - **Rollback** — roll back to any previous version or pick a specific tag from the registry
-- **Update groups** — label-based (`com.watchwarden.group`, `com.watchwarden.depends_on`) or UI-editable: assign group name, priority, and dependencies per container directly from the dashboard
-- **Per-container policies** — label-driven control: `com.watchwarden.policy=auto|notify|manual` per container; editable from the UI without labels
+- **Update groups** — label-based (`com.watchwarden.group`, `com.watchwarden.depends_on`) or UI-editable: assign group name, priority, and dependencies per container directly from the dashboard. Docker labels always take precedence — the UI shows a lock badge and blocks editing for label-controlled fields.
+- **Per-container policies** — `com.watchwarden.policy=auto|notify|manual` via Docker label or editable from the UI. Label values are authoritative and override UI settings; the dashboard clearly marks label-controlled fields as read-only.
 - **Semver update levels** — restrict how far images can be upgraded (`patch`, `minor`, `major`) per container or globally via Settings; enforced before auto-update
-- **Tag pattern matching** — filter registry tags by regex via `com.watchwarden.tag_pattern` label or the UI policy dialog with built-in presets (semver, v-semver, date, numeric)
+- **Tag pattern matching** — filter registry tags by regex via `com.watchwarden.tag_pattern` label or the UI policy dialog with built-in presets (semver, v-semver, date, numeric). Label values take precedence over UI settings.
 - **Pinned version detection** — blocks accidental updates for containers with explicit version tags (e.g. `postgres:16.2-alpine`), while correctly treating floating tags (`alpine`, `lts`, `stable`) as updatable
 - **Config-only change detection** — detects image updates even when only entrypoint/env/labels changed (same manifest digest, different image ID)
 - **Image diff preview** — shows env, port, entrypoint, and volume changes before updating; diff is also persisted in update history so you can review configuration changes post-update
@@ -431,14 +431,16 @@ All standard Watchtower environment variables are automatically mapped to WatchW
 |-------|--------------|--------|
 | `com.watchwarden.enable` | `false` | Exclude from monitoring |
 | `com.watchwarden.enable` | `true` | Include (required when `LABEL_ENABLE_ONLY=true`) |
-| `com.watchwarden.group` | `backend` | Assign container to an update group |
-| `com.watchwarden.priority` | `10` | Update priority within a group (lower = first) |
-| `com.watchwarden.depends_on` | `db,cache` | Wait for these containers to update successfully first |
-| `com.watchwarden.policy` | `auto` / `notify` / `manual` | Per-container update policy |
-| `com.watchwarden.tag_pattern` | `^v3\.\d+$` | Filter tags by regex for update checks |
-| `com.watchwarden.update_level` | `major` / `minor` / `patch` / `all` | Semver level filter for updates (requires `tag_pattern`) |
+| `com.watchwarden.group` | `backend` | Assign container to an update group ¹ |
+| `com.watchwarden.priority` | `10` | Update priority within a group (lower = first) ¹ |
+| `com.watchwarden.depends_on` | `db,cache` | Wait for these containers to update successfully first ¹ |
+| `com.watchwarden.policy` | `auto` / `notify` / `manual` | Per-container update policy ¹ |
+| `com.watchwarden.tag_pattern` | `^v3\.\d+$` | Filter tags by regex for update checks ¹ |
+| `com.watchwarden.update_level` | `major` / `minor` / `patch` / `all` | Semver level filter for updates (requires `tag_pattern`) ¹ |
 | `com.watchwarden.pinned` | `true` | Force-pin a floating tag (skip update checks) |
 | `com.watchwarden.stateful` | `true` / `false` | Override stateful auto-detection (stateful containers are skipped by bulk updates) |
+
+> ¹ **Label vs UI precedence**: these six fields can also be set from the dashboard UI. Docker label values always win — if a label is present the UI shows the value as read-only with a "Docker label" lock badge and disables editing. Remove the label from your Compose file to hand control back to the UI.
 
 ## Development
 

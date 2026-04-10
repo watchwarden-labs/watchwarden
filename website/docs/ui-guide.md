@@ -62,11 +62,27 @@ Each container row shows:
 - **Image and version** — current tag or digest
 - **Update badge** — shows when a newer image is available
 - **Action buttons** — Check, Update, Rollback, View Logs, Start/Stop, Delete
-- **Container labels** — policy, tag pattern, update group, pinned version, and exclusion status
+- **Badges** — policy (NOTIFY/MANUAL), update level (PATCH/MINOR), tag pattern (TAG), update group name, priority (p10), pinned, stateful, excluded
 
-Click the pencil icon next to the policy badge to edit the container's update policy and semver update level directly from the UI (no label changes required):
-- **Policy** — Auto (follow global), Notify only, or Manual (skip checks)
+#### Expanding a container row
+
+Click the **chevron (›)** on the left of any row to expand an inline configuration panel — no modal, no page navigation.
+
+**Update Policy** (left column):
+- **Policy** — Auto (follow global), Notify only, Manual (skip checks)
 - **Max update level** — restrict updates to Patch, Minor, or Major semver bumps
+- **Tag pattern** — regex filter for registry tags; built-in presets: `semver` (`^\d+\.\d+\.\d+$`), `v-semver`, `date`, `numeric`
+
+**Orchestration** (right column):
+- **Update group** — group name for ordered batch updates
+- **Priority** — order within the group (lower = first; default 100)
+- **Depends on** — comma-separated container names that must update before this one
+
+Each column has its own **Save** button. Changes take effect immediately.
+
+#### Docker label lock
+
+If any of these six fields is set via a Docker Compose label, the field shows an amber **"Docker label"** lock badge and is read-only — the current label value is displayed with a note pointing to the exact label key. Remove the label from your Compose file to hand control back to the UI. See [Label vs UI Precedence](/docs/configuration/labels#label-vs-ui-precedence).
 
 The **Containers** and **Configuration** tabs let you switch between the container list and agent-specific settings.
 
@@ -99,7 +115,8 @@ Full audit trail of every container update, rollback, and failure across all age
 />
 
 Features:
-- **Expandable rows** — click to reveal old/new digests, duration, and error messages
+- **Expandable rows** — click to reveal old/new image versions, duration, and error messages
+- **Image tags** — expanded rows show `image:tag (sha256:short…)` format; old records without tag data fall back to the plain digest
 - **Image diff badge** — if the update had configuration changes (env, ports, entrypoint, volumes), a diff badge appears in the expanded row; click it to open the full diff view
 - **Filters** — by agent ID and status (success, failed, rolled back)
 - **Pagination** — browse through all historical updates
@@ -257,7 +274,7 @@ All log output (stdout and file) is automatically redacted — API tokens, passw
 
 Click **Download diagnostics bundle** to get a ZIP archive containing:
 
-- `diagnostics.json` — controller/agent versions, container summary, environment info, log level, and redaction notes
+- `diagnostics.json` — controller/agent versions, container summary, environment info, log level, registry credentials summary (passwords redacted), list of Docker Hub images using anonymous access, and redaction notes
 - `logs/controller.log` — recent controller logs (only if "Include controller logs" is enabled above)
 
 The bundle does not contain API tokens or passwords. Attach the ZIP to your [bug report](https://github.com/watchwarden-labs/watchwarden/issues/new?template=bug-report.yml).
