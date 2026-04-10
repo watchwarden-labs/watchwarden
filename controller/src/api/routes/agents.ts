@@ -12,6 +12,7 @@ import {
   insertAgent,
   listAgents,
   updateAgentConfig,
+  updateContainerOrchestration,
   updateContainerPolicy,
 } from '../../db/queries.js';
 import { expectCheckResults } from '../../notifications/session-batcher.js';
@@ -468,6 +469,28 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
 
     await updateContainerPolicy(containerId, { policy, update_level });
     return reply.code(200).send({ message: 'Container policy updated' });
+  });
+
+  fastify.patch<{
+    Params: { agentId: string; containerId: string };
+    Body: { group: string | null; priority: number; dependsOn: string[] };
+  }>('/api/agents/:agentId/containers/:containerId/orchestration', async (request, reply) => {
+    const { agentId, containerId } = request.params;
+    const { group, priority, dependsOn } = request.body;
+
+    const agent = await getAgent(agentId);
+    if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+
+    if (!Number.isInteger(priority) || priority < 1 || priority > 999) {
+      return reply.code(400).send({ error: 'priority must be an integer between 1 and 999' });
+    }
+
+    await updateContainerOrchestration(containerId, {
+      update_group: group || null,
+      update_priority: priority,
+      depends_on: dependsOn.length > 0 ? JSON.stringify(dependsOn) : null,
+    });
+    return reply.code(200).send({ message: 'Container orchestration updated' });
   });
 
   fastify.post<{

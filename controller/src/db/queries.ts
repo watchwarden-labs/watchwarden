@@ -147,9 +147,9 @@ export async function upsertContainers(
       excluded = EXCLUDED.excluded,
       exclude_reason = EXCLUDED.exclude_reason,
       pinned_version = EXCLUDED.pinned_version,
-      update_group = EXCLUDED.update_group,
-      update_priority = EXCLUDED.update_priority,
-      depends_on = EXCLUDED.depends_on,
+      update_group = COALESCE(EXCLUDED.update_group, containers.update_group),
+      update_priority = COALESCE(EXCLUDED.update_priority, containers.update_priority),
+      depends_on = COALESCE(EXCLUDED.depends_on, containers.depends_on),
       policy = COALESCE(EXCLUDED.policy, containers.policy),
       tag_pattern = COALESCE(EXCLUDED.tag_pattern, containers.tag_pattern),
       update_level = COALESCE(EXCLUDED.update_level, containers.update_level),
@@ -584,6 +584,19 @@ export async function updateContainerPolicy(
 ): Promise<void> {
   await sql`
     UPDATE containers SET policy = ${data.policy}, update_level = ${data.update_level}
+    WHERE id = ${containerId} OR docker_id = ${containerId}
+  `;
+}
+
+export async function updateContainerOrchestration(
+  containerId: string,
+  data: { update_group: string | null; update_priority: number; depends_on: string | null },
+): Promise<void> {
+  await sql`
+    UPDATE containers
+    SET update_group    = ${data.update_group},
+        update_priority = ${data.update_priority},
+        depends_on      = ${data.depends_on}
     WHERE id = ${containerId} OR docker_id = ${containerId}
   `;
 }
