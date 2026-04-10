@@ -1,0 +1,2 @@
+ALTER TABLE containers ADD COLUMN IF NOT EXISTS update_first_seen BIGINT;
+ALTER TABLE update_policies ADD COLUMN IF NOT EXISTS min_age_hours INTEGER DEFAULT 0;

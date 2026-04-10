@@ -83,12 +83,22 @@ const configRoutes: FastifyPluginAsync = async (fastify) => {
       autoRollbackEnabled?: boolean;
       maxUnhealthySeconds?: number;
       strategy?: string;
+      minAgeHours?: number;
     };
   }>('/api/update-policies', async (request, reply) => {
-    const { scope, stabilityWindowSeconds, autoRollbackEnabled, maxUnhealthySeconds, strategy } =
-      request.body;
+    const {
+      scope,
+      stabilityWindowSeconds,
+      autoRollbackEnabled,
+      maxUnhealthySeconds,
+      strategy,
+      minAgeHours,
+    } = request.body;
     if (!scope || !/^(global|agent:[a-f0-9-]+)$/.test(scope)) {
       return reply.code(400).send({ error: 'Invalid scope format' });
+    }
+    if (minAgeHours !== undefined && (!Number.isInteger(minAgeHours) || minAgeHours < 0)) {
+      return reply.code(400).send({ error: 'minAgeHours must be a non-negative integer' });
     }
     const existing = await getEffectivePolicy(
       scope === 'global' ? undefined : scope.replace(/^agent:/, ''),
@@ -101,6 +111,7 @@ const configRoutes: FastifyPluginAsync = async (fastify) => {
       auto_rollback_enabled: autoRollbackEnabled ?? existing.auto_rollback_enabled,
       max_unhealthy_seconds: maxUnhealthySeconds ?? existing.max_unhealthy_seconds,
       strategy: strategy ?? existing.strategy ?? 'stop-first',
+      min_age_hours: minAgeHours ?? existing.min_age_hours ?? 0,
     });
     return { message: 'Policy updated' };
   });
