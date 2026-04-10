@@ -78,9 +78,20 @@ The agent recognizes these base image names (and variants with `-` suffixes like
 
 `postgres`, `postgresql`, `mysql`, `mariadb`, `mongo`, `mongodb`, `redis`, `valkey`, `memcached`, `elasticsearch`, `opensearch`, `meilisearch`, `influxdb`, `clickhouse`, `cockroach`, `timescaledb`, `cassandra`, `neo4j`, `couchdb`, `couchbase`, `mssql`, `oracle`, `etcd`, `consul`, `vault`, `zookeeper`, `kafka`, `rabbitmq`, `nats`, `minio`, `rqlite`, `surrealdb`, `arangodb`, `dgraph`, `foundationdb`, `vitess`
 
+## Label vs UI Precedence
+
+Six labels — `policy`, `tag_pattern`, `update_level`, `group`, `priority`, and `depends_on` — can also be configured from the WatchWarden dashboard UI. Expand any container row in the agent detail page to see the **Update Policy** and **Orchestration** panels.
+
+**Labels always take precedence over UI settings.** When a label is present the dashboard:
+- Shows the label value as read-only with an amber **"Docker label"** lock badge next to the field name
+- Hides the edit input and shows a notice pointing to the exact label key to modify
+- Hides the Save button for that panel if every field in it is label-controlled
+
+To hand control back to the UI, remove the label from your Compose file and let the container restart (or trigger a heartbeat). UI-set values are stored in separate database columns and are never overwritten by agent heartbeats — both sources are always visible.
+
 ## Update Group Labels
 
-Control the order in which containers are updated within a group.
+Control the order in which containers are updated within a group. These can also be set per-container from the dashboard UI (see [Label vs UI Precedence](#label-vs-ui-precedence) above).
 
 | Label | Example | Description |
 |-------|---------|-------------|
@@ -127,7 +138,7 @@ Both labels are checked — WatchWarden's label takes precedence if both are set
 
 ## Policy Labels
 
-Control per-container update behavior — auto-update, notify-only, or manual.
+Control per-container update behavior — auto-update, notify-only, or manual. Can also be set from the dashboard UI (see [Label vs UI Precedence](#label-vs-ui-precedence)).
 
 | Label | Values | Description |
 |-------|--------|-------------|
@@ -159,7 +170,7 @@ services:
 
 ## Tag Pattern Labels
 
-Filter which registry tags are considered for updates using regex patterns.
+Filter which registry tags are considered for updates using regex patterns. Can also be set from the dashboard UI policy panel — includes built-in presets for common patterns (see [Label vs UI Precedence](#label-vs-ui-precedence)).
 
 | Label | Format | Description |
 |-------|--------|-------------|
