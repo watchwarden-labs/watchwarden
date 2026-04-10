@@ -1,35 +1,15 @@
-import { formatDistanceToNow } from 'date-fns';
-import {
-  ArrowUpCircle,
-  CheckCircle,
-  ChevronDown,
-  ChevronRight,
-  Hexagon,
-  LayoutGrid,
-  List,
-  RefreshCw,
-  RotateCcw,
-  XCircle,
-} from 'lucide-react';
-import { Fragment, useState } from 'react';
+import { ArrowUpCircle, Hexagon, LayoutGrid, List, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAgents, useCheckAgent, useCheckAllAgents, useUpdateAgent } from '@/api/hooks/useAgents';
 import { useHistory } from '@/api/hooks/useHistory';
 import { useConfig } from '@/api/hooks/useSettings';
 import { AgentCard } from '@/components/agents/AgentCard';
 import { AgentListRow } from '@/components/agents/AgentListRow';
-import { Badge } from '@/components/ui/badge';
+import { UpdateLogTable } from '@/components/history/UpdateLogTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useStore } from '@/store/useStore';
 
 function AgentCardSkeleton() {
@@ -61,16 +41,6 @@ export function Dashboard() {
   const setAgentChecking = useStore((s) => s.setAgentChecking);
   const viewMode = useStore((s) => s.agentViewMode);
   const setViewMode = useStore((s) => s.setAgentViewMode);
-
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const toggleRow = (id: number) => {
-    setExpandedRows((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const onlineCount = agents.filter((a) => a.status === 'online').length;
   const updateCount = agents.reduce(
@@ -268,109 +238,7 @@ export function Dashboard() {
       {/* Activity Feed */}
       <div data-testid="activity-feed">
         <h2 className="text-lg font-semibold mb-3">Recent Activity</h2>
-        <Card>
-          {!history || history.data.length === 0 ? (
-            <CardContent className="py-8 text-center text-muted-foreground text-sm">
-              No recent activity
-            </CardContent>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8" />
-                  <TableHead>Container</TableHead>
-                  <TableHead className="hidden md:table-cell">Agent</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Duration</TableHead>
-                  <TableHead className="hidden sm:table-cell">Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {history.data.map((entry) => {
-                  const isSuccess = entry.status === 'success';
-                  const isRolledBack = entry.status === 'rolled_back';
-                  const isExpanded = expandedRows.has(entry.id);
-                  const hasDetails = !!(entry.old_digest || entry.new_digest || entry.error);
-                  const truncate = (d: string | null) =>
-                    d && d.length > 12 ? `${d.slice(0, 12)}...` : d;
-                  return (
-                    <Fragment key={entry.id}>
-                      <TableRow
-                        className={hasDetails ? 'cursor-pointer hover:bg-muted/50' : ''}
-                        onClick={() => hasDetails && toggleRow(entry.id)}
-                      >
-                        <TableCell className="w-8 pr-0">
-                          {hasDetails ? (
-                            isExpanded ? (
-                              <ChevronDown size={14} className="text-muted-foreground" />
-                            ) : (
-                              <ChevronRight size={14} className="text-muted-foreground" />
-                            )
-                          ) : isSuccess ? (
-                            <CheckCircle size={14} className="text-success" />
-                          ) : isRolledBack ? (
-                            <RotateCcw size={14} className="text-primary" />
-                          ) : (
-                            <XCircle size={14} className="text-destructive" />
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium text-sm">
-                          {entry.container_name}
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                          {entry.agent_id}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              isSuccess ? 'outline' : isRolledBack ? 'outline' : 'destructive'
-                            }
-                            className={`text-[10px] ${isSuccess ? 'border-success/30 text-success' : isRolledBack ? 'border-primary/30 text-primary' : ''}`}
-                          >
-                            {entry.status === 'rolled_back' ? 'rollback' : entry.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                          {entry.duration_ms ? `${(entry.duration_ms / 1000).toFixed(1)}s` : '—'}
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell text-xs text-muted-foreground whitespace-nowrap">
-                          {formatDistanceToNow(entry.created_at, { addSuffix: true })}
-                        </TableCell>
-                      </TableRow>
-                      {isExpanded && hasDetails && (
-                        <TableRow>
-                          <TableCell />
-                          <TableCell colSpan={5} className="bg-muted/30 py-3">
-                            <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs font-mono">
-                              {entry.old_digest && (
-                                <>
-                                  <span className="text-muted-foreground">Old digest</span>
-                                  <span className="break-all">{truncate(entry.old_digest)}</span>
-                                </>
-                              )}
-                              {entry.new_digest && (
-                                <>
-                                  <span className="text-muted-foreground">New digest</span>
-                                  <span className="break-all">{truncate(entry.new_digest)}</span>
-                                </>
-                              )}
-                              {entry.error && (
-                                <>
-                                  <span className="text-muted-foreground">Error</span>
-                                  <span className="text-destructive break-all">{entry.error}</span>
-                                </>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </Card>
+        <UpdateLogTable entries={history?.data ?? []} emptyMessage="No recent activity" />
       </div>
     </div>
   );
