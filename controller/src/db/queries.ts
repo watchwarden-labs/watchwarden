@@ -185,11 +185,11 @@ export async function updateContainerDigests(
 
 export async function insertUpdateLog(entry: NewUpdateLog): Promise<number> {
   const [row] = await sql`
-    INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, old_image, new_image, status, error, duration_ms, created_at)
+    INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, old_image, new_image, status, error, duration_ms, diff, created_at)
     VALUES (${entry.agent_id}, ${entry.container_id}, ${entry.container_name},
       ${entry.old_digest ?? null}, ${entry.new_digest ?? null},
       ${entry.old_image ?? null}, ${entry.new_image ?? null},
-      ${entry.status}, ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${Date.now()})
+      ${entry.status}, ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${entry.diff ?? null}, ${Date.now()})
     RETURNING id
   `;
   return Number(row?.id ?? 0);
@@ -208,11 +208,11 @@ export async function insertUpdateLogAndDigests(
   await sql.begin(async (txBase) => {
     const tx = txBase as unknown as TxSql;
     const [row] = await tx`
-      INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, old_image, new_image, status, error, duration_ms, created_at)
+      INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, old_image, new_image, status, error, duration_ms, diff, created_at)
       VALUES (${entry.agent_id}, ${entry.container_id}, ${entry.container_name},
         ${entry.old_digest ?? null}, ${entry.new_digest ?? null},
         ${entry.old_image ?? null}, ${entry.new_image ?? null},
-        ${entry.status}, ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${Date.now()})
+        ${entry.status}, ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${entry.diff ?? null}, ${Date.now()})
       RETURNING id
     `;
     logId = Number(row?.id ?? 0);
@@ -695,6 +695,7 @@ function mapUpdateLog(row: Record<string, unknown>): UpdateLog {
     status: row.status as 'success' | 'failed' | 'rolled_back',
     error: row.error as string | null,
     duration_ms: row.duration_ms ? Number(row.duration_ms) : null,
+    diff: (row.diff as string | null) ?? null,
     created_at: Number(row.created_at),
   };
 }
