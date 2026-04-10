@@ -174,6 +174,28 @@ func (n *Notifier) NotifyAvailable(agentName string, updates []CheckResult) {
 	n.broadcast(title, body)
 }
 
+// formatImageLabel returns a human-readable image label combining tag and short digest.
+// Format: "image:tag (sha256:short...)" or just the tag/digest if only one is available.
+func formatImageLabel(image, digest string) string {
+	if image == "" && digest == "" {
+		return ""
+	}
+	if image == "" {
+		if len(digest) > 19 {
+			return digest[:19] + "..."
+		}
+		return digest
+	}
+	if digest != "" {
+		short := digest
+		if len(short) > 19 {
+			short = short[:19] + "..."
+		}
+		return fmt.Sprintf("%s (%s)", image, short)
+	}
+	return image
+}
+
 // NotifyResult sends a notification about a single update result.
 func (n *Notifier) NotifyResult(result *UpdateResult) {
 	if !n.IsConfigured() || result == nil {
@@ -182,7 +204,12 @@ func (n *Notifier) NotifyResult(result *UpdateResult) {
 	var title, body string
 	if result.Success {
 		title = fmt.Sprintf("Updated — %s", result.ContainerName)
-		body = fmt.Sprintf("Duration: %dms", result.DurationMs)
+		newLabel := formatImageLabel(result.NewImage, result.NewDigest)
+		if newLabel != "" {
+			body = fmt.Sprintf("%s (%dms)", newLabel, result.DurationMs)
+		} else {
+			body = fmt.Sprintf("Duration: %dms", result.DurationMs)
+		}
 	} else {
 		title = fmt.Sprintf("Update Failed — %s", result.ContainerName)
 		body = result.Error
@@ -195,6 +222,8 @@ func (n *Notifier) NotifyResult(result *UpdateResult) {
 			"Success":       fmt.Sprintf("%v", result.Success),
 			"OldDigest":     result.OldDigest,
 			"NewDigest":     result.NewDigest,
+			"OldImage":      result.OldImage,
+			"NewImage":      result.NewImage,
 			"Duration":      fmt.Sprintf("%dms", result.DurationMs),
 			"Error":         result.Error,
 		}
@@ -222,7 +251,12 @@ func (n *Notifier) NotifyResults(agentName string, results []*UpdateResult) {
 	for _, r := range results {
 		if r.Success {
 			successes++
-			lines = append(lines, fmt.Sprintf("✓ %s (%dms)", r.ContainerName, r.DurationMs))
+			newLabel := formatImageLabel(r.NewImage, r.NewDigest)
+			if newLabel != "" {
+				lines = append(lines, fmt.Sprintf("✓ %s → %s (%dms)", r.ContainerName, newLabel, r.DurationMs))
+			} else {
+				lines = append(lines, fmt.Sprintf("✓ %s (%dms)", r.ContainerName, r.DurationMs))
+			}
 		} else {
 			failures++
 			lines = append(lines, fmt.Sprintf("✗ %s: %s", r.ContainerName, r.Error))
