@@ -44,6 +44,7 @@ export interface Container {
   tag_pattern: string | null;
   update_level: string | null;
   is_stateful: number;
+  update_first_seen: number | null;
 }
 
 export interface ContainerInfo {
@@ -84,13 +85,17 @@ export interface AgentConfigUpdate {
 export interface UpdateLog {
   id: number;
   agent_id: string;
+  agent_name: string | null;
   container_id: string;
   container_name: string;
   old_digest: string | null;
   new_digest: string | null;
+  old_image: string | null;
+  new_image: string | null;
   status: 'success' | 'failed' | 'rolled_back';
   error: string | null;
   duration_ms: number | null;
+  diff: string | null;
   created_at: number;
 }
 
@@ -100,9 +105,12 @@ export interface NewUpdateLog {
   container_name: string;
   old_digest?: string | null;
   new_digest?: string | null;
+  old_image?: string | null;
+  new_image?: string | null;
   status: 'success' | 'failed' | 'rolled_back';
   error?: string | null;
   duration_ms?: number | null;
+  diff?: string | null;
 }
 
 export interface UpdatePolicy {
@@ -112,6 +120,7 @@ export interface UpdatePolicy {
   auto_rollback_enabled: boolean;
   max_unhealthy_seconds: number;
   strategy: string;
+  min_age_hours: number;
   created_at: number;
 }
 

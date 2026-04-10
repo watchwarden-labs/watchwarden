@@ -181,14 +181,25 @@ export async function updateContainerDigests(
   `;
 }
 
+export async function setUpdateFirstSeen(
+  containerId: string,
+  timestamp: number | null,
+): Promise<void> {
+  await sql`
+    UPDATE containers SET update_first_seen = ${timestamp}
+    WHERE id = ${containerId} OR docker_id = ${containerId}
+  `;
+}
+
 // --- Update Log ---
 
 export async function insertUpdateLog(entry: NewUpdateLog): Promise<number> {
   const [row] = await sql`
-    INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, status, error, duration_ms, created_at)
+    INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, old_image, new_image, status, error, duration_ms, diff, created_at)
     VALUES (${entry.agent_id}, ${entry.container_id}, ${entry.container_name},
-      ${entry.old_digest ?? null}, ${entry.new_digest ?? null}, ${entry.status},
-      ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${Date.now()})
+      ${entry.old_digest ?? null}, ${entry.new_digest ?? null},
+      ${entry.old_image ?? null}, ${entry.new_image ?? null},
+      ${entry.status}, ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${entry.diff ?? null}, ${Date.now()})
     RETURNING id
   `;
   return Number(row?.id ?? 0);
@@ -207,10 +218,11 @@ export async function insertUpdateLogAndDigests(
   await sql.begin(async (txBase) => {
     const tx = txBase as unknown as TxSql;
     const [row] = await tx`
-      INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, status, error, duration_ms, created_at)
+      INSERT INTO update_log (agent_id, container_id, container_name, old_digest, new_digest, old_image, new_image, status, error, duration_ms, diff, created_at)
       VALUES (${entry.agent_id}, ${entry.container_id}, ${entry.container_name},
-        ${entry.old_digest ?? null}, ${entry.new_digest ?? null}, ${entry.status},
-        ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${Date.now()})
+        ${entry.old_digest ?? null}, ${entry.new_digest ?? null},
+        ${entry.old_image ?? null}, ${entry.new_image ?? null},
+        ${entry.status}, ${entry.error ?? null}, ${entry.duration_ms ?? null}, ${entry.diff ?? null}, ${Date.now()})
       RETURNING id
     `;
     logId = Number(row?.id ?? 0);
@@ -230,17 +242,21 @@ export async function getHistory(
   const offset = filters.offset ?? 0;
 
   // Build WHERE fragment using postgres.js tagged template fragments (no sql.unsafe)
-  const agentFilter = filters.agentId ? sql`AND agent_id = ${filters.agentId}` : sql``;
-  const statusFilter = filters.status ? sql`AND status = ${filters.status}` : sql``;
+  // Qualify all columns with table prefix to avoid ambiguity with the agents JOIN
+  const agentFilter = filters.agentId ? sql`AND ul.agent_id = ${filters.agentId}` : sql``;
+  const statusFilter = filters.status ? sql`AND ul.status = ${filters.status}` : sql``;
 
   const [totalRow] = await sql`
-		SELECT COUNT(*) as count FROM update_log WHERE TRUE ${agentFilter} ${statusFilter}
+		SELECT COUNT(*) as count FROM update_log ul WHERE TRUE ${agentFilter} ${statusFilter}
 	`;
   const total = Number(totalRow?.count ?? 0);
 
   const data = await sql`
-		SELECT * FROM update_log WHERE TRUE ${agentFilter} ${statusFilter}
-		ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}
+		SELECT ul.*, a.name as agent_name
+		FROM update_log ul
+		LEFT JOIN agents a ON ul.agent_id = a.id
+		WHERE TRUE ${agentFilter} ${statusFilter}
+		ORDER BY ul.created_at DESC LIMIT ${limit} OFFSET ${offset}
 	`;
 
   return { data: data.map(mapUpdateLog), total };
@@ -493,6 +509,7 @@ export interface UpdatePolicy {
   auto_rollback_enabled: boolean;
   max_unhealthy_seconds: number;
   strategy: string;
+  min_age_hours: number;
   created_at: number;
 }
 
@@ -506,6 +523,7 @@ export async function getUpdatePolicy(scope: string): Promise<UpdatePolicy | und
     auto_rollback_enabled: !!row.auto_rollback_enabled,
     max_unhealthy_seconds: Number(row.max_unhealthy_seconds),
     strategy: (row.strategy as string) ?? 'stop-first',
+    min_age_hours: Number(row.min_age_hours ?? 0),
     created_at: Number(row.created_at),
   };
 }
@@ -524,6 +542,7 @@ export async function getEffectivePolicy(agentId?: string): Promise<UpdatePolicy
       auto_rollback_enabled: true,
       max_unhealthy_seconds: 30,
       strategy: 'stop-first',
+      min_age_hours: 0,
       created_at: 0,
     }
   );
@@ -531,13 +550,14 @@ export async function getEffectivePolicy(agentId?: string): Promise<UpdatePolicy
 
 export async function upsertUpdatePolicy(policy: Omit<UpdatePolicy, 'created_at'>): Promise<void> {
   await sql`
-    INSERT INTO update_policies (id, scope, stability_window_seconds, auto_rollback_enabled, max_unhealthy_seconds, strategy, created_at)
-    VALUES (${policy.id}, ${policy.scope}, ${policy.stability_window_seconds}, ${policy.auto_rollback_enabled}, ${policy.max_unhealthy_seconds}, ${policy.strategy}, ${Date.now()})
+    INSERT INTO update_policies (id, scope, stability_window_seconds, auto_rollback_enabled, max_unhealthy_seconds, strategy, min_age_hours, created_at)
+    VALUES (${policy.id}, ${policy.scope}, ${policy.stability_window_seconds}, ${policy.auto_rollback_enabled}, ${policy.max_unhealthy_seconds}, ${policy.strategy}, ${policy.min_age_hours}, ${Date.now()})
     ON CONFLICT (id) DO UPDATE SET
       stability_window_seconds = EXCLUDED.stability_window_seconds,
       auto_rollback_enabled = EXCLUDED.auto_rollback_enabled,
       max_unhealthy_seconds = EXCLUDED.max_unhealthy_seconds,
-      strategy = EXCLUDED.strategy
+      strategy = EXCLUDED.strategy,
+      min_age_hours = EXCLUDED.min_age_hours
   `;
 }
 
@@ -554,6 +574,16 @@ export async function updateContainerHealth(
 export async function updateContainerDiff(containerId: string, diff: string | null): Promise<void> {
   await sql`
     UPDATE containers SET last_diff = ${diff}
+    WHERE id = ${containerId} OR docker_id = ${containerId}
+  `;
+}
+
+export async function updateContainerPolicy(
+  containerId: string,
+  data: { policy: string | null; update_level: string | null },
+): Promise<void> {
+  await sql`
+    UPDATE containers SET policy = ${data.policy}, update_level = ${data.update_level}
     WHERE id = ${containerId} OR docker_id = ${containerId}
   `;
 }
@@ -662,6 +692,7 @@ function mapContainer(row: Record<string, unknown>): Container {
     last_checked: row.last_checked ? Number(row.last_checked) : null,
     last_updated: row.last_updated ? Number(row.last_updated) : null,
     is_stateful: row.is_stateful ? 1 : 0,
+    update_first_seen: row.update_first_seen ? Number(row.update_first_seen) : null,
   };
 }
 
@@ -669,13 +700,17 @@ function mapUpdateLog(row: Record<string, unknown>): UpdateLog {
   return {
     id: Number(row.id),
     agent_id: row.agent_id as string,
+    agent_name: (row.agent_name as string | null) ?? null,
     container_id: row.container_id as string,
     container_name: row.container_name as string,
     old_digest: row.old_digest as string | null,
     new_digest: row.new_digest as string | null,
+    old_image: (row.old_image as string | null) ?? null,
+    new_image: (row.new_image as string | null) ?? null,
     status: row.status as 'success' | 'failed' | 'rolled_back',
     error: row.error as string | null,
     duration_ms: row.duration_ms ? Number(row.duration_ms) : null,
+    diff: (row.diff as string | null) ?? null,
     created_at: Number(row.created_at),
   };
 }

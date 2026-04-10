@@ -15,11 +15,13 @@ import (
 
 // Notifier fans out notifications to configured channels with per-container cooldown.
 type Notifier struct {
-	senders     []Sender
-	cooldown    map[string]time.Time
-	cooldownMu  sync.Mutex
-	cooldownTTL time.Duration
-	template    string // user-provided Go text/template
+	senders          []Sender
+	cooldown         map[string]time.Time
+	cooldownMu       sync.Mutex
+	cooldownTTL      time.Duration
+	resultCooldowns  map[string]time.Time // failure-notification cooldown per container
+	resultCooldownMu sync.Mutex
+	template         string // user-provided Go text/template
 }
 
 // renderNotificationTemplate renders a Go text/template with the given variables.
@@ -97,10 +99,11 @@ func NewNotifier(cfg *AgentConfig) *Notifier {
 	}
 
 	return &Notifier{
-		senders:     senders,
-		cooldown:    make(map[string]time.Time),
-		cooldownTTL: 5 * time.Minute,
-		template:    cfg.NotificationTemplate,
+		senders:         senders,
+		cooldown:        make(map[string]time.Time),
+		cooldownTTL:     5 * time.Minute,
+		resultCooldowns: make(map[string]time.Time),
+		template:        cfg.NotificationTemplate,
 	}
 }
 
@@ -174,6 +177,28 @@ func (n *Notifier) NotifyAvailable(agentName string, updates []CheckResult) {
 	n.broadcast(title, body)
 }
 
+// formatImageLabel returns a human-readable image label combining tag and short digest.
+// Format: "image:tag (sha256:short...)" or just the tag/digest if only one is available.
+func formatImageLabel(image, digest string) string {
+	if image == "" && digest == "" {
+		return ""
+	}
+	if image == "" {
+		if len(digest) > 19 {
+			return digest[:19] + "..."
+		}
+		return digest
+	}
+	if digest != "" {
+		short := digest
+		if len(short) > 19 {
+			short = short[:19] + "..."
+		}
+		return fmt.Sprintf("%s (%s)", image, short)
+	}
+	return image
+}
+
 // NotifyResult sends a notification about a single update result.
 func (n *Notifier) NotifyResult(result *UpdateResult) {
 	if !n.IsConfigured() || result == nil {
@@ -182,7 +207,12 @@ func (n *Notifier) NotifyResult(result *UpdateResult) {
 	var title, body string
 	if result.Success {
 		title = fmt.Sprintf("Updated — %s", result.ContainerName)
-		body = fmt.Sprintf("Duration: %dms", result.DurationMs)
+		newLabel := formatImageLabel(result.NewImage, result.NewDigest)
+		if newLabel != "" {
+			body = fmt.Sprintf("%s (%dms)", newLabel, result.DurationMs)
+		} else {
+			body = fmt.Sprintf("Duration: %dms", result.DurationMs)
+		}
 	} else {
 		title = fmt.Sprintf("Update Failed — %s", result.ContainerName)
 		body = result.Error
@@ -195,6 +225,8 @@ func (n *Notifier) NotifyResult(result *UpdateResult) {
 			"Success":       fmt.Sprintf("%v", result.Success),
 			"OldDigest":     result.OldDigest,
 			"NewDigest":     result.NewDigest,
+			"OldImage":      result.OldImage,
+			"NewImage":      result.NewImage,
 			"Duration":      fmt.Sprintf("%dms", result.DurationMs),
 			"Error":         result.Error,
 		}
@@ -206,6 +238,19 @@ func (n *Notifier) NotifyResult(result *UpdateResult) {
 		} else {
 			body = ""
 		}
+	}
+	// Suppress repeated failure notifications for the same container within 1 minute.
+	// Success notifications are never suppressed.
+	if !result.Success {
+		n.resultCooldownMu.Lock()
+		lastFail, exists := n.resultCooldowns[result.ContainerName]
+		if exists && time.Since(lastFail) < time.Minute {
+			n.resultCooldownMu.Unlock()
+			log.Printf("[notify] suppressing repeat failure notification for %s (cooldown)", result.ContainerName)
+			return
+		}
+		n.resultCooldowns[result.ContainerName] = time.Now()
+		n.resultCooldownMu.Unlock()
 	}
 	n.broadcast(title, body)
 }
@@ -222,7 +267,12 @@ func (n *Notifier) NotifyResults(agentName string, results []*UpdateResult) {
 	for _, r := range results {
 		if r.Success {
 			successes++
-			lines = append(lines, fmt.Sprintf("✓ %s (%dms)", r.ContainerName, r.DurationMs))
+			newLabel := formatImageLabel(r.NewImage, r.NewDigest)
+			if newLabel != "" {
+				lines = append(lines, fmt.Sprintf("✓ %s → %s (%dms)", r.ContainerName, newLabel, r.DurationMs))
+			} else {
+				lines = append(lines, fmt.Sprintf("✓ %s (%dms)", r.ContainerName, r.DurationMs))
+			}
 		} else {
 			failures++
 			lines = append(lines, fmt.Sprintf("✗ %s: %s", r.ContainerName, r.Error))

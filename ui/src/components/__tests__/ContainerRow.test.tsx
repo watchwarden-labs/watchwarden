@@ -28,6 +28,8 @@ const baseContainer: Container = {
   policy: null,
   tag_pattern: null,
   update_level: null,
+  is_stateful: 0,
+  update_first_seen: null,
 };
 
 const queryClient = new QueryClient({
