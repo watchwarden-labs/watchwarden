@@ -20,6 +20,7 @@ import {
   useContainerDelete,
   useContainerStart,
   useContainerStop,
+  useUpdateContainerOrchestration,
   useUpdateContainerPolicy,
 } from '@/api/hooks/useAgents';
 import { ContainerLogsDialog } from '@/components/agents/ContainerLogsDialog';
@@ -87,6 +88,18 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
   const [logsOpen, setLogsOpen] = useState(false);
   const [policyOpen, setPolicyOpen] = useState(false);
   const [editPolicy, setEditPolicy] = useState<string>(container.policy ?? 'auto');
+  const [orchOpen, setOrchOpen] = useState(false);
+  const [editGroup, setEditGroup] = useState<string>(container.update_group ?? '');
+  const [editPriority, setEditPriority] = useState<string>(
+    String(container.update_priority ?? 100),
+  );
+  const [editDependsOn, setEditDependsOn] = useState<string>(() => {
+    try {
+      return container.depends_on ? (JSON.parse(container.depends_on) as string[]).join(', ') : '';
+    } catch {
+      return '';
+    }
+  });
   const [editLevel, setEditLevel] = useState<string>(container.update_level ?? '');
   const [editTagPattern, setEditTagPattern] = useState<string>(container.tag_pattern ?? '');
   const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'delete' | 'check' | null>(
@@ -101,6 +114,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
   const stopContainer = useContainerStop();
   const deleteContainer = useContainerDelete();
   const updatePolicy = useUpdateContainerPolicy();
+  const updateOrch = useUpdateContainerOrchestration();
 
   const hasUpdate = container.has_update === 1;
   const isExcluded = container.excluded === 1;
@@ -473,11 +487,148 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                 return null;
               }
             })()}
-          {container.update_group && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              {container.update_group}
-            </Badge>
-          )}
+          <Dialog
+            open={orchOpen}
+            onOpenChange={(open) => {
+              setOrchOpen(open);
+              if (open) {
+                setEditGroup(container.update_group ?? '');
+                setEditPriority(String(container.update_priority ?? 100));
+                setEditDependsOn(() => {
+                  try {
+                    return container.depends_on
+                      ? (JSON.parse(container.depends_on) as string[]).join(', ')
+                      : '';
+                  } catch {
+                    return '';
+                  }
+                });
+              }
+            }}
+          >
+            <div className="flex items-center gap-1">
+              {container.update_group && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                  {container.update_group}
+                </Badge>
+              )}
+              {container.update_priority !== null &&
+                container.update_priority !== undefined &&
+                container.update_priority !== 100 && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 border-orange-400/30 text-orange-500"
+                  >
+                    p{container.update_priority}
+                  </Badge>
+                )}
+              <DialogTrigger
+                render={
+                  <button
+                    type="button"
+                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity cursor-pointer"
+                    aria-label="Edit orchestration"
+                  />
+                }
+              >
+                <Pencil size={11} className="text-muted-foreground" />
+              </DialogTrigger>
+            </div>
+
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Update orchestration — {container.name}</DialogTitle>
+                <DialogDescription>
+                  Control how this container is ordered within grouped updates.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-group">Update group</Label>
+                  <input
+                    id="edit-group"
+                    type="text"
+                    value={editGroup}
+                    onChange={(e) => setEditGroup(e.target.value)}
+                    placeholder="e.g. backend, frontend"
+                    className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Containers in the same group are updated together as a batch.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-priority">Priority</Label>
+                  <input
+                    id="edit-priority"
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={editPriority}
+                    onChange={(e) => setEditPriority(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Lower number = updated first within the group (default: 100).
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-depends-on">Depends on</Label>
+                  <input
+                    id="edit-depends-on"
+                    type="text"
+                    value={editDependsOn}
+                    onChange={(e) => setEditDependsOn(e.target.value)}
+                    placeholder="e.g. postgres, redis"
+                    className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Comma-separated container names that must update before this one.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+                <Button
+                  disabled={updateOrch.isPending}
+                  onClick={() => {
+                    const priority = Number(editPriority);
+                    if (!Number.isInteger(priority) || priority < 1 || priority > 999) {
+                      addToast({ type: 'error', message: 'Priority must be between 1 and 999' });
+                      return;
+                    }
+                    const dependsOn = editDependsOn
+                      .split(',')
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    updateOrch.mutate(
+                      {
+                        agentId,
+                        containerId: container.id,
+                        group: editGroup.trim() || null,
+                        priority,
+                        dependsOn,
+                      },
+                      {
+                        onSuccess: () => setOrchOpen(false),
+                        onError: (err) =>
+                          addToast({
+                            type: 'error',
+                            message: `Failed to save: ${err instanceof Error ? err.message : String(err)}`,
+                          }),
+                      },
+                    );
+                  }}
+                >
+                  {updateOrch.isPending ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
         <div className="flex items-center gap-1 mt-0.5 min-w-0">
           <p className="text-xs text-muted-foreground truncate">
