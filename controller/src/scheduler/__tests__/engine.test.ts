@@ -180,6 +180,10 @@ describe('Scheduler', () => {
   it('L2: does NOT run catch-up when last run is recent', async () => {
     await setConfig('check_on_startup', 'true');
     await setConfig('scheduler_last_run', String(Date.now() - 3600000)); // 1h ago
+    // Use a non-firing schedule so the cron does not produce a CHECK message
+    // during the 1.5s observation window (the default * * * * * fires at :00
+    // of each minute and would cause a false positive if the test starts at :59).
+    await setConfig('global_schedule', '0 4 * * *');
 
     mockHub.sentMessages.length = 0;
 
