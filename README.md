@@ -50,6 +50,7 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 
 ### Updates & Rollback
 - **Automatic updates** — schedule checks globally or per-agent, with optional auto-update
+- **Minimum update age** — hold back auto-updates until an available update has been visible for N hours (configurable per agent), avoiding races with newly-broken tags
 - **Blue-green updates** — start new container first, verify health, then stop old (zero-downtime). Automatically falls back to stop-first if port conflicts are detected (e.g. containers with direct port mappings)
 - **Rollback** — roll back to any previous version or pick a specific tag from the registry
 - **Update groups** — label-based dependency ordering (`com.watchwarden.group`, `com.watchwarden.depends_on`)
