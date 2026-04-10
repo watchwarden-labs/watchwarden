@@ -12,6 +12,7 @@ import {
   insertAgent,
   listAgents,
   updateAgentConfig,
+  updateContainerPolicy,
 } from '../../db/queries.js';
 import { expectCheckResults } from '../../notifications/session-batcher.js';
 import type { AgentHub } from '../../ws/hub.js';
@@ -440,6 +441,33 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
         error: err instanceof Error ? err.message : 'Agent request timed out',
       });
     }
+  });
+
+  fastify.patch<{
+    Params: { agentId: string; containerId: string };
+    Body: { policy: string | null; update_level: string | null };
+  }>('/api/agents/:agentId/containers/:containerId', async (request, reply) => {
+    const { agentId, containerId } = request.params;
+    const { policy, update_level } = request.body;
+
+    const agent = await getAgent(agentId);
+    if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+
+    const validPolicies = new Set([null, 'auto', 'notify', 'manual']);
+    if (!validPolicies.has(policy)) {
+      return reply
+        .code(400)
+        .send({ error: 'Invalid policy. Must be one of: auto, notify, manual' });
+    }
+    const validLevels = new Set([null, '', 'all', 'major', 'minor', 'patch']);
+    if (!validLevels.has(update_level)) {
+      return reply.code(400).send({
+        error: 'Invalid update_level. Must be one of: all, major, minor, patch',
+      });
+    }
+
+    await updateContainerPolicy(containerId, { policy, update_level });
+    return reply.code(200).send({ message: 'Container policy updated' });
   });
 
   fastify.post<{
