@@ -388,59 +388,77 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
               </TooltipProvider>
             )}
 
-            {/* Policy badges */}
-            {container.policy && container.policy !== 'auto' && (
-              <Badge
-                variant="outline"
-                className={`text-[10px] px-1.5 py-0 ${
-                  container.policy === 'manual'
-                    ? 'border-muted-foreground text-muted-foreground'
-                    : 'border-primary/30 text-primary'
-                }`}
-              >
-                {container.policy === 'manual' ? 'MANUAL' : 'NOTIFY'}
-              </Badge>
-            )}
-            {container.update_level && container.update_level !== 'all' && (
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 border-violet-400/40 text-violet-500"
-              >
-                {container.update_level.toUpperCase()}
-              </Badge>
-            )}
-            {container.tag_pattern && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger render={<span />} className="cursor-default">
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] px-1.5 py-0 border-blue-400/30 text-blue-500"
-                    >
-                      TAG
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>Tag pattern: {container.tag_pattern}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
+            {/* Policy badges — effective = label ?? ui */}
+            {(() => {
+              const effectivePolicy = container.label_policy ?? container.policy;
+              if (!effectivePolicy || effectivePolicy === 'auto') return null;
+              return (
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] px-1.5 py-0 ${
+                    effectivePolicy === 'manual'
+                      ? 'border-muted-foreground text-muted-foreground'
+                      : 'border-primary/30 text-primary'
+                  }`}
+                >
+                  {effectivePolicy === 'manual' ? 'MANUAL' : 'NOTIFY'}
+                </Badge>
+              );
+            })()}
+            {(() => {
+              const effectiveLevel = container.label_update_level ?? container.update_level;
+              if (!effectiveLevel || effectiveLevel === 'all') return null;
+              return (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0 border-violet-400/40 text-violet-500"
+                >
+                  {effectiveLevel.toUpperCase()}
+                </Badge>
+              );
+            })()}
+            {(() => {
+              const effectivePattern = container.label_tag_pattern ?? container.tag_pattern;
+              if (!effectivePattern) return null;
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger render={<span />} className="cursor-default">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0 border-blue-400/30 text-blue-500"
+                      >
+                        TAG
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>Tag pattern: {effectivePattern}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            })()}
 
-            {/* Orchestration badges */}
-            {container.update_group && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                {container.update_group}
-              </Badge>
-            )}
-            {container.update_priority !== null &&
-              container.update_priority !== undefined &&
-              container.update_priority !== 100 && (
+            {/* Orchestration badges — effective = label ?? ui */}
+            {(() => {
+              const effectiveGroup = container.label_group ?? container.update_group;
+              if (!effectiveGroup) return null;
+              return (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                  {effectiveGroup}
+                </Badge>
+              );
+            })()}
+            {(() => {
+              const effectivePriority = container.label_priority ?? container.update_priority;
+              if (effectivePriority == null || effectivePriority === 100) return null;
+              return (
                 <Badge
                   variant="outline"
                   className="text-[10px] px-1.5 py-0 border-orange-400/30 text-orange-500"
                 >
-                  p{container.update_priority}
+                  p{effectivePriority}
                 </Badge>
-              )}
+              );
+            })()}
 
             {/* Update / diff badges */}
             {hasUpdate && !isExcluded && !isPinned && (
