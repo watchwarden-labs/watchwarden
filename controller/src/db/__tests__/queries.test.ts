@@ -227,6 +227,138 @@ describe('queries', () => {
       expect(result[0]?.name).toBe('nginx');
     });
 
+    it('upsertContainers stores label_* columns from agent heartbeat', async () => {
+      await upsertContainers('agent-1', [
+        {
+          id: 'c-1',
+          docker_id: 'd-1',
+          name: 'nginx',
+          image: 'nginx:latest',
+          current_digest: null,
+          status: 'running',
+          policy: 'notify',
+          tag_pattern: '^\\d+\\.\\d+\\.\\d+$',
+          update_level: 'minor',
+          group: 'backend',
+          priority: 5,
+          depends_on: ['db'],
+        },
+      ]);
+      const result = await getContainersByAgent('agent-1');
+      expect(result[0]?.label_policy).toBe('notify');
+      expect(result[0]?.label_tag_pattern).toBe('^\\d+\\.\\d+\\.\\d+$');
+      expect(result[0]?.label_update_level).toBe('minor');
+      expect(result[0]?.label_group).toBe('backend');
+      expect(result[0]?.label_priority).toBe(5);
+      expect(result[0]?.label_depends_on).toBe('["db"]');
+    });
+
+    it('upsertContainers heartbeat never overwrites UI-set policy/tag_pattern/update_level', async () => {
+      // First heartbeat — no labels
+      await upsertContainers('agent-1', [
+        {
+          id: 'c-1',
+          docker_id: 'd-1',
+          name: 'nginx',
+          image: 'nginx:latest',
+          current_digest: null,
+          status: 'running',
+        },
+      ]);
+
+      // User sets policy/tag_pattern/update_level via UI (direct SQL, simulating updateContainerPolicy)
+      await sql`
+        UPDATE containers
+        SET policy = 'manual', tag_pattern = '^v\\d+$', update_level = 'patch'
+        WHERE id = 'c-1'
+      `;
+
+      // Second heartbeat — agent sends null for those fields (no labels on container)
+      await upsertContainers('agent-1', [
+        {
+          id: 'c-1',
+          docker_id: 'd-1',
+          name: 'nginx',
+          image: 'nginx:latest',
+          current_digest: null,
+          status: 'running',
+        },
+      ]);
+
+      const result = await getContainersByAgent('agent-1');
+      expect(result[0]?.policy).toBe('manual');
+      expect(result[0]?.tag_pattern).toBe('^v\\d+$');
+      expect(result[0]?.update_level).toBe('patch');
+    });
+
+    it('upsertContainers heartbeat never overwrites UI-set orchestration fields', async () => {
+      await upsertContainers('agent-1', [
+        {
+          id: 'c-1',
+          docker_id: 'd-1',
+          name: 'nginx',
+          image: 'nginx:latest',
+          current_digest: null,
+          status: 'running',
+        },
+      ]);
+
+      // User sets orchestration via UI
+      await sql`
+        UPDATE containers
+        SET update_group = 'frontend', update_priority = 10, depends_on = '["db"]'
+        WHERE id = 'c-1'
+      `;
+
+      // Heartbeat with no labels
+      await upsertContainers('agent-1', [
+        {
+          id: 'c-1',
+          docker_id: 'd-1',
+          name: 'nginx',
+          image: 'nginx:latest',
+          current_digest: null,
+          status: 'running',
+        },
+      ]);
+
+      const result = await getContainersByAgent('agent-1');
+      expect(result[0]?.update_group).toBe('frontend');
+      expect(result[0]?.update_priority).toBe(10);
+      expect(result[0]?.depends_on).toBe('["db"]');
+    });
+
+    it('upsertContainers overwrites label_* on every heartbeat', async () => {
+      // First heartbeat — label is set
+      await upsertContainers('agent-1', [
+        {
+          id: 'c-1',
+          docker_id: 'd-1',
+          name: 'nginx',
+          image: 'nginx:latest',
+          current_digest: null,
+          status: 'running',
+          policy: 'notify',
+        },
+      ]);
+      let result = await getContainersByAgent('agent-1');
+      expect(result[0]?.label_policy).toBe('notify');
+
+      // Second heartbeat — label removed from container
+      await upsertContainers('agent-1', [
+        {
+          id: 'c-1',
+          docker_id: 'd-1',
+          name: 'nginx',
+          image: 'nginx:latest',
+          current_digest: null,
+          status: 'running',
+        },
+      ]);
+      result = await getContainersByAgent('agent-1');
+      expect(result[0]?.label_policy).toBeNull();
+    });
+
     it('getContainersByAgent returns correct subset', async () => {
       const agent2: NewAgent = {
         id: 'agent-2',

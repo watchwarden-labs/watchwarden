@@ -43,6 +43,12 @@ export interface Container {
   policy: string | null;
   tag_pattern: string | null;
   update_level: string | null;
+  label_policy: string | null;
+  label_tag_pattern: string | null;
+  label_update_level: string | null;
+  label_group: string | null;
+  label_priority: number | null;
+  label_depends_on: string | null;
   is_stateful: number;
   update_first_seen: number | null;
 }
