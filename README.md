@@ -53,13 +53,14 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 - **Minimum update age** — hold back auto-updates until an available update has been visible for N hours (configurable per agent), avoiding races with newly-broken tags
 - **Blue-green updates** — start new container first, verify health, then stop old (zero-downtime). Automatically falls back to stop-first if port conflicts are detected (e.g. containers with direct port mappings)
 - **Rollback** — roll back to any previous version or pick a specific tag from the registry
-- **Update groups** — label-based dependency ordering (`com.watchwarden.group`, `com.watchwarden.depends_on`)
+- **Update groups** — label-based (`com.watchwarden.group`, `com.watchwarden.depends_on`) or UI-editable: assign group name, priority, and dependencies per container directly from the dashboard
 - **Per-container policies** — label-driven control: `com.watchwarden.policy=auto|notify|manual` per container; editable from the UI without labels
 - **Semver update levels** — restrict how far images can be upgraded (`patch`, `minor`, `major`) per container or globally via Settings; enforced before auto-update
-- **Tag pattern matching** — filter registry tags by regex via `com.watchwarden.tag_pattern` label
+- **Tag pattern matching** — filter registry tags by regex via `com.watchwarden.tag_pattern` label or the UI policy dialog with built-in presets (semver, v-semver, date, numeric)
 - **Pinned version detection** — blocks accidental updates for containers with explicit version tags (e.g. `postgres:16.2-alpine`), while correctly treating floating tags (`alpine`, `lts`, `stable`) as updatable
 - **Config-only change detection** — detects image updates even when only entrypoint/env/labels changed (same manifest digest, different image ID)
 - **Image diff preview** — shows env, port, entrypoint, and volume changes before updating; diff is also persisted in update history so you can review configuration changes post-update
+- **Image tags in history** — update history shows human-readable image references (`postgres:16.2 → postgres:latest`) alongside the digest; old records fall back to digest-only display
 - **Health-based auto-rollback** — rolls back automatically if a container becomes unhealthy after update, respects healthcheck `start_period` for slow-starting containers
 - **Crash-loop detection** — detects and rolls back containers stuck in restart loops (requires 3+ restarts in 60s to avoid false positives)
 - **AutoRemove container support** — safely updates `--rm` containers by handling Docker API 409/404 during removal
@@ -81,6 +82,9 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 
 ### Observability
 - **Prometheus metrics** — `/metrics` endpoint with per-container labeled gauges (`container_info`, `container_has_update`, `container_last_updated_ms`) and aggregate counters for agents, update counts by status
+- **Registry ETag caching** — agent caches OCI v2 tag-list responses with ETag/If-None-Match; 304 Not Modified responses skip JSON parsing entirely, reducing registry bandwidth on repeated checks
+- **Rate-limit backoff** — automatically backs off and retries on 429/503 registry responses, honouring `Retry-After` headers (capped at 60 s) before retrying once
+- **Diagnostics bundle** — downloadable ZIP from Settings → About containing controller info, agent statuses, registry credential summary (passwords redacted), anonymous Docker Hub image list, and recent controller logs
 
 ### Notifications
 - **Telegram, Slack, Webhook, ntfy** — configurable channels with batched, deduplicated messages
@@ -123,7 +127,12 @@ WatchWarden is a modern alternative to [Watchtower](https://github.com/containrr
 | ntfy Notifications | ✅ Dedicated sender | ❌ None |
 | Notification Templates | ✅ Customizable | ❌ Fixed format |
 | Per-container Policies | ✅ Label-driven | ❌ Global only |
-| Tag Pattern Matching | ✅ Regex-based | ❌ None |
+| Tag Pattern Matching | ✅ Regex + UI presets | ❌ None |
+| Update Groups / Dependencies UI | ✅ Edit group, priority, deps in dashboard | ❌ None |
+| Registry ETag Caching | ✅ 304 shortcut, bandwidth-efficient | ❌ Polls every time |
+| Registry Rate-limit Backoff | ✅ 429/503 retry with Retry-After | ❌ None |
+| Diagnostics Bundle | ✅ Downloadable ZIP with logs + registry info | ❌ None |
+| Update History Image Tags | ✅ Shows `image:tag` not just SHA256 | ❌ None |
 | Prometheus Metrics | ✅ /metrics endpoint | ❌ None |
 | Cloud Registry Auth | ✅ ECR/GCR/ACR | ❌ Basic only |
 | API Token Auth | ✅ Scoped tokens with expiration | ❌ None |

@@ -88,6 +88,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
   const [policyOpen, setPolicyOpen] = useState(false);
   const [editPolicy, setEditPolicy] = useState<string>(container.policy ?? 'auto');
   const [editLevel, setEditLevel] = useState<string>(container.update_level ?? '');
+  const [editTagPattern, setEditTagPattern] = useState<string>(container.tag_pattern ?? '');
   const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'delete' | 'check' | null>(
     null,
   );
@@ -255,6 +256,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
               if (open) {
                 setEditPolicy(container.policy ?? 'auto');
                 setEditLevel(container.update_level ?? '');
+                setEditTagPattern(container.tag_pattern ?? '');
               }
             }}
           >
@@ -363,6 +365,52 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                     Only applies to semver-tagged images (e.g. 1.2.3).
                   </p>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-tag-pattern">Tag pattern</Label>
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {[
+                      { label: 'semver', value: '^\\d+\\.\\d+\\.\\d+$' },
+                      { label: 'v-semver', value: '^v\\d+\\.\\d+\\.\\d+$' },
+                      { label: 'date', value: '^\\d{4}\\.\\d{2}\\.\\d{2}$' },
+                      { label: 'numeric', value: '^\\d+$' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setEditTagPattern(preset.value)}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                          editTagPattern === preset.value
+                            ? 'bg-primary/10 border-primary/40 text-primary'
+                            : 'border-border text-muted-foreground hover:border-primary/30'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                    {editTagPattern && (
+                      <button
+                        type="button"
+                        onClick={() => setEditTagPattern('')}
+                        className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive transition-colors cursor-pointer"
+                      >
+                        clear
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    id="edit-tag-pattern"
+                    type="text"
+                    value={editTagPattern}
+                    onChange={(e) => setEditTagPattern(e.target.value)}
+                    placeholder="Regex, e.g. ^\d+\.\d+\.\d+$"
+                    disabled={editPolicy === 'manual'}
+                    className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm font-mono text-foreground placeholder:text-muted-foreground disabled:opacity-50"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Filter which tags are considered for updates. Leave empty to allow any tag.
+                  </p>
+                </div>
               </div>
 
               <DialogFooter>
@@ -376,6 +424,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                         containerId: container.id,
                         policy: editPolicy === 'auto' ? null : editPolicy,
                         updateLevel: editLevel || null,
+                        tagPattern: editTagPattern || null,
                       },
                       {
                         onSuccess: () => setPolicyOpen(false),

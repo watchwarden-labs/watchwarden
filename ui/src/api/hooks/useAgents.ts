@@ -192,15 +192,17 @@ export function useUpdateContainerPolicy() {
       containerId,
       policy,
       updateLevel,
+      tagPattern,
     }: {
       agentId: string;
       containerId: string;
       policy: string | null;
       updateLevel: string | null;
+      tagPattern?: string | null;
     }) =>
       apiRequest<void>(`/agents/${agentId}/containers/${containerId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ policy, update_level: updateLevel }),
+        body: JSON.stringify({ policy, update_level: updateLevel, tag_pattern: tagPattern }),
       }),
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
