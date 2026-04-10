@@ -9,6 +9,7 @@ import {
   getLastCheckTime,
   listAgents,
   listAllContainersWithAgent,
+  listRegistryCredentials,
 } from '../../db/queries.js';
 import {
   getDebugUntil,
@@ -114,11 +115,12 @@ const metaRoutes: FastifyPluginAsync = async (fastify) => {
       config: { rateLimit: { max: 2, timeWindow: '1 minute' } },
     },
     async (_request, reply) => {
-      const [agents, counts, lastCheck, containers] = await Promise.all([
+      const [agents, counts, lastCheck, containers, registries] = await Promise.all([
         listAgents(),
         countContainers(),
         getLastCheckTime(),
         listAllContainersWithAgent(),
+        listRegistryCredentials(),
       ]);
 
       const logTail = readLogTail();
@@ -175,6 +177,26 @@ const metaRoutes: FastifyPluginAsync = async (fastify) => {
           policy: c.policy,
           excluded: !!c.excluded,
         })),
+        registries: {
+          count: registries.length,
+          configured: registries.map((reg) => ({
+            registry: reg.registry,
+            auth_type: reg.auth_type ?? 'basic',
+            username: reg.username,
+            // password intentionally omitted
+          })),
+          anonymous_docker_hub_images: containers
+            .filter(
+              (c) =>
+                (!c.image.includes('/') || c.image.startsWith('docker.io')) &&
+                !registries.some(
+                  (r) => r.registry === 'docker.io' || r.registry === 'registry-1.docker.io',
+                ),
+            )
+            .map((c) => c.image)
+            .filter((v, i, a) => a.indexOf(v) === i) // unique
+            .slice(0, 20),
+        },
       };
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

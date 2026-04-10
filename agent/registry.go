@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,6 +18,12 @@ import (
 type RegistryClient struct {
 	client    *http.Client
 	credStore *CredStore
+	etagCache sync.Map // key: "registry/repository" → *etagEntry
+}
+
+type etagEntry struct {
+	etag string
+	tags []string
 }
 
 // NewRegistryClient creates a registry client.
@@ -25,6 +32,35 @@ func NewRegistryClient(credStore *CredStore) *RegistryClient {
 		client:    &http.Client{Timeout: 30 * time.Second},
 		credStore: credStore,
 	}
+}
+
+// retryOn429 executes fn, retrying once on 429/503 after honouring Retry-After
+// (capped at 60 s). The caller is responsible for closing resp.Body.
+func retryOn429(ctx context.Context, fn func() (*http.Response, error)) (*http.Response, error) {
+	resp, err := fn()
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 429 && resp.StatusCode != 503 {
+		return resp, nil
+	}
+	resp.Body.Close()
+
+	delay := 30 * time.Second
+	if ra := resp.Header.Get("Retry-After"); ra != "" {
+		if secs, parseErr := strconv.Atoi(ra); parseErr == nil && secs > 0 {
+			delay = time.Duration(secs) * time.Second
+		}
+	}
+	if delay > 60*time.Second {
+		delay = 60 * time.Second
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(delay):
+	}
+	return fn()
 }
 
 // TagInfo holds tag name and optional digest.
@@ -216,12 +252,15 @@ func parseImageRefParts(ref string) (string, string) {
 }
 
 func (r *RegistryClient) listDockerHubTags(ctx context.Context, repository string) ([]string, error) {
-	url := fmt.Sprintf("https://hub.docker.com/v2/repositories/%s/tags?page_size=100", repository)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := r.client.Do(req)
+	tagsURL := fmt.Sprintf("https://hub.docker.com/v2/repositories/%s/tags?page_size=100", repository)
+
+	resp, err := retryOn429(ctx, func() (*http.Response, error) {
+		req, reqErr := http.NewRequestWithContext(ctx, "GET", tagsURL, nil)
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		return r.client.Do(req)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("Docker Hub API error: %w", err)
 	}
@@ -253,43 +292,59 @@ func (r *RegistryClient) listDockerHubTags(ctx context.Context, repository strin
 }
 
 func (r *RegistryClient) listV2Tags(ctx context.Context, registry, repository string) ([]string, error) {
-	url := fmt.Sprintf("https://%s/v2/%s/tags/list", registry, repository)
+	tagsURL := fmt.Sprintf("https://%s/v2/%s/tags/list", registry, repository)
+	cacheKey := registry + "/" + repository
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
+	// Retrieve any cached ETag for this endpoint.
+	var cached *etagEntry
+	if v, ok := r.etagCache.Load(cacheKey); ok {
+		cached = v.(*etagEntry)
 	}
 
-	// Add auth if available
-	if r.credStore != nil {
-		imageRef := registry + "/" + repository
-		if cred := r.credStore.GetForImage(imageRef); cred != nil {
-			// Try basic auth
-			req.SetBasicAuth(cred.Username, cred.Password)
-		}
+	// doRequest builds and fires a single GET, attaching auth and If-None-Match.
+	doRequest := func(bearer string) (*http.Response, error) {
+		return retryOn429(ctx, func() (*http.Response, error) {
+			req, err := http.NewRequestWithContext(ctx, "GET", tagsURL, nil)
+			if err != nil {
+				return nil, err
+			}
+			if bearer != "" {
+				req.Header.Set("Authorization", "Bearer "+bearer)
+			} else if r.credStore != nil {
+				if cred := r.credStore.GetForImage(registry + "/" + repository); cred != nil {
+					req.SetBasicAuth(cred.Username, cred.Password)
+				}
+			}
+			if cached != nil {
+				req.Header.Set("If-None-Match", cached.etag)
+			}
+			return r.client.Do(req)
+		})
 	}
 
-	resp, err := r.client.Do(req)
+	resp, err := doRequest("")
 	if err != nil {
 		return nil, fmt.Errorf("registry API error: %w", err)
 	}
-	defer resp.Body.Close()
 
+	// Handle 401 → fetch bearer token and retry.
 	if resp.StatusCode == 401 {
-		// Try bearer token auth
 		authHeader := resp.Header.Get("Www-Authenticate")
+		resp.Body.Close()
 		token, tokenErr := r.fetchBearerToken(ctx, registry, repository, authHeader)
 		if tokenErr != nil {
 			return nil, fmt.Errorf("registry auth failed: %w", tokenErr)
 		}
-		req2, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-		req2.Header.Set("Authorization", "Bearer "+token)
-		resp2, err2 := r.client.Do(req2)
-		if err2 != nil {
-			return nil, err2
+		resp, err = doRequest(token)
+		if err != nil {
+			return nil, err
 		}
-		defer resp2.Body.Close()
-		resp = resp2
+	}
+	defer resp.Body.Close()
+
+	// 304 Not Modified — return cached tags unchanged.
+	if resp.StatusCode == 304 && cached != nil {
+		return cached.tags, nil
 	}
 
 	if resp.StatusCode != 200 {
@@ -307,6 +362,12 @@ func (r *RegistryClient) listV2Tags(ctx context.Context, registry, repository st
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse registry response: %w", err)
 	}
+
+	// Store ETag for next poll.
+	if etag := resp.Header.Get("ETag"); etag != "" {
+		r.etagCache.Store(cacheKey, &etagEntry{etag: etag, tags: result.Tags})
+	}
+
 	return result.Tags, nil
 }
 
