@@ -64,6 +64,10 @@ Each container row shows:
 - **Action buttons** — Check, Update, Rollback, View Logs, Start/Stop, Delete
 - **Container labels** — policy, tag pattern, update group, pinned version, and exclusion status
 
+Click the pencil icon next to the policy badge to edit the container's update policy and semver update level directly from the UI (no label changes required):
+- **Policy** — Auto (follow global), Notify only, or Manual (skip checks)
+- **Max update level** — restrict updates to Patch, Minor, or Major semver bumps
+
 The **Containers** and **Configuration** tabs let you switch between the container list and agent-specific settings.
 
 ### Agent Configuration
@@ -123,6 +127,7 @@ Configure global update schedule, startup behavior, admin password, and agent re
 />
 
 - **Global Schedule** — cron expression picker with presets (hourly, daily, weekly)
+- **Default Update Level** — global semver cap (`patch`, `minor`, `major`, or no restriction) applied to all containers without a per-container level set
 - **Check on startup** — catch-up check if the last scheduled check was more than 24 hours ago
 - **Admin Password** — change the dashboard login password
 - **Recovery Mode** — time-limited window for automatic agent re-registration after database loss (see below)
