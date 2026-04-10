@@ -15,11 +15,13 @@ import (
 
 // Notifier fans out notifications to configured channels with per-container cooldown.
 type Notifier struct {
-	senders     []Sender
-	cooldown    map[string]time.Time
-	cooldownMu  sync.Mutex
-	cooldownTTL time.Duration
-	template    string // user-provided Go text/template
+	senders          []Sender
+	cooldown         map[string]time.Time
+	cooldownMu       sync.Mutex
+	cooldownTTL      time.Duration
+	resultCooldowns  map[string]time.Time // failure-notification cooldown per container
+	resultCooldownMu sync.Mutex
+	template         string // user-provided Go text/template
 }
 
 // renderNotificationTemplate renders a Go text/template with the given variables.
@@ -97,10 +99,11 @@ func NewNotifier(cfg *AgentConfig) *Notifier {
 	}
 
 	return &Notifier{
-		senders:     senders,
-		cooldown:    make(map[string]time.Time),
-		cooldownTTL: 5 * time.Minute,
-		template:    cfg.NotificationTemplate,
+		senders:         senders,
+		cooldown:        make(map[string]time.Time),
+		cooldownTTL:     5 * time.Minute,
+		resultCooldowns: make(map[string]time.Time),
+		template:        cfg.NotificationTemplate,
 	}
 }
 
@@ -235,6 +238,19 @@ func (n *Notifier) NotifyResult(result *UpdateResult) {
 		} else {
 			body = ""
 		}
+	}
+	// Suppress repeated failure notifications for the same container within 1 minute.
+	// Success notifications are never suppressed.
+	if !result.Success {
+		n.resultCooldownMu.Lock()
+		lastFail, exists := n.resultCooldowns[result.ContainerName]
+		if exists && time.Since(lastFail) < time.Minute {
+			n.resultCooldownMu.Unlock()
+			log.Printf("[notify] suppressing repeat failure notification for %s (cooldown)", result.ContainerName)
+			return
+		}
+		n.resultCooldowns[result.ContainerName] = time.Now()
+		n.resultCooldownMu.Unlock()
 	}
 	n.broadcast(title, body)
 }
