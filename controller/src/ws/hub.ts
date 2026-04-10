@@ -66,6 +66,8 @@ interface UpdateResultItem {
   success: boolean;
   oldDigest: string | null;
   newDigest: string | null;
+  oldImage?: string | null;
+  newImage?: string | null;
   error: string | null;
   durationMs: number;
 }
@@ -428,6 +430,8 @@ export class AgentHub {
                 success?: boolean;
                 oldDigest?: string;
                 newDigest?: string;
+                oldImage?: string;
+                newImage?: string;
                 error?: string;
                 durationMs?: number;
                 isRollback?: boolean;
@@ -447,6 +451,8 @@ export class AgentHub {
                   success: payload.success ?? false,
                   oldDigest: payload.oldDigest ?? null,
                   newDigest: payload.newDigest ?? null,
+                  oldImage: payload.oldImage ?? null,
+                  newImage: payload.newImage ?? null,
                   error: payload.error ?? null,
                   durationMs: payload.durationMs ?? 0,
                 },
@@ -461,6 +467,8 @@ export class AgentHub {
                       container_name: r.containerName,
                       old_digest: r.oldDigest,
                       new_digest: r.newDigest,
+                      old_image: r.oldImage ?? null,
+                      new_image: r.newImage ?? null,
                       status: isRollback ? 'rolled_back' : 'success',
                       error: r.error,
                       duration_ms: r.durationMs,
@@ -475,6 +483,8 @@ export class AgentHub {
                     container_name: r.containerName,
                     old_digest: r.oldDigest,
                     new_digest: r.newDigest,
+                    old_image: r.oldImage ?? null,
+                    new_image: r.newImage ?? null,
                     status: isRollback ? 'rolled_back' : 'failed',
                     error: r.error,
                     duration_ms: r.durationMs,

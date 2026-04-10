@@ -2,6 +2,7 @@ import {
   ArrowUpCircle,
   Ban,
   Database,
+  Info,
   Loader2,
   Pin,
   Play,
@@ -20,7 +21,6 @@ import {
   useContainerStop,
 } from '@/api/hooks/useAgents';
 import { ContainerLogsDialog } from '@/components/agents/ContainerLogsDialog';
-import { DigestBadge } from '@/components/common/DigestBadge';
 import { DiffBadge, type ImageDiff, ImageDiffView } from '@/components/diff/ImageDiffView';
 import { VersionPickerModal } from '@/components/rollback/VersionPickerModal';
 import {
@@ -313,29 +313,38 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
             </Badge>
           )}
         </div>
-        <p className="text-xs text-muted-foreground truncate mt-0.5">
-          {container.image}
-          {container.depends_on &&
-            (() => {
-              try {
-                const deps = JSON.parse(container.depends_on) as string[];
-                if (deps.length > 0)
-                  return (
-                    <span className="ml-2 text-muted-foreground/60">
-                      depends on: {deps.join(', ')}
-                    </span>
-                  );
-              } catch {
-                /* ignore */
-              }
-              return null;
-            })()}
-        </p>
-      </div>
-
-      {/* Digest */}
-      <div className="hidden lg:block shrink-0">
-        <DigestBadge digest={container.current_digest} />
+        <div className="flex items-center gap-1 mt-0.5 min-w-0">
+          <p className="text-xs text-muted-foreground truncate">
+            {container.image}
+            {container.depends_on &&
+              (() => {
+                try {
+                  const deps = JSON.parse(container.depends_on) as string[];
+                  if (deps.length > 0)
+                    return (
+                      <span className="ml-2 text-muted-foreground/60">
+                        depends on: {deps.join(', ')}
+                      </span>
+                    );
+                } catch {
+                  /* ignore */
+                }
+                return null;
+              })()}
+          </p>
+          {container.current_digest && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger render={<span />} className="cursor-help shrink-0">
+                  <Info size={12} className="text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-none">
+                  <span className="font-mono break-all">{container.current_digest}</span>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </div>
 
       {/* Actions */}
