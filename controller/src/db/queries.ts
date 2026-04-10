@@ -181,6 +181,16 @@ export async function updateContainerDigests(
   `;
 }
 
+export async function setUpdateFirstSeen(
+  containerId: string,
+  timestamp: number | null,
+): Promise<void> {
+  await sql`
+    UPDATE containers SET update_first_seen = ${timestamp}
+    WHERE id = ${containerId} OR docker_id = ${containerId}
+  `;
+}
+
 // --- Update Log ---
 
 export async function insertUpdateLog(entry: NewUpdateLog): Promise<number> {
@@ -499,6 +509,7 @@ export interface UpdatePolicy {
   auto_rollback_enabled: boolean;
   max_unhealthy_seconds: number;
   strategy: string;
+  min_age_hours: number;
   created_at: number;
 }
 
@@ -512,6 +523,7 @@ export async function getUpdatePolicy(scope: string): Promise<UpdatePolicy | und
     auto_rollback_enabled: !!row.auto_rollback_enabled,
     max_unhealthy_seconds: Number(row.max_unhealthy_seconds),
     strategy: (row.strategy as string) ?? 'stop-first',
+    min_age_hours: Number(row.min_age_hours ?? 0),
     created_at: Number(row.created_at),
   };
 }
@@ -530,6 +542,7 @@ export async function getEffectivePolicy(agentId?: string): Promise<UpdatePolicy
       auto_rollback_enabled: true,
       max_unhealthy_seconds: 30,
       strategy: 'stop-first',
+      min_age_hours: 0,
       created_at: 0,
     }
   );
@@ -537,13 +550,14 @@ export async function getEffectivePolicy(agentId?: string): Promise<UpdatePolicy
 
 export async function upsertUpdatePolicy(policy: Omit<UpdatePolicy, 'created_at'>): Promise<void> {
   await sql`
-    INSERT INTO update_policies (id, scope, stability_window_seconds, auto_rollback_enabled, max_unhealthy_seconds, strategy, created_at)
-    VALUES (${policy.id}, ${policy.scope}, ${policy.stability_window_seconds}, ${policy.auto_rollback_enabled}, ${policy.max_unhealthy_seconds}, ${policy.strategy}, ${Date.now()})
+    INSERT INTO update_policies (id, scope, stability_window_seconds, auto_rollback_enabled, max_unhealthy_seconds, strategy, min_age_hours, created_at)
+    VALUES (${policy.id}, ${policy.scope}, ${policy.stability_window_seconds}, ${policy.auto_rollback_enabled}, ${policy.max_unhealthy_seconds}, ${policy.strategy}, ${policy.min_age_hours}, ${Date.now()})
     ON CONFLICT (id) DO UPDATE SET
       stability_window_seconds = EXCLUDED.stability_window_seconds,
       auto_rollback_enabled = EXCLUDED.auto_rollback_enabled,
       max_unhealthy_seconds = EXCLUDED.max_unhealthy_seconds,
-      strategy = EXCLUDED.strategy
+      strategy = EXCLUDED.strategy,
+      min_age_hours = EXCLUDED.min_age_hours
   `;
 }
 
@@ -678,6 +692,7 @@ function mapContainer(row: Record<string, unknown>): Container {
     last_checked: row.last_checked ? Number(row.last_checked) : null,
     last_updated: row.last_updated ? Number(row.last_updated) : null,
     is_stateful: row.is_stateful ? 1 : 0,
+    update_first_seen: row.update_first_seen ? Number(row.update_first_seen) : null,
   };
 }
 
