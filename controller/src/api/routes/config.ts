@@ -12,7 +12,13 @@ import {
 import { requireAuth } from '../middleware/auth.js';
 
 const CRON_KEYS = new Set(['global_schedule']);
-const ALLOWED_CONFIG_KEYS = new Set(['global_schedule', 'auto_update_global', 'check_on_startup']);
+const ALLOWED_CONFIG_KEYS = new Set([
+  'global_schedule',
+  'auto_update_global',
+  'check_on_startup',
+  'global_update_level',
+]);
+const VALID_UPDATE_LEVELS = new Set(['', 'all', 'major', 'minor', 'patch']);
 
 const SENSITIVE_CONFIG_KEYS = new Set(['jwt_secret', 'admin_password_hash']);
 
@@ -39,6 +45,12 @@ const configRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (CRON_KEYS.has(key) && !cron.validate(value)) {
       return reply.code(400).send({ error: 'Invalid cron expression' });
+    }
+
+    if (key === 'global_update_level' && !VALID_UPDATE_LEVELS.has(value)) {
+      return reply
+        .code(400)
+        .send({ error: `Invalid update level. Must be one of: all, major, minor, patch` });
     }
 
     await setConfig(key, value);

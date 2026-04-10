@@ -13,6 +13,7 @@ const mockAgent: Agent = {
   auto_update: 0,
   docker_version: null,
   docker_api_version: null,
+  agent_version: null,
   os: null,
   arch: null,
   created_at: Date.now(),
@@ -40,6 +41,7 @@ const mockAgent: Agent = {
       policy: null,
       tag_pattern: null,
       update_level: null,
+      is_stateful: 0,
     },
     {
       id: 'c-2',
@@ -64,6 +66,7 @@ const mockAgent: Agent = {
       policy: null,
       tag_pattern: null,
       update_level: null,
+      is_stateful: 0,
     },
   ],
 };

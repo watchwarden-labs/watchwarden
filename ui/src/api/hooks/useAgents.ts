@@ -184,6 +184,31 @@ export function useContainerLogs(
   });
 }
 
+export function useUpdateContainerPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      agentId,
+      containerId,
+      policy,
+      updateLevel,
+    }: {
+      agentId: string;
+      containerId: string;
+      policy: string | null;
+      updateLevel: string | null;
+    }) =>
+      apiRequest<void>(`/agents/${agentId}/containers/${containerId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ policy, update_level: updateLevel }),
+      }),
+    onSuccess: (_, { agentId }) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['agents', agentId] });
+    },
+  });
+}
+
 export function useUpdateAgentConfig() {
   const queryClient = useQueryClient();
   return useMutation({
