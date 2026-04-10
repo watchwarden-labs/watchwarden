@@ -80,7 +80,7 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 - **TypeScript SDK** — `@watchwarden/sdk` for programmatic access
 
 ### Observability
-- **Prometheus metrics** — `/metrics` endpoint on the controller exposes container counts, update status, and agent health in standard Prometheus format
+- **Prometheus metrics** — `/metrics` endpoint with per-container labeled gauges (`container_info`, `container_has_update`, `container_last_updated_ms`) and aggregate counters for agents, update counts by status
 
 ### Notifications
 - **Telegram, Slack, Webhook, ntfy** — configurable channels with batched, deduplicated messages

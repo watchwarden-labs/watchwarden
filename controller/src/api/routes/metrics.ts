@@ -1,30 +1,43 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { sql } from '../../db/client.js';
-import { getContainersByAgent, listAgents } from '../../db/queries.js';
+import { listAgents, listAllContainersWithAgent } from '../../db/queries.js';
+
+/** Escape a label value per the Prometheus text exposition format. */
+function escapeLabel(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+}
 
 const metricsRoutes: FastifyPluginAsync = async (fastify) => {
   // No auth required — standard for Prometheus scraping
   fastify.get('/metrics', async (_request, reply) => {
-    const agents = await listAgents();
+    const [agents, allContainers] = await Promise.all([listAgents(), listAllContainersWithAgent()]);
+
     const onlineAgents = agents.filter((a) => a.status === 'online').length;
-
-    let totalContainers = 0;
-    let updatesAvailable = 0;
-    let excludedContainers = 0;
-
-    for (const agent of agents) {
-      const containers = await getContainersByAgent(agent.id);
-      totalContainers += containers.length;
-      updatesAvailable += containers.filter((c) => c.has_update === 1).length;
-      excludedContainers += containers.filter((c) => c.excluded === 1).length;
-    }
+    const totalContainers = allContainers.length;
+    const updatesAvailable = allContainers.filter((c) => c.has_update === 1).length;
+    const excludedContainers = allContainers.filter((c) => c.excluded === 1).length;
 
     // Query update counts from DB
-    const successCount =
-      await sql`SELECT COUNT(*) as count FROM update_log WHERE status = 'success'`;
-    const failedCount = await sql`SELECT COUNT(*) as count FROM update_log WHERE status = 'failed'`;
-    const rolledBackCount =
-      await sql`SELECT COUNT(*) as count FROM update_log WHERE status = 'rolled_back'`;
+    const [successCount, failedCount, rolledBackCount] = await Promise.all([
+      sql`SELECT COUNT(*) as count FROM update_log WHERE status = 'success'`,
+      sql`SELECT COUNT(*) as count FROM update_log WHERE status = 'failed'`,
+      sql`SELECT COUNT(*) as count FROM update_log WHERE status = 'rolled_back'`,
+    ]);
+
+    const containerInfoLines = allContainers.map(
+      (c) =>
+        `watchwarden_container_info{agent="${escapeLabel(c.agent_name)}",container="${escapeLabel(c.name)}",image="${escapeLabel(c.image)}"} 1`,
+    );
+
+    const containerUpdateLines = allContainers.map(
+      (c) =>
+        `watchwarden_container_has_update{agent="${escapeLabel(c.agent_name)}",container="${escapeLabel(c.name)}"} ${c.has_update === 1 ? 1 : 0}`,
+    );
+
+    const containerLastUpdatedLines = allContainers.map(
+      (c) =>
+        `watchwarden_container_last_updated_ms{agent="${escapeLabel(c.agent_name)}",container="${escapeLabel(c.name)}"} ${c.last_updated ?? 0}`,
+    );
 
     const lines = [
       '# HELP watchwarden_agents_total Total number of registered agents',
@@ -52,6 +65,18 @@ const metricsRoutes: FastifyPluginAsync = async (fastify) => {
       `watchwarden_updates_total{status="success"} ${Number(successCount[0]?.count ?? 0)}`,
       `watchwarden_updates_total{status="failed"} ${Number(failedCount[0]?.count ?? 0)}`,
       `watchwarden_updates_total{status="rolled_back"} ${Number(rolledBackCount[0]?.count ?? 0)}`,
+      '',
+      '# HELP watchwarden_container_info Static info per container (agent, name, image)',
+      '# TYPE watchwarden_container_info gauge',
+      ...containerInfoLines,
+      '',
+      '# HELP watchwarden_container_has_update Whether the container has a pending update (0 or 1)',
+      '# TYPE watchwarden_container_has_update gauge',
+      ...containerUpdateLines,
+      '',
+      '# HELP watchwarden_container_last_updated_ms Unix timestamp (ms) of last successful update, 0 if never',
+      '# TYPE watchwarden_container_last_updated_ms gauge',
+      ...containerLastUpdatedLines,
       '',
     ];
 
