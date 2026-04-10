@@ -82,7 +82,7 @@ The Configuration tab provides per-agent settings that override the global defau
 
 - **Schedule Override** — set a custom cron schedule for this agent (overrides the global schedule)
 - **Auto Update** — enable automatic updates when new images are detected
-- **Stability & Auto Rollback** — configure the health monitoring window and automatic rollback behavior after updates
+- **Stability & Auto Rollback** — configure health monitoring window, automatic rollback, and minimum update age (hold back auto-updates until a new image has been available for N hours)
 - **Update Strategy** — choose between stop-first (default) or start-first (blue-green) deployment
 - **Image Pruning** — clean up old images after successful updates to reclaim disk space
 
