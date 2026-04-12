@@ -7,26 +7,23 @@ updated: 2026-04-12
 
 # Feature 5 — Staged Rollouts / Canary Groups
 
-> **Status**: Fully implemented at container level. Agent-level grouping and UI editing missing.
+> **Status**: Fully implemented at container level including UI editing. Agent-level grouping still missing.
 
 ## What's Implemented
 
 - DB columns `containers.update_group`, `containers.update_priority` (default 100), `containers.depends_on` JSON (migration 003).
 - `controller/src/scheduler/orchestrator.ts` — `resolveUpdateBatches()`, `topologicalSort()`, `executeOrchestratedUpdate()` → sends `UPDATE_SEQUENTIAL`.
 - `agent/managed.go` — handles `UPDATE_SEQUENTIAL`, executes batches with health waits between groups.
-- `ui/src/components/agents/ContainerRow.tsx` — displays group badge and `depends_on` sub-line; **read-only**.
+- `ui/src/components/agents/ContainerRow.tsx` — displays group badge and `depends_on` sub-line.
+- `controller/src/api/routes/agents.ts` — `PATCH /api/agents/:id/containers/:id/orchestration` endpoint (validates priority range 1–999).
+- `controller/src/db/queries.ts` — `updateContainerOrchestration()`. COALESCE fix: agent heartbeat no longer overwrites user-set values.
+- `ui/src/components/agents/ContainerRow.tsx` — orchestration dialog (pencil icon next to group badge) with group name, priority, and depends-on inputs.
 
 ## What's Missing
 
-- No UI for editing groups, priorities, or dependencies.
-- No agent-level grouping (e.g. "canary" vs "prod" agents).
+- No agent-level grouping (e.g. "canary" vs "prod" agents) — `group TEXT` column on `agents` not added.
 - No "promote canary → prod" workflow.
-
-## Remaining Work (Phase 3)
-
-- UI to edit `update_group`, `update_priority`, `depends_on` per container.
-- Add `group TEXT` column to `agents` (new migration); UI filter/trigger by group.
-- Optional: stack summary view.
+- No named stack summary view.
 
 ## Related Pages
 

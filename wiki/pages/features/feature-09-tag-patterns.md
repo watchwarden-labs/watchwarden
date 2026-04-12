@@ -7,7 +7,7 @@ updated: 2026-04-12
 
 # Feature 9 — Tag Pattern Presets & Non-Semver Handling
 
-> **Status**: Partially implemented. Logic solid; presets and UI entry missing.
+> **Status**: Fully implemented.
 
 ## What's Implemented
 
