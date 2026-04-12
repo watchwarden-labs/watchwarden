@@ -65,6 +65,110 @@ func (u *Updater) IsSelfContainer(containerID string) bool {
 	return containerID == u.selfContainerID || strings.HasPrefix(u.selfContainerID, containerID)
 }
 
+// SelfUpdate replaces the agent's own container with a new image using a
+// rename-based approach that avoids the restart-policy trap:
+//
+//  1. Pull new image
+//  2. Rename self: <name> → <name>-ww-old  (frees the original name)
+//  3. Create + start new container as <name> with new image
+//  4. Force-remove self — Docker sends SIGKILL and removes the container
+//     atomically. A force-removed container is not "manually stopped", so
+//     no restart policy applies and no leftover container exists.
+//
+// The process does not survive step 4. The new container is already running
+// before we die, so there is no downtime gap.
+func (u *Updater) SelfUpdate(ctx context.Context, containerID string) (*UpdateResult, error) {
+	start := time.Now()
+
+	resolvedID, err := u.docker.ResolveContainerID(ctx, containerID)
+	if err == nil {
+		containerID = resolvedID
+	}
+
+	snapshot, err := u.docker.InspectContainer(ctx, containerID)
+	if err != nil {
+		return &UpdateResult{
+			ContainerID: containerID,
+			Success:     false,
+			Error:       fmt.Sprintf("inspect: %v", err),
+			DurationMs:  time.Since(start).Milliseconds(),
+		}, err
+	}
+
+	// Save snapshot before any mutation so rollback is possible if something fails.
+	u.mu.Lock()
+	u.snapshots[containerID] = snapshot
+	u.snapshots[snapshot.Name] = snapshot
+	u.mu.Unlock()
+	saveSnapshot(containerID, snapshot)
+
+	imageRef := resolveCheckRef(ctx, u.docker, snapshot)
+	u.emitProgress(containerID, snapshot.Name, "pulling", "")
+	newDigest, err := u.docker.PullImage(ctx, imageRef)
+	if err != nil {
+		return &UpdateResult{
+			ContainerID:   containerID,
+			ContainerName: snapshot.Name,
+			Success:       false,
+			OldDigest:     snapshot.ImageDigest,
+			OldImage:      snapshot.ImageRef,
+			Error:         fmt.Sprintf("pull: %v", err),
+			DurationMs:    time.Since(start).Milliseconds(),
+		}, err
+	}
+
+	canonicalName := strings.TrimPrefix(snapshot.Name, "/")
+	tempName := canonicalName + "-ww-old"
+
+	// Step 2: rename self to free the original name.
+	u.emitProgress(containerID, canonicalName, "stopping", "")
+	if err := u.docker.ContainerRename(ctx, containerID, tempName); err != nil {
+		return &UpdateResult{
+			ContainerID:   containerID,
+			ContainerName: canonicalName,
+			Success:       false,
+			OldDigest:     snapshot.ImageDigest,
+			OldImage:      snapshot.ImageRef,
+			Error:         fmt.Sprintf("rename self: %v", err),
+			DurationMs:    time.Since(start).Milliseconds(),
+		}, err
+	}
+
+	// Step 3: create + start new container with original name and new image.
+	u.emitProgress(containerID, canonicalName, "starting", "")
+	_, err = u.docker.RecreateContainerNamed(ctx, snapshot, imageRef, canonicalName)
+	if err != nil {
+		// Rollback: restore our own name so we keep running.
+		_ = u.docker.ContainerRename(ctx, containerID, canonicalName)
+		return &UpdateResult{
+			ContainerID:   containerID,
+			ContainerName: canonicalName,
+			Success:       false,
+			OldDigest:     snapshot.ImageDigest,
+			OldImage:      snapshot.ImageRef,
+			Error:         fmt.Sprintf("start new container: %v", err),
+			DurationMs:    time.Since(start).Milliseconds(),
+		}, err
+	}
+
+	// Step 4: force-remove self. Docker sends SIGKILL and removes the container
+	// atomically — the process will not return from this call.
+	log.Printf("[self-update] new %s started; force-removing self (%s)", canonicalName, tempName)
+	_ = u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
+
+	// Unreachable: the force-remove killed us.
+	return &UpdateResult{
+		ContainerID:   containerID,
+		ContainerName: canonicalName,
+		Success:       true,
+		OldDigest:     snapshot.ImageDigest,
+		NewDigest:     newDigest,
+		OldImage:      snapshot.ImageRef,
+		NewImage:      imageRef,
+		DurationMs:    time.Since(start).Milliseconds(),
+	}, nil
+}
+
 // StartLockCleanup periodically removes idle per-container lock entries.
 // Runs until ctx is cancelled. Call from main after creating the Updater.
 func (u *Updater) StartLockCleanup(ctx context.Context) {
