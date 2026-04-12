@@ -1,3 +1,10 @@
+## v0.3.1
+
+Released: 2026-04-12
+
+### Bug Fixes
+- fix(agent): replace self-update with rename-based blue-green (b8b7744)
+
 ## v0.3.0
 
 Released: 2026-04-12
