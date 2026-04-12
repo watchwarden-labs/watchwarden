@@ -18,8 +18,9 @@ updated: 2026-04-12
 
 ## Gap
 
-- No UI to define/edit groups or dependencies.
 - No named "stack" summary view (no user-facing concept of a stack as a first-class entity).
+
+UI editing of groups and dependencies is now done — see [Feature 5](feature-05-staged-rollouts.md).
 
 ## Related Pages
 
