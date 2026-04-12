@@ -201,18 +201,14 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			}()
 		}
 
-		// Self-update: the agent will die during this operation.
-		// Docker's restart policy will bring it back with the new image.
+		// Self-update: use SelfUpdate which renames self, starts the new
+		// container, then force-removes the old one. This avoids the
+		// restart-policy trap where ContainerStop marks the container as
+		// "manually stopped" and unless-stopped never restarts it.
 		if selfID != "" {
-			log.Printf("[handler] self-update: updating own container %s (agent will restart)", selfID[:12])
-			var result *UpdateResult
-			var updateErr error
-			if cmd.Strategy == "start-first" {
-				result, updateErr = updater.BlueGreenUpdate(ctx, selfID)
-			} else {
-				result, updateErr = updater.UpdateContainer(ctx, selfID)
-			}
-			// If we get here, the update failed (process should have been killed on success)
+			log.Printf("[handler] self-update: replacing own container %s", selfID[:12])
+			result, updateErr := updater.SelfUpdate(ctx, selfID)
+			// If we reach here, SelfUpdate failed before the force-remove.
 			if result == nil && updateErr != nil {
 				result = &UpdateResult{
 					ContainerID: selfID,
