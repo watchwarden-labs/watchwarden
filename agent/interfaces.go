@@ -66,6 +66,9 @@ type CheckResult struct {
 	LatestDigest  string     `json:"latestDigest"`
 	HasUpdate     bool       `json:"hasUpdate"`
 	Diff          *ImageDiff `json:"diff,omitempty"`
+	// CheckError is set when the check itself failed (e.g. network/pull error).
+	// HasUpdate will be false and digests empty when this is non-empty.
+	CheckError string `json:"checkError,omitempty"`
 }
 
 // UpdateResult represents the result of updating a container.

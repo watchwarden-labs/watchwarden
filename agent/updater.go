@@ -418,7 +418,7 @@ func resolveCheckRef(ctx context.Context, docker *DockerClient, snapshot *Contai
 // SCALE-03: releases the lock before docker pull — the registry read is idempotent
 // and does not need to hold the mutex for potentially minutes.
 func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([]CheckResult, error) {
-	var results []CheckResult
+	results := make([]CheckResult, 0)
 
 	for _, id := range containerIDs {
 		// Pre-inspect (no lock) to get the canonical container name for the lock key.
@@ -499,6 +499,12 @@ func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([
 			newDigest, pullErr = u.docker.PullImage(ctx, pullRef)
 			if pullErr != nil {
 				log.Printf("[check] %s: pull failed for %s: %v", snapshot.Name, snapshot.ImageRef, pullErr)
+				results = append(results, CheckResult{
+					ContainerID:   id,
+					ContainerName: snapshot.Name,
+					CurrentDigest: snapshot.ImageDigest,
+					CheckError:    fmt.Sprintf("pull failed: %v", pullErr),
+				})
 				continue
 			}
 

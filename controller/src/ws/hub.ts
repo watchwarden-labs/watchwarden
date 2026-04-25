@@ -60,6 +60,8 @@ interface CheckResultItem {
   currentDigest?: string;
   latestDigest?: string | null;
   diff?: Record<string, unknown>;
+  /** Non-empty when the check itself failed (e.g. pull/network error). */
+  checkError?: string;
 }
 
 interface UpdateResultItem {
@@ -289,17 +291,24 @@ export class AgentHub {
 
             case 'CHECK_RESULT': {
               const payload = message.payload as {
-                results: CheckResultItem[];
+                results: CheckResultItem[] | null;
               };
-              const updatesFound = payload.results.filter((r) => r.hasUpdate).length;
+              // Guard: agent sends null (not []) when every pull fails because a Go nil
+              // slice marshals to JSON null. Treat null the same as an empty result set
+              // so CHECK_COMPLETE is still broadcast and the UI spinner clears.
+              const checkItems: CheckResultItem[] = payload.results ?? [];
+              const updatesFound = checkItems.filter((r) => r.hasUpdate).length;
               log.debug(
                 'hub',
-                `CHECK_RESULT from ${agentId}: ${payload.results.length} results, ${updatesFound} updates`,
+                `CHECK_RESULT from ${agentId}: ${checkItems.length} results, ${updatesFound} updates`,
               );
               // Fetch current container state before the loop so we can detect
               // has_update flips for update_first_seen stamping.
               const agentContainersPre = await getContainersByAgent(agentId);
-              for (const r of payload.results) {
+              for (const r of checkItems) {
+                // Skip digest/diff updates for results where the check itself failed
+                // (pull error, network issue). We have no new digest data to store.
+                if (r.checkError) continue;
                 const existing = agentContainersPre.find(
                   (c) => c.docker_id === r.containerId || c.id === r.containerId,
                 );
@@ -323,12 +332,14 @@ export class AgentHub {
                 }
               }
               await updateAgentStatus(agentId, 'online', Date.now());
-              const updatesAvailable = payload.results.filter((r) => r.hasUpdate).length;
+              const updatesAvailable = checkItems.filter((r) => r.hasUpdate).length;
+              const failedChecks = checkItems.filter((r) => r.checkError).length;
               this.broadcaster?.broadcast({
                 type: 'CHECK_COMPLETE',
                 agentId,
                 updatesAvailable,
-                results: payload.results,
+                failedChecks,
+                results: checkItems,
               });
               // DB-02: single DB read for auto-update decision; notification and
               // auto-update paths are mutually exclusive from this point forward.
@@ -358,7 +369,7 @@ export class AgentHub {
                 const agentContainersForUpdate = await getContainersByAgent(agentId);
                 const policy = await getEffectivePolicy(agentId);
                 const globalUpdateLevel = (await getConfig('global_update_level')) ?? '';
-                const containerIds = payload.results
+                const containerIds = checkItems
                   .filter((r) => {
                     if (!r.hasUpdate) return false;
                     const dbContainer = agentContainersForUpdate.find(
@@ -428,7 +439,7 @@ export class AgentHub {
               } else if (updatesAvailable > 0) {
                 // Notification path: auto-update is OFF, notify the operator.
                 const agentContainers = agentContainersPre;
-                const withUpdates = payload.results
+                const withUpdates = checkItems
                   .filter((r) => r.hasUpdate)
                   .map((r) => {
                     const dbContainer = agentContainers.find(
