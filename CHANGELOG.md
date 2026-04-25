@@ -1,3 +1,10 @@
+## v0.3.2
+
+Released: 2026-04-25
+
+### Bug Fixes
+- fix(check): surface pull failures instead of silently reporting all-clear (27f9a97)
+
 ## v0.3.1
 
 Released: 2026-04-12
