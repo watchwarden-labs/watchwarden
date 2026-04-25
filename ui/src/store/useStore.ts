@@ -164,8 +164,21 @@ export const useStore = create<WatchWardenState>((set, get) => ({
 
     if (type === 'CHECK_COMPLETE' && agentId) {
       get().setAgentChecking(agentId, false);
-      const updatesAvailable = event.updatesAvailable as number;
-      if (updatesAvailable > 0) {
+      const updatesAvailable = (event.updatesAvailable as number) ?? 0;
+      const failedChecks = (event.failedChecks as number) ?? 0;
+      if (failedChecks > 0 && updatesAvailable === 0) {
+        // Every reachable container failed — likely a network/DNS outage.
+        get().addToast({
+          type: 'error',
+          message: `Check incomplete: ${failedChecks} container(s) could not be reached`,
+        });
+      } else if (failedChecks > 0) {
+        // Mixed: some succeeded and found updates, some failed.
+        get().addToast({
+          type: 'info',
+          message: `Check complete: ${updatesAvailable} update(s) available, ${failedChecks} check(s) failed`,
+        });
+      } else if (updatesAvailable > 0) {
         get().addToast({
           type: 'info',
           message: `Check complete: ${updatesAvailable} update(s) available`,
