@@ -239,9 +239,24 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		// Use background context — sequential updates must complete even if WS disconnects
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
+
+		// Collect the self-container ID if it appears in any batch — it must run
+		// last via SelfUpdate (not UpdateContainer), same as the UPDATE handler.
+		var selfID string
+		for _, batch := range cmd.Batches {
+			for _, id := range batch.ContainerIDs {
+				if updater.IsSelfContainer(id) {
+					selfID = id
+				}
+			}
+		}
+
 		for i, batch := range cmd.Batches {
 			log.Printf("[sequential] Batch %d/%d: %d containers", i+1, len(cmd.Batches), len(batch.ContainerIDs))
 			for _, id := range batch.ContainerIDs {
+				if id == selfID {
+					continue // handled after all batches complete
+				}
 				result, updateErr := updater.UpdateContainer(ctx, id)
 				if result == nil && updateErr != nil {
 					result = &UpdateResult{ContainerID: id, Success: false, Error: updateErr.Error()}
@@ -260,6 +275,16 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 				case <-time.After(time.Duration(timeout) * time.Second):
 				}
 			}
+		}
+
+		// Self-update must run last — after all other containers have been updated.
+		if selfID != "" {
+			log.Printf("[handler] self-update (sequential): replacing own container %s", selfID[:12])
+			result, updateErr := updater.SelfUpdate(ctx, selfID)
+			if result == nil && updateErr != nil {
+				result = &UpdateResult{ContainerID: selfID, Success: false, Error: updateErr.Error()}
+			}
+			wsClient.SendCritical(ctx, Message{Type: "UPDATE_RESULT", Payload: result})
 		}
 		if containers, err := dockerClient.ListContainers(ctx); err == nil {
 			wsClient.Send(Message{Type: "HEARTBEAT", Payload: map[string]interface{}{"containers": containers}})
