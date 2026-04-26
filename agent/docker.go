@@ -483,6 +483,8 @@ func (d *DockerClient) recreateContainerWithName(ctx context.Context, snapshot *
 
 	// Start the container
 	if err := d.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		// Clean up the created-but-not-started container so the name is freed.
+		_ = d.cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
 		return "", fmt.Errorf("failed to start container: %w", err)
 	}
 

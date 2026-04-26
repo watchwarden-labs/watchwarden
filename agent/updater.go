@@ -136,10 +136,14 @@ func (u *Updater) SelfUpdate(ctx context.Context, containerID string) (*UpdateRe
 
 	// Step 3: create + start new container with original name and new image.
 	u.emitProgress(containerID, canonicalName, "starting", "")
-	_, err = u.docker.RecreateContainerNamed(ctx, snapshot, imageRef, canonicalName)
+	newID, err := u.docker.RecreateContainerNamed(ctx, snapshot, imageRef, canonicalName)
 	if err != nil {
 		// Rollback: restore our own name so we keep running.
-		_ = u.docker.ContainerRename(ctx, containerID, canonicalName)
+		if renameErr := u.docker.ContainerRename(ctx, containerID, canonicalName); renameErr != nil {
+			log.Printf("[self-update] rollback rename failed: %v — container running as %s", renameErr, tempName)
+		} else {
+			log.Printf("[self-update] rolled back: restored name %s", canonicalName)
+		}
 		return &UpdateResult{
 			ContainerID:   containerID,
 			ContainerName: canonicalName,
@@ -150,10 +154,42 @@ func (u *Updater) SelfUpdate(ctx context.Context, containerID string) (*UpdateRe
 			DurationMs:    time.Since(start).Milliseconds(),
 		}, err
 	}
+	log.Printf("[self-update] new container %s (%s) started", canonicalName, newID)
+
+	// Step 3b: verify the new container is actually running before removing ourselves.
+	// Without this check a container that immediately exits (e.g. bad config) would
+	// kill us and leave the service down.
+	time.Sleep(2 * time.Second)
+	info, inspectErr := u.docker.cli.ContainerInspect(ctx, newID)
+	if inspectErr != nil || !info.State.Running {
+		reason := "container not running after start"
+		if inspectErr != nil {
+			reason = fmt.Sprintf("inspect error: %v", inspectErr)
+		} else if info.State != nil {
+			reason = fmt.Sprintf("state=%s exitCode=%d", info.State.Status, info.State.ExitCode)
+		}
+		log.Printf("[self-update] health check failed for new %s: %s — rolling back", canonicalName, reason)
+		// Remove the unhealthy new container so the name is freed.
+		_ = u.docker.cli.ContainerRemove(ctx, newID, container.RemoveOptions{Force: true})
+		if renameErr := u.docker.ContainerRename(ctx, containerID, canonicalName); renameErr != nil {
+			log.Printf("[self-update] rollback rename failed: %v — container running as %s", renameErr, tempName)
+		} else {
+			log.Printf("[self-update] rolled back: restored name %s", canonicalName)
+		}
+		return &UpdateResult{
+			ContainerID:   containerID,
+			ContainerName: canonicalName,
+			Success:       false,
+			OldDigest:     snapshot.ImageDigest,
+			OldImage:      snapshot.ImageRef,
+			Error:         fmt.Sprintf("new container health check failed: %s", reason),
+			DurationMs:    time.Since(start).Milliseconds(),
+		}, fmt.Errorf("new container health check failed: %s", reason)
+	}
 
 	// Step 4: force-remove self. Docker sends SIGKILL and removes the container
 	// atomically — the process will not return from this call.
-	log.Printf("[self-update] new %s started; force-removing self (%s)", canonicalName, tempName)
+	log.Printf("[self-update] new %s healthy; force-removing self (%s)", canonicalName, tempName)
 	_ = u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
 
 	// Unreachable: the force-remove killed us.
@@ -229,7 +265,7 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 		}
 	}
 
-	// BUG-03: first pass — detect and resolve orphaned blue-green containers.
+	// First pass — detect and resolve orphaned blue-green containers (-ww-new suffix).
 	// If "nginx-ww-new" exists but "nginx" does not, rename -ww-new to complete
 	// the interrupted blue-green transition.
 	const blueGreenSuffix = "-ww-new"
@@ -253,6 +289,39 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 		} else {
 			log.Printf("[recovery] Successfully completed blue-green recovery for %s", originalName)
 			existingNames[originalName] = true // mark as recovered for second pass
+		}
+	}
+
+	// First pass (part 2) — detect and resolve orphaned self-update containers (-ww-old suffix).
+	// These are left behind when a self-update fails after renaming the original container
+	// but before force-removing it. The new container now runs under the original name.
+	const selfUpdateSuffix = "-ww-old"
+	for name, id := range nameToID {
+		if !strings.HasSuffix(name, selfUpdateSuffix) {
+			continue
+		}
+		originalName := strings.TrimSuffix(name, selfUpdateSuffix)
+		if existingNames[originalName] {
+			// New container runs under original name — safe to remove the old one.
+			log.Printf("[recovery] Removing orphaned self-update container %s (new %s is running)", name, originalName)
+			timeout := 10
+			_ = u.docker.cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout})
+			_ = u.docker.cli.ContainerRemove(ctx, id, container.RemoveOptions{})
+		} else {
+			// Original name missing — self-update failed before new container started;
+			// rename old container back so the service is restored.
+			log.Printf("[recovery] Self-update failed: renaming %s → %s to restore service", name, originalName)
+			if err := u.docker.ContainerRename(ctx, id, originalName); err != nil {
+				log.Printf("[recovery] Failed to rename %s → %s: %v", name, originalName, err)
+			} else {
+				// Restart in case it was stopped as part of the failed update.
+				if err := u.docker.cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+					log.Printf("[recovery] Failed to restart restored container %s: %v", originalName, err)
+				} else {
+					log.Printf("[recovery] Successfully restored %s from self-update orphan", originalName)
+				}
+				existingNames[originalName] = true
+			}
 		}
 	}
 
