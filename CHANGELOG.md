@@ -1,3 +1,10 @@
+## v0.3.3
+
+Released: 2026-04-26
+
+### Bug Fixes
+- fix(agent): harden self-update with health check, cleanup, and orphan recovery (9af087a)
+
 ## v0.3.2
 
 Released: 2026-04-25
