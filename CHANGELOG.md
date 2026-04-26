@@ -1,3 +1,10 @@
+## v0.3.4
+
+Released: 2026-04-26
+
+### Bug Fixes
+- fix(agent): handle self-update in UPDATE_SEQUENTIAL handler (397d413)
+
 ## v0.3.3
 
 Released: 2026-04-26
