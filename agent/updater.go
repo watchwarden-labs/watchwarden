@@ -249,7 +249,7 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 	u.mu.RUnlock()
 
 	// Build set of all existing container names (running + stopped) and a map
-	// from name to container ID for rename operations.
+	// from name to container ID/state for rename operations.
 	existing, err := u.docker.cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		log.Printf("[recovery] Failed to list containers: %v", err)
@@ -257,11 +257,16 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 	}
 	existingNames := make(map[string]bool, len(existing))
 	nameToID := make(map[string]string, len(existing))
+	runningNames := make(map[string]bool, len(existing)) // only containers in "running" state
 	for _, c := range existing {
+		isRunning := c.State == "running"
 		for _, n := range c.Names {
 			clean := strings.TrimPrefix(n, "/")
 			existingNames[clean] = true
 			nameToID[clean] = c.ID
+			if isRunning {
+				runningNames[clean] = true
+			}
 		}
 	}
 
@@ -275,10 +280,13 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 		}
 		originalName := strings.TrimSuffix(name, blueGreenSuffix)
 		if existingNames[originalName] {
-			// Both exist — clean up the -ww-new orphan (old container survived)
+			// Both exist — clean up the -ww-new orphan (the old container survived).
+			// Only stop it if it's actually running to avoid sending stop to an already-stopped container.
 			log.Printf("[recovery] Removing orphaned blue-green container %s (original %s still exists)", name, originalName)
-			timeout := 10
-			_ = u.docker.cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout})
+			if runningNames[name] {
+				timeout := 10
+				_ = u.docker.cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout})
+			}
 			_ = u.docker.cli.ContainerRemove(ctx, id, container.RemoveOptions{})
 			continue
 		}
@@ -294,35 +302,58 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 
 	// First pass (part 2) — detect and resolve orphaned self-update containers (-ww-old suffix).
 	// These are left behind when a self-update fails after renaming the original container
-	// but before force-removing it. The new container now runs under the original name.
+	// but before force-removing it. Two sub-cases based on which container is actually running:
+	//
+	// Case A (success path, force-remove failed): new container is running under originalName,
+	// -ww-old is stopped/exited — just remove the orphan.
+	//
+	// Case B (failure path, pre-fix code): -ww-old is still running (old agent survived),
+	// originalName exists but is in "created" state (ContainerStart failed, never removed).
+	// Remove the bad "created" original, rename -ww-old back to restore the original name.
 	const selfUpdateSuffix = "-ww-old"
 	for name, id := range nameToID {
 		if !strings.HasSuffix(name, selfUpdateSuffix) {
 			continue
 		}
 		originalName := strings.TrimSuffix(name, selfUpdateSuffix)
-		if existingNames[originalName] {
-			// New container runs under original name — safe to remove the old one.
+		orphanRunning := runningNames[name]
+		originalRunning := runningNames[originalName]
+
+		if !orphanRunning && originalRunning {
+			// Case A: update succeeded, new container runs under original name, -ww-old is leftover.
 			log.Printf("[recovery] Removing orphaned self-update container %s (new %s is running)", name, originalName)
 			timeout := 10
 			_ = u.docker.cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout})
 			_ = u.docker.cli.ContainerRemove(ctx, id, container.RemoveOptions{})
-		} else {
-			// Original name missing — self-update failed before new container started;
-			// rename old container back so the service is restored.
+		} else if orphanRunning && !originalRunning {
+			// Case B: -ww-old is the real container (self-update failed, old code left a
+			// created-but-never-started container under originalName). Remove the bad original
+			// and restore the proper name.
+			if existingNames[originalName] {
+				log.Printf("[recovery] Removing bad orphan %s (created but never started)", originalName)
+				_ = u.docker.cli.ContainerRemove(ctx, nameToID[originalName], container.RemoveOptions{Force: true})
+			}
 			log.Printf("[recovery] Self-update failed: renaming %s → %s to restore service", name, originalName)
 			if err := u.docker.ContainerRename(ctx, id, originalName); err != nil {
 				log.Printf("[recovery] Failed to rename %s → %s: %v", name, originalName, err)
 			} else {
-				// Restart in case it was stopped as part of the failed update.
-				if err := u.docker.cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
-					log.Printf("[recovery] Failed to restart restored container %s: %v", originalName, err)
-				} else {
-					log.Printf("[recovery] Successfully restored %s from self-update orphan", originalName)
-				}
+				log.Printf("[recovery] Successfully restored %s from self-update orphan", originalName)
 				existingNames[originalName] = true
 			}
+		} else if !orphanRunning && !originalRunning {
+			// Both stopped — the originalName container (if any) is the intended one;
+			// remove the -ww-old orphan and let Docker's restart policy handle the rest.
+			if existingNames[originalName] {
+				log.Printf("[recovery] Both stopped: removing orphan %s, keeping %s", name, originalName)
+			} else {
+				log.Printf("[recovery] Self-update failed: renaming stopped %s → %s", name, originalName)
+			}
+			_ = u.docker.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true})
+			if !existingNames[originalName] {
+				existingNames[originalName] = true // renamed, second pass can skip
+			}
 		}
+		// Both running: port conflict would prevent this in practice; log and leave both alone.
 	}
 
 	// Second pass — standard snapshot-based recovery for missing containers.
