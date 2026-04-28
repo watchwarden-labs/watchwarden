@@ -1,3 +1,12 @@
+## v0.3.5
+
+Released: 2026-04-28
+
+### Bug Fixes
+- fix(controller): throw on missing migrations dir instead of silent skip (f3525c5)
+- fix(compose): pin PGDATA to prevent postgres data loss on restart (d369ef0)
+- fix(agent): use container state in RecoverOrphans to avoid killing running containers (3188544)
+
 ## v0.3.4
 
 Released: 2026-04-26
