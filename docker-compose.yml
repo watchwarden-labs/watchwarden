@@ -10,6 +10,7 @@ services:
       POSTGRES_DB: watchwarden
       POSTGRES_USER: watchwarden
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-watchwarden}"
+      PGDATA: /var/lib/postgresql/data
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

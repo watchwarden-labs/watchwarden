@@ -29,8 +29,9 @@ export async function runMigrations(): Promise<void> {
         .filter((f) => f.endsWith('.sql'))
         .sort();
     } catch {
-      log.warn('migrate', '[migrate] No migrations directory found, skipping');
-      return;
+      throw new Error(
+        `[migrate] No migrations directory found. Checked:\n  ${migrationsDir}\n  ${join(process.cwd(), 'src', 'db', 'migrations')}`,
+      );
     }
     for (const file of files) {
       await applyMigration(altDir, file);
