@@ -1,3 +1,10 @@
+## v0.3.6
+
+Released: 2026-04-29
+
+### Bug Fixes
+- fix(agent): clear auto-generated hostname on container recreation (ef60be1)
+
 ## v0.3.5
 
 Released: 2026-04-28
