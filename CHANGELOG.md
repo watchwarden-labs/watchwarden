@@ -1,3 +1,10 @@
+## v0.3.7
+
+Released: 2026-04-30
+
+### Bug Fixes
+- fix(agent): use cgroup to detect self-container ID instead of HOSTNAME (fead493)
+
 ## v0.3.6
 
 Released: 2026-04-29
