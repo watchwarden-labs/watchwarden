@@ -32,13 +32,15 @@ export function formatTelegramMessage(event: NotificationEvent, options?: Format
       vars.agentName = event.agents[0]?.agentName ?? '';
       vars.count = String(names.length);
     } else if (event.type === 'update_success') {
-      vars.agentName = event.agentName;
-      vars.containers = event.containers.map((c) => c.name).join(', ');
-      vars.count = String(event.containers.length);
+      const names = event.agents.flatMap((a) => a.containers.map((c) => c.name));
+      vars.agentName = event.agents[0]?.agentName ?? '';
+      vars.containers = names.join(', ');
+      vars.count = String(names.length);
     } else if (event.type === 'update_failed') {
-      vars.agentName = event.agentName;
-      vars.containers = event.containers.map((c) => c.name).join(', ');
-      vars.count = String(event.containers.length);
+      const names = event.agents.flatMap((a) => a.containers.map((c) => c.name));
+      vars.agentName = event.agents[0]?.agentName ?? '';
+      vars.containers = names.join(', ');
+      vars.count = String(names.length);
     }
     return interpolateTemplate(options.template, vars);
   }
@@ -48,43 +50,63 @@ export function formatTelegramMessage(event: NotificationEvent, options?: Format
   switch (event.type) {
     case 'update_available': {
       if (event.agents.length === 1) {
+        // biome-ignore lint/style/noNonNullAssertion: guarded by length === 1
+        const agent = event.agents[0]!;
+        const items = agent.containers
+          .map((c) => appendLink(`• ${formatContainerName(c.name, c.image)}`, c.image, linkTpl))
+          .join('\n');
+        return `🔔 Updates Available — ${agent.agentName}\n\n${items}`;
+      }
+      const totalContainers = event.agents.reduce((sum, a) => sum + a.containers.length, 0);
+      const sections = event.agents
+        .map((agent) => {
+          const items = agent.containers
+            .map((c) => appendLink(`  • ${formatContainerName(c.name, c.image)}`, c.image, linkTpl))
+            .join('\n');
+          return `📍 ${agent.agentName}\n${items}`;
+        })
+        .join('\n\n');
+      return `🔔 Updates Available — ${event.agents.length} agents, ${totalContainers} containers\n\n${sections}`;
+    }
+    case 'update_success': {
+      if (event.agents.length === 1) {
+        // biome-ignore lint/style/noNonNullAssertion: guarded by length === 1
         const agent = event.agents[0]!;
         const items = agent.containers
           .map((c) =>
-            appendLink(`\u2022 ${formatContainerName(c.name, c.image)}`, c.image, linkTpl),
+            appendLink(`• ${c.name} — ${Math.round(c.durationMs / 1000)}s`, c.image, linkTpl),
           )
           .join('\n');
-        return `\uD83D\uDD14 Updates Available \u2014 ${agent.agentName}\n\n${items}`;
+        return `✅ Update Complete — ${agent.agentName}\n\n${items}`;
       }
-      // Multiple agents
       const totalContainers = event.agents.reduce((sum, a) => sum + a.containers.length, 0);
       const sections = event.agents
         .map((agent) => {
           const items = agent.containers
             .map((c) =>
-              appendLink(`  \u2022 ${formatContainerName(c.name, c.image)}`, c.image, linkTpl),
+              appendLink(`  • ${c.name} — ${Math.round(c.durationMs / 1000)}s`, c.image, linkTpl),
             )
             .join('\n');
-          return `\uD83D\uDCCD ${agent.agentName}\n${items}`;
+          return `📍 ${agent.agentName}\n${items}`;
         })
         .join('\n\n');
-      return `\uD83D\uDD14 Updates Available \u2014 ${event.agents.length} agents, ${totalContainers} containers\n\n${sections}`;
-    }
-    case 'update_success': {
-      const items = event.containers
-        .map((c) =>
-          appendLink(
-            `\u2022 ${c.name} \u2014 ${Math.round(c.durationMs / 1000)}s`,
-            c.image,
-            linkTpl,
-          ),
-        )
-        .join('\n');
-      return `\u2705 Update Complete \u2014 ${event.agentName}\n\n${items}`;
+      return `✅ Update Complete — ${event.agents.length} agents, ${totalContainers} containers\n\n${sections}`;
     }
     case 'update_failed': {
-      const items = event.containers.map((c) => `\u2022 ${c.name} \u2014 ${c.error}`).join('\n');
-      return `\u274C Update Failed \u2014 ${event.agentName}\n\n${items}`;
+      if (event.agents.length === 1) {
+        // biome-ignore lint/style/noNonNullAssertion: guarded by length === 1
+        const agent = event.agents[0]!;
+        const items = agent.containers.map((c) => `• ${c.name} — ${c.error}`).join('\n');
+        return `❌ Update Failed — ${agent.agentName}\n\n${items}`;
+      }
+      const totalContainers = event.agents.reduce((sum, a) => sum + a.containers.length, 0);
+      const sections = event.agents
+        .map((agent) => {
+          const items = agent.containers.map((c) => `  • ${c.name} — ${c.error}`).join('\n');
+          return `📍 ${agent.agentName}\n${items}`;
+        })
+        .join('\n\n');
+      return `❌ Update Failed — ${event.agents.length} agents, ${totalContainers} containers\n\n${sections}`;
     }
   }
 }

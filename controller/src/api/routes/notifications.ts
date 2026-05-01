@@ -127,10 +127,14 @@ const notificationRoutes: FastifyPluginAsync = async (fastify) => {
           },
           {
             type: 'update_success',
-            agentName: 'test-agent',
-            containers: [
-              { name: 'nginx', image: 'nginx:latest', durationMs: 12000 },
-              { name: 'redis', image: 'redis:alpine', durationMs: 8000 },
+            agents: [
+              {
+                agentName: 'test-agent',
+                containers: [
+                  { name: 'nginx', image: 'nginx:latest', durationMs: 12000 },
+                  { name: 'redis', image: 'redis:alpine', durationMs: 8000 },
+                ],
+              },
             ],
           },
         );

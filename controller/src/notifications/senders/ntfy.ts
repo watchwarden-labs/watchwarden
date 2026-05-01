@@ -50,12 +50,24 @@ export async function sendNtfy(
 
 function formatTitle(event: NotificationEvent): string {
   switch (event.type) {
-    case 'update_available':
-      return `Updates Available — ${event.agents?.[0]?.agentName ?? 'WatchWarden'}`;
-    case 'update_success':
-      return `Update Succeeded — ${event.agentName ?? 'WatchWarden'}`;
-    case 'update_failed':
-      return `Update Failed — ${event.agentName ?? 'WatchWarden'}`;
+    case 'update_available': {
+      if (event.agents.length === 1) {
+        return `Updates Available — ${event.agents[0]?.agentName ?? 'WatchWarden'}`;
+      }
+      return `Updates Available — ${event.agents.length} agents`;
+    }
+    case 'update_success': {
+      if (event.agents.length === 1) {
+        return `Update Complete — ${event.agents[0]?.agentName ?? 'WatchWarden'}`;
+      }
+      return `Update Complete — ${event.agents.length} agents`;
+    }
+    case 'update_failed': {
+      if (event.agents.length === 1) {
+        return `Update Failed — ${event.agents[0]?.agentName ?? 'WatchWarden'}`;
+      }
+      return `Update Failed — ${event.agents.length} agents`;
+    }
     default:
       return 'WatchWarden Notification';
   }
@@ -75,17 +87,25 @@ function formatBody(event: NotificationEvent, linkTemplate: string | null): stri
     return lines.join('\n') || 'Updates available';
   }
   if (event.type === 'update_success') {
-    return event.containers
-      .map((c) => {
-        let line = `\u2713 ${c.name} (${c.durationMs}ms)`;
+    const lines: string[] = [];
+    for (const agent of event.agents) {
+      for (const c of agent.containers) {
+        let line = `✓ ${c.name} (${Math.round(c.durationMs / 1000)}s)`;
         const link = linkTemplate ? renderImageLink(c.image, linkTemplate) : '';
         if (link) line += `\n  ${link}`;
-        return line;
-      })
-      .join('\n');
+        lines.push(line);
+      }
+    }
+    return lines.join('\n');
   }
   if (event.type === 'update_failed') {
-    return event.containers.map((c) => `\u2717 ${c.name}: ${c.error}`).join('\n');
+    const lines: string[] = [];
+    for (const agent of event.agents) {
+      for (const c of agent.containers) {
+        lines.push(`✗ ${c.name}: ${c.error}`);
+      }
+    }
+    return lines.join('\n');
   }
   return '';
 }

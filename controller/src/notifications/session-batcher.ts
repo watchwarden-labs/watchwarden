@@ -10,123 +10,102 @@ interface UpdateResultItem {
   durationMs: number;
 }
 
-// Batch update results per agent — accumulate for a short window, then dispatch
-// a single notification with all containers from the same update operation.
-interface ResultBatch {
-  agentId: string;
-  successes: Array<{ name: string; image: string; durationMs: number }>;
-  failures: Array<{ name: string; error: string }>;
-  expectedCount: number; // 0 = unknown, flush on timer; >0 = flush when count reached
+// Cross-agent update result batch — accumulate results from all agents within
+// a sliding window, then dispatch a single consolidated notification.
+interface UpdateBatch {
+  agents: Map<
+    string,
+    {
+      successes: Array<{ name: string; image: string; durationMs: number }>;
+      failures: Array<{ name: string; error: string }>;
+    }
+  >;
   timer: ReturnType<typeof setTimeout>;
   maxTimer: ReturnType<typeof setTimeout>;
-  createdAt: number;
 }
 
-const resultBatches = new Map<string, ResultBatch>();
-// Fallback timers in case expectedCount is not set or results are lost
-const RESULT_BATCH_WINDOW_MS = 15_000; // wait 15s after last result
-const RESULT_BATCH_MAX_WAIT_MS = 5 * 60_000; // max 5 minutes
+let pendingUpdateBatch: UpdateBatch | null = null;
+const UPDATE_BATCH_WINDOW_MS = 30_000; // wait 30s after last result
+const UPDATE_BATCH_MAX_WAIT_MS = 5 * 60_000; // max 5 minutes
 
-function flushResultBatch(agentId: string): void {
-  const batch = resultBatches.get(agentId);
-  if (!batch) return;
-  clearTimeout(batch.timer);
-  clearTimeout(batch.maxTimer);
-  resultBatches.delete(agentId);
+function flushUpdateBatch(): void {
+  if (!pendingUpdateBatch) return;
+  clearTimeout(pendingUpdateBatch.timer);
+  clearTimeout(pendingUpdateBatch.maxTimer);
 
-  if (batch.successes.length > 0) {
+  const batch = pendingUpdateBatch;
+  pendingUpdateBatch = null;
+
+  const succAgents: Array<{
+    agentName: string;
+    containers: Array<{ name: string; image: string; durationMs: number }>;
+  }> = [];
+  const failAgents: Array<{
+    agentName: string;
+    containers: Array<{ name: string; error: string }>;
+  }> = [];
+
+  for (const [agentName, data] of batch.agents) {
+    if (data.successes.length > 0) {
+      succAgents.push({ agentName, containers: data.successes });
+    }
+    if (data.failures.length > 0) {
+      failAgents.push({ agentName, containers: data.failures });
+    }
+  }
+
+  if (succAgents.length > 0) {
     notifier
-      .dispatch({
-        type: 'update_success',
-        agentName: batch.agentId,
-        containers: batch.successes,
-      })
+      .dispatch({ type: 'update_success', agents: succAgents })
       .catch((err) => log.error('notify', `dispatch failed: ${err}`));
   }
-
-  if (batch.failures.length > 0) {
+  if (failAgents.length > 0) {
     notifier
-      .dispatch({
-        type: 'update_failed',
-        agentName: batch.agentId,
-        containers: batch.failures,
-      })
+      .dispatch({ type: 'update_failed', agents: failAgents })
       .catch((err) => log.error('notify', `dispatch failed: ${err}`));
   }
-}
-
-/**
- * Tell the batcher how many update results to expect for an agent.
- * When all results arrive, the batch flushes immediately — no timer wait.
- * Call this BEFORE the UPDATE command is sent to the agent.
- */
-export function expectUpdateResults(agentId: string, count: number): void {
-  let batch = resultBatches.get(agentId);
-  if (!batch) {
-    const maxTimer = setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_MAX_WAIT_MS);
-    maxTimer.unref?.();
-    batch = {
-      agentId,
-      successes: [],
-      failures: [],
-      expectedCount: count,
-      timer: setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_WINDOW_MS),
-      maxTimer,
-      createdAt: Date.now(),
-    };
-    batch.timer.unref?.();
-    resultBatches.set(agentId, batch);
-  } else {
-    batch.expectedCount = count;
-  }
-  log.info('notify', `expecting ${count} update result(s) for agent ${agentId}`);
 }
 
 export function addUpdateResult(agentId: string, result: UpdateResultItem): void {
-  let batch = resultBatches.get(agentId);
-  if (!batch) {
-    const maxTimer = setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_MAX_WAIT_MS);
+  if (!pendingUpdateBatch) {
+    const maxTimer = setTimeout(() => flushUpdateBatch(), UPDATE_BATCH_MAX_WAIT_MS);
     maxTimer.unref?.();
-    batch = {
-      agentId,
-      successes: [],
-      failures: [],
-      expectedCount: 0,
-      timer: setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_WINDOW_MS),
+    pendingUpdateBatch = {
+      agents: new Map(),
+      timer: setTimeout(() => flushUpdateBatch(), UPDATE_BATCH_WINDOW_MS),
       maxTimer,
-      createdAt: Date.now(),
     };
-    batch.timer.unref?.();
-    resultBatches.set(agentId, batch);
+    pendingUpdateBatch.timer.unref?.();
   } else {
     // Sliding window: reset the timer on each new result
-    clearTimeout(batch.timer);
-    batch.timer = setTimeout(() => flushResultBatch(agentId), RESULT_BATCH_WINDOW_MS);
-    batch.timer.unref?.();
+    clearTimeout(pendingUpdateBatch.timer);
+    pendingUpdateBatch.timer = setTimeout(() => flushUpdateBatch(), UPDATE_BATCH_WINDOW_MS);
+    pendingUpdateBatch.timer.unref?.();
   }
 
+  if (!pendingUpdateBatch.agents.has(agentId)) {
+    pendingUpdateBatch.agents.set(agentId, { successes: [], failures: [] });
+  }
+  // biome-ignore lint/style/noNonNullAssertion: key was just set above
+  const agentData = pendingUpdateBatch.agents.get(agentId)!;
+
   if (result.success) {
-    batch.successes.push({
+    agentData.successes.push({
       name: result.containerName,
       image: result.image ?? '',
       durationMs: result.durationMs,
     });
   } else {
-    batch.failures.push({
+    agentData.failures.push({
       name: result.containerName,
       error: result.error ?? 'unknown',
     });
   }
 
-  // If we know how many results to expect and all have arrived, flush immediately
-  const totalReceived = batch.successes.length + batch.failures.length;
-  if (batch.expectedCount > 0 && totalReceived >= batch.expectedCount) {
-    log.info(
-      'notify',
-      `all ${totalReceived}/${batch.expectedCount} update results received for ${agentId} — flushing`,
-    );
-    flushResultBatch(agentId);
-  }
+  log.info(
+    'notify',
+    `update result for ${agentId}: ${result.success ? 'success' : 'failed'} — ${result.containerName}`,
+  );
 }
 
 // Deduplicate: track which container updates we already notified about
@@ -156,21 +135,23 @@ function pruneNotified(): void {
 // Periodic pruning of stale dedup entries (runs every 10 minutes)
 setInterval(pruneNotified, 10 * 60 * 1000).unref();
 
-/** Flush pending batch and clear timer (call during shutdown). */
+/** Flush pending batches and clear timers (call during shutdown). */
 export function clearPendingTimers(): void {
   if (pendingCheckBatch) {
     clearTimeout(pendingCheckBatch.timer);
     flushCheckBatch(); // flush before discarding
   }
-  // Flush any pending update result batches
-  for (const [agentId] of resultBatches) {
-    flushResultBatch(agentId);
+  if (pendingUpdateBatch) {
+    clearTimeout(pendingUpdateBatch.timer);
+    clearTimeout(pendingUpdateBatch.maxTimer);
+    flushUpdateBatch();
   }
 }
 
 // Batch check results across agents — accumulate before dispatching a single notification.
 // When expectedAgents is set (multi-agent check), wait for all agents OR timeout.
-// Otherwise use a default window so isolated single-agent checks still batch reasonably.
+// Otherwise use a 90s sliding window so agents with close-but-not-identical schedules
+// still batch into a single notification.
 interface CheckBatch {
   agents: Array<{
     agentName: string;
@@ -182,8 +163,11 @@ interface CheckBatch {
 }
 
 let pendingCheckBatch: CheckBatch | null = null;
-const CHECK_BATCH_WINDOW_MS = 5_000; // default window for single-agent checks
-const CHECK_BATCH_MAX_WAIT_MS = 30_000; // max wait when expecting multiple agents
+// 90s sliding window: agents checking within 90s of each other batch into one notification.
+// This covers agents on the same schedule with per-agent jitter or slightly offset cron
+// expressions (e.g. "0 7 * * *" vs "1 7 * * *").
+const CHECK_BATCH_WINDOW_MS = 90_000;
+const CHECK_BATCH_MAX_WAIT_MS = 30_000; // max wait when expecting multiple agents via expectCheckResults
 
 function flushCheckBatch(): void {
   if (!pendingCheckBatch || pendingCheckBatch.agents.length === 0) {
@@ -273,6 +257,10 @@ export function dispatchCheckResults(
       expectedAgentCount: 0,
       timer: setTimeout(flushCheckBatch, CHECK_BATCH_WINDOW_MS),
     };
+  } else if (pendingCheckBatch.expectedAgentCount === 0) {
+    // Sliding window for unknown-count batches: reset timer on each new agent
+    clearTimeout(pendingCheckBatch.timer);
+    pendingCheckBatch.timer = setTimeout(flushCheckBatch, CHECK_BATCH_WINDOW_MS);
   }
 
   if (agentId) {

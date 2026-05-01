@@ -29,8 +29,12 @@ import { sendWebhook } from '../senders/webhook.js';
 
 const testEvent: NotificationEvent = {
   type: 'update_success',
-  agentName: 'test-agent',
-  containers: [{ name: 'nginx', image: 'nginx:latest', durationMs: 500 }],
+  agents: [
+    {
+      agentName: 'test-agent',
+      containers: [{ name: 'nginx', image: 'nginx:latest', durationMs: 500 }],
+    },
+  ],
 };
 
 describe('webhook SSRF protection (SEC-02)', () => {
