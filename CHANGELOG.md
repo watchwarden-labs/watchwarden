@@ -1,3 +1,11 @@
+## v0.3.9
+
+Released: 2026-05-01
+
+### Bug Fixes
+- fix(agent): use registry manifest inspect instead of image pull during check (9aadd87)
+- fix(notify): consolidate per-agent notifications into single batched messages (5471f13)
+
 ## v0.3.8
 
 Released: 2026-05-01
