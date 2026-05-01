@@ -69,8 +69,9 @@ services:
     build: ./agent
     container_name: watchwarden-agent-local
     restart: unless-stopped
-    ports:
-      - "9090:8080"
+    # Agent port not exposed — the agent communicates outbound to the controller
+    # via WebSocket and needs no inbound port. Exposing it would block self-update
+    # (the running container holds the host port, preventing the new container from starting).
     volumes:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       - agent_snapshots:/var/lib/watchwarden/snapshots
