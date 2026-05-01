@@ -463,6 +463,31 @@ func (d *DockerClient) PullImage(ctx context.Context, ref string) (string, error
 	return digest, nil
 }
 
+// GetRemoteDigest queries the registry for the current manifest digest without
+// downloading any image layers. This is used during CHECK to compare digests
+// cheaply — PullImage is reserved for the actual UPDATE path.
+func (d *DockerClient) GetRemoteDigest(ctx context.Context, ref string) (string, error) {
+	var encodedAuth string
+	if d.credStore != nil {
+		if cred := d.credStore.GetForImage(ref); cred != nil {
+			authConfig := registry.AuthConfig{
+				Username:      cred.Username,
+				Password:      cred.Password,
+				ServerAddress: cred.Registry,
+			}
+			encoded, err := json.Marshal(authConfig)
+			if err == nil {
+				encodedAuth = base64.URLEncoding.EncodeToString(encoded)
+			}
+		}
+	}
+	info, err := d.cli.DistributionInspect(ctx, ref, encodedAuth)
+	if err != nil {
+		return "", fmt.Errorf("registry inspect %s: %w", ref, err)
+	}
+	return string(info.Descriptor.Digest), nil
+}
+
 // isSpecialNetworkMode returns true for network modes that are managed by HostConfig
 // and should not have a separate networkingConfig passed to ContainerCreate.
 func isSpecialNetworkMode(mode string) bool {

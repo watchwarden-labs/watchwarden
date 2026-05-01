@@ -14,6 +14,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/registry"
+	opencontainersdigest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,6 +34,8 @@ type mockDockerAPI struct {
 	createErr     error
 	startErr      error
 	imageInspect  image.InspectResponse
+	remoteDigest    string // returned by DistributionInspect; defaults to "sha256:newdigest123"
+	remoteDigestErr error  // error returned by DistributionInspect
 	// Extended mock fields for audit findings
 	networkConnectErr  error                                                                              // Finding 2.1
 	containerRenameErr error                                                                              // Blue-green tests
@@ -154,6 +158,22 @@ func (m *mockDockerAPI) ContainerLogs(_ context.Context, _ string, _ container.L
 	return io.NopCloser(strings.NewReader("mock logs")), nil
 }
 
+func (m *mockDockerAPI) DistributionInspect(_ context.Context, ref, _ string) (registry.DistributionInspect, error) {
+	m.recordCall("DistributionInspect:" + ref)
+	if m.remoteDigestErr != nil {
+		return registry.DistributionInspect{}, m.remoteDigestErr
+	}
+	digest := m.remoteDigest
+	if digest == "" {
+		digest = "sha256:newdigest123"
+	}
+	return registry.DistributionInspect{
+		Descriptor: ocispec.Descriptor{
+			Digest: opencontainersdigest.Digest(digest),
+		},
+	}, nil
+}
+
 func newTestSetup() (*mockDockerAPI, *Updater) {
 	mock := &mockDockerAPI{
 		inspectResult: container.InspectResponse{
@@ -187,43 +207,41 @@ func newTestSetup() (*mockDockerAPI, *Updater) {
 
 func TestCheckForUpdates_NoUpdate(t *testing.T) {
 	mock, updater := newTestSetup()
-	// Pull returns same digest as current
-	mock.imageInspect = image.InspectResponse{
-		RepoDigests: []string{"nginx@sha256:currentdigest"},
-	}
+	// Remote digest matches the current digest — no update
+	mock.remoteDigest = "sha256:currentdigest"
 
 	results, err := updater.CheckForUpdates(context.Background(), []string{"test-container-123"})
 	require.NoError(t, err)
-	// The pull output returns sha256:newdigest123, which differs from currentdigest
-	// So this will show as having an update
-	assert.Len(t, results, 1)
+	require.Len(t, results, 1)
+	assert.False(t, results[0].HasUpdate)
+
+	// Verify DistributionInspect was called, NOT ImagePull
+	calls := mock.getCalls()
+	assert.True(t, func() bool {
+		for _, c := range calls {
+			if strings.HasPrefix(c, "DistributionInspect:") {
+				return true
+			}
+		}
+		return false
+	}(), "expected DistributionInspect call, got: %v", calls)
+	assert.NotContains(t, strings.Join(calls, ","), "ImagePull")
 }
 
 func TestCheckForUpdates_WithUpdate(t *testing.T) {
 	mock, updater := newTestSetup()
-	// InspectContainer calls ImageInspectWithRaw with the old image ID ("sha256:oldimage")
-	// PullImage calls ImageInspectWithRaw with the image ref ("nginx:latest")
-	// Return different RepoDigests depending on which is being inspected
-	callCount := 0
-	mock.imageInspectFn = func(imageID string) (image.InspectResponse, error) {
-		callCount++
-		if callCount <= 2 {
-			// First calls: InspectContainer snapshot — current digest
-			return image.InspectResponse{
-				RepoDigests: []string{"nginx@sha256:currentdigest"},
-			}, nil
-		}
-		// After pull: new digest
-		return image.InspectResponse{
-			RepoDigests: []string{"nginx@sha256:newdigest123"},
-		}, nil
-	}
+	// Remote returns a new digest — different from the current "currentdigest"
+	mock.remoteDigest = "sha256:newdigest123"
 
 	results, err := updater.CheckForUpdates(context.Background(), []string{"test-container-123"})
 	require.NoError(t, err)
-	assert.Len(t, results, 1)
+	require.Len(t, results, 1)
 	assert.True(t, results[0].HasUpdate)
-	assert.Contains(t, results[0].LatestDigest, "sha256:newdigest123")
+	assert.Equal(t, "sha256:newdigest123", results[0].LatestDigest)
+
+	// Verify no ImagePull during check
+	calls := mock.getCalls()
+	assert.NotContains(t, strings.Join(calls, ","), "ImagePull")
 }
 
 func TestUpdateContainer_Success(t *testing.T) {
@@ -1066,74 +1084,6 @@ func TestUpdateContainer_AutoRemoveContainer(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Success, "update should succeed despite 409 on remove")
 	assert.Equal(t, "new-container-id", result.ContainerID)
-}
-
-// --- M1: Config-only image change detection ---
-
-func TestCheckForUpdates_ConfigOnlyChange(t *testing.T) {
-	// Use a custom mock that returns the same digest in pull stream as the current digest,
-	// but different image IDs when inspected.
-	configOnlyMock := &configOnlyPullMock{
-		mockDockerAPI: mockDockerAPI{
-			inspectResult: container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{
-					ID:    "test-container-123",
-					Name:  "/nginx",
-					Image: "sha256:oldimage",
-					HostConfig: &container.HostConfig{
-						RestartPolicy: container.RestartPolicy{Name: "always"},
-					},
-				},
-				Config: &container.Config{
-					Image:  "nginx:latest",
-					Labels: map[string]string{},
-				},
-				NetworkSettings: &container.NetworkSettings{
-					Networks: map[string]*network.EndpointSettings{
-						"bridge": {NetworkID: "bridge-id"},
-					},
-				},
-			},
-		},
-	}
-	// imageInspectFn returns different IDs but same digest.
-	// InspectContainer calls ImageInspectWithRaw("sha256:oldimage") → current image.
-	// CheckForUpdates calls ImageInspectWithRaw("nginx@sha256:samedigest") for current
-	// and ImageInspectWithRaw("nginx:latest") for target.
-	configOnlyMock.imageInspectFn = func(imageID string) (image.InspectResponse, error) {
-		if imageID == "sha256:oldimage" || imageID == "nginx@sha256:samedigest" {
-			return image.InspectResponse{
-				ID:          "sha256:oldimageID",
-				RepoDigests: []string{"nginx@sha256:samedigest"},
-			}, nil
-		}
-		// target image (looked up by ref "nginx:latest")
-		return image.InspectResponse{
-			ID:          "sha256:newimageID",
-			RepoDigests: []string{"nginx@sha256:samedigest"},
-			Config:      &container.Config{Entrypoint: []string{"/new-entrypoint"}},
-		}, nil
-	}
-
-	dc := NewDockerClientWithAPI(configOnlyMock)
-	updater := NewUpdater(dc)
-
-	results, err := updater.CheckForUpdates(context.Background(), []string{"test-container-123"})
-	require.NoError(t, err)
-	require.Len(t, results, 1)
-	assert.True(t, results[0].HasUpdate, "should detect config-only change as an update")
-}
-
-// configOnlyPullMock returns a pull stream with the same digest as the current image
-type configOnlyPullMock struct {
-	mockDockerAPI
-}
-
-func (m *configOnlyPullMock) ImagePull(ctx context.Context, ref string, opts image.PullOptions) (io.ReadCloser, error) {
-	m.recordCall("ImagePull:" + ref)
-	// Return same digest as the current image
-	body := `{"status":"Digest: sha256:samedigest"}` + "\n"
-	return io.NopCloser(strings.NewReader(body)), nil
 }
 
 // --- M2: Blue-green health timeout respects start_period ---
