@@ -38,6 +38,9 @@ type Updater struct {
 	// When non-empty, self-updates are deferred to run last and the agent
 	// expects to be killed mid-operation (Docker restart policy brings it back).
 	selfContainerID string
+	// selfUpdateMu prevents concurrent self-update calls (e.g. two rapid UPDATE
+	// messages from the controller) that would both try to rename the same container.
+	selfUpdateMu sync.Mutex
 }
 
 // NewUpdater creates an Updater with the given Docker client.
@@ -78,6 +81,11 @@ func (u *Updater) IsSelfContainer(containerID string) bool {
 // The process does not survive step 4. The new container is already running
 // before we die, so there is no downtime gap.
 func (u *Updater) SelfUpdate(ctx context.Context, containerID string) (*UpdateResult, error) {
+	// Prevent two concurrent self-updates (e.g. rapid UPDATE messages) from
+	// both renaming the same container and leaving an unrecoverable orphan.
+	u.selfUpdateMu.Lock()
+	defer u.selfUpdateMu.Unlock()
+
 	start := time.Now()
 
 	resolvedID, err := u.docker.ResolveContainerID(ctx, containerID)
@@ -138,6 +146,10 @@ func (u *Updater) SelfUpdate(ctx context.Context, containerID string) (*UpdateRe
 	u.emitProgress(containerID, canonicalName, "starting", "")
 	newID, err := u.docker.RecreateContainerNamed(ctx, snapshot, imageRef, canonicalName)
 	if err != nil {
+		log.Printf("[self-update] failed to start new %s: %v — rolling back", canonicalName, err)
+		if strings.Contains(err.Error(), "port is already allocated") || strings.Contains(err.Error(), "address already in use") {
+			log.Printf("[self-update] hint: agent has exposed ports that are still held by the running container; remove port bindings from the agent service to enable self-update")
+		}
 		// Rollback: restore our own name so we keep running.
 		if renameErr := u.docker.ContainerRename(ctx, containerID, canonicalName); renameErr != nil {
 			log.Printf("[self-update] rollback rename failed: %v — container running as %s", renameErr, tempName)

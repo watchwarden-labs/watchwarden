@@ -143,6 +143,10 @@ describe('Scheduler', () => {
   });
 
   it('L2: does NOT run catch-up when check_on_startup is unset', async () => {
+    // Use a non-firing schedule so the regular cron doesn't send a CHECK during
+    // the 1500ms wait and produce a false positive (the test only cares about
+    // whether the catch-up path fires, not the normal scheduled path).
+    await setConfig('global_schedule', '0 4 * * *');
     // Set scheduler_last_run to 48h ago — stale enough for catch-up
     await setConfig('scheduler_last_run', String(Date.now() - 48 * 60 * 60 * 1000));
 
