@@ -553,13 +553,12 @@ func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([
 		}
 		entry.mu.Unlock() // SCALE-03: release before pull; registry read needs no container lock
 
-		// Tag pattern: query registry for matching tags instead of pulling.
+		// Tag pattern: query registry for matching tags (no image download needed).
 		// If tag_pattern is set and a registryClient is available, compare the
 		// current tag against the latest matching tag from the registry.
 		tagPatternUsed := false
 		var hasUpdate bool
 		var newDigest string
-		var diff *ImageDiff
 
 		if u.registryClient != nil {
 			if info, inspErr := u.docker.cli.ContainerInspect(ctx, id); inspErr == nil && info.Config != nil {
@@ -601,21 +600,21 @@ func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([
 		}
 
 		if !tagPatternUsed {
-			// Resolve the pull reference to a floating tag so the check actually
-			// queries the registry for newer images.
-			pullRef := resolveCheckRef(ctx, u.docker, snapshot)
-			if pullRef != snapshot.ImageRef {
-				log.Printf("[check] %s: resolved %s to %s", snapshot.Name, snapshot.ImageRef, pullRef)
+			// Resolve the reference to a floating tag (e.g. :0.16.0 → :latest after rollback)
+			// then query the registry manifest digest — no image layers are downloaded.
+			checkRef := resolveCheckRef(ctx, u.docker, snapshot)
+			if checkRef != snapshot.ImageRef {
+				log.Printf("[check] %s: resolved %s to %s", snapshot.Name, snapshot.ImageRef, checkRef)
 			}
-			var pullErr error
-			newDigest, pullErr = u.docker.PullImage(ctx, pullRef)
-			if pullErr != nil {
-				log.Printf("[check] %s: pull failed for %s: %v", snapshot.Name, snapshot.ImageRef, pullErr)
+			var checkErr error
+			newDigest, checkErr = u.docker.GetRemoteDigest(ctx, checkRef)
+			if checkErr != nil {
+				log.Printf("[check] %s: registry inspect failed for %s: %v", snapshot.Name, checkRef, checkErr)
 				results = append(results, CheckResult{
 					ContainerID:   id,
 					ContainerName: snapshot.Name,
 					CurrentDigest: snapshot.ImageDigest,
-					CheckError:    fmt.Sprintf("pull failed: %v", pullErr),
+					CheckError:    fmt.Sprintf("registry inspect failed: %v", checkErr),
 				})
 				continue
 			}
@@ -623,27 +622,6 @@ func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([
 			hasUpdate = newDigest != "" && !digestsMatch(snapshot.ImageDigest, newDigest)
 			log.Printf("[check] %s: current=%s latest=%s hasUpdate=%v",
 				snapshot.Name, extractDigest(snapshot.ImageDigest), extractDigest(newDigest), hasUpdate)
-
-			if hasUpdate {
-				currentImg, _, err1 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageDigest)
-				targetImg, _, err2 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageRef)
-				if err1 == nil && err2 == nil {
-					d := DiffImages(currentImg, targetImg)
-					diff = &d
-				}
-			} else if newDigest != "" {
-				// BUG-12 FIX: digest matches but image config may have changed (same layers,
-				// different entrypoint/env/labels). If image IDs differ, treat as an update
-				// so config-only changes are not silently ignored.
-				currentImg, _, err1 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageDigest)
-				targetImg, _, err2 := u.docker.cli.ImageInspectWithRaw(ctx, snapshot.ImageRef)
-				if err1 == nil && err2 == nil && currentImg.ID != targetImg.ID {
-					log.Printf("[check] %s: digest unchanged but image ID differs (config-only change) — marking as update", snapshot.Name)
-					hasUpdate = true
-					d := DiffImages(currentImg, targetImg)
-					diff = &d
-				}
-			}
 		}
 
 		results = append(results, CheckResult{
@@ -652,7 +630,6 @@ func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([
 			CurrentDigest: snapshot.ImageDigest,
 			LatestDigest:  newDigest,
 			HasUpdate:     hasUpdate,
-			Diff:          diff,
 		})
 	}
 

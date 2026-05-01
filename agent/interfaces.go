@@ -7,6 +7,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/registry"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -25,6 +26,7 @@ type DockerAPI interface {
 	NetworkConnect(ctx context.Context, networkID, containerID string, config *network.EndpointSettings) error
 	ContainerRename(ctx context.Context, containerID, newName string) error
 	ContainerLogs(ctx context.Context, containerID string, options container.LogsOptions) (io.ReadCloser, error)
+	DistributionInspect(ctx context.Context, imageRef, encodedRegistryAuth string) (registry.DistributionInspect, error)
 }
 
 // ContainerInfo represents basic container information reported to the controller.
