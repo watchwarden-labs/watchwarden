@@ -1,3 +1,13 @@
+## v0.3.8
+
+Released: 2026-05-01
+
+### Bug Fixes
+- fix(agent): prevent concurrent self-updates and clarify port-conflict error (68e4b9f)
+
+### Other Changes
+- test(scheduler): fix flaky L2 catch-up test at minute boundary (bf50394)
+
 ## v0.3.7
 
 Released: 2026-04-30
