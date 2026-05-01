@@ -87,9 +87,12 @@ export async function sendWebhook(
     } else if (event.type === 'update_success') {
       payload = {
         ...event,
-        containers: event.containers.map((c) => ({
-          ...c,
-          link: renderImageLink(c.image, linkTpl),
+        agents: event.agents.map((a) => ({
+          ...a,
+          containers: a.containers.map((c) => ({
+            ...c,
+            link: renderImageLink(c.image, linkTpl),
+          })),
         })),
       };
     } else {

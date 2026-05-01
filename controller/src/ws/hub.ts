@@ -606,11 +606,15 @@ export class AgentHub {
                   const { notifier } = await import('../notifications/notifier.js');
                   await notifier.dispatch({
                     type: 'update_failed',
-                    agentName,
-                    containers: containerNames.map((name) => ({
-                      name,
-                      error: `Auto-rolled back: ${reason}`,
-                    })),
+                    agents: [
+                      {
+                        agentName,
+                        containers: containerNames.map((name) => ({
+                          name,
+                          error: `Auto-rolled back: ${reason}`,
+                        })),
+                      },
+                    ],
                   });
                 } catch (err) {
                   log.error('hub', `Failed to dispatch auto-rollback notification: ${err}`);

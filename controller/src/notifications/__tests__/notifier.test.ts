@@ -63,8 +63,12 @@ describe('notifier (Finding 6.2)', () => {
 
     const event: NotificationEvent = {
       type: 'update_success',
-      agentName: 'agent-1',
-      containers: [{ name: 'nginx', image: 'nginx:latest', durationMs: 100 }],
+      agents: [
+        {
+          agentName: 'agent-1',
+          containers: [{ name: 'nginx', image: 'nginx:latest', durationMs: 100 }],
+        },
+      ],
     };
 
     // Re-import notifier to get fresh instance with mocked senders

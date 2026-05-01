@@ -2,6 +2,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { sendNtfy } from '../senders/ntfy.js';
 import type { NotificationEvent } from '../types.js';
 
+const successEvent: NotificationEvent = {
+  type: 'update_success',
+  agents: [
+    { agentName: 'prod', containers: [{ name: 'app', image: 'app:latest', durationMs: 5000 }] },
+  ],
+};
+
 describe('ntfy sender', () => {
   const originalFetch = globalThis.fetch;
 
@@ -45,14 +52,7 @@ describe('ntfy sender', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true });
     globalThis.fetch = mockFetch;
 
-    await sendNtfy(
-      { server: 'https://ntfy.example.com', topic: 'alerts' },
-      {
-        type: 'update_success',
-        agentName: 'prod',
-        containers: [{ name: 'app', image: 'app:latest', durationMs: 5000 }],
-      },
-    );
+    await sendNtfy({ server: 'https://ntfy.example.com', topic: 'alerts' }, successEvent);
 
     expect((mockFetch.mock.calls[0] as [string])[0]).toBe('https://ntfy.example.com/alerts');
   });
@@ -61,14 +61,7 @@ describe('ntfy sender', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true });
     globalThis.fetch = mockFetch;
 
-    await sendNtfy(
-      { topic: 'test', priority: 'high' },
-      {
-        type: 'update_success',
-        agentName: 'local',
-        containers: [{ name: 'app', image: 'app:latest', durationMs: 100 }],
-      },
-    );
+    await sendNtfy({ topic: 'test', priority: 'high' }, successEvent);
 
     const opts = mockFetch.mock.calls[0]?.[1] as {
       headers: Record<string, string>;
@@ -80,14 +73,7 @@ describe('ntfy sender', () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true });
     globalThis.fetch = mockFetch;
 
-    await sendNtfy(
-      { topic: 'test', token: 'tk_secret' },
-      {
-        type: 'update_success',
-        agentName: 'local',
-        containers: [{ name: 'app', image: 'app:latest', durationMs: 100 }],
-      },
-    );
+    await sendNtfy({ topic: 'test', token: 'tk_secret' }, successEvent);
 
     const opts = mockFetch.mock.calls[0]?.[1] as {
       headers: Record<string, string>;
@@ -98,15 +84,6 @@ describe('ntfy sender', () => {
   it('throws on non-ok response', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 429 });
 
-    await expect(
-      sendNtfy(
-        { topic: 'test' },
-        {
-          type: 'update_success',
-          agentName: 'local',
-          containers: [{ name: 'app', image: 'app:latest', durationMs: 100 }],
-        },
-      ),
-    ).rejects.toThrow('429');
+    await expect(sendNtfy({ topic: 'test' }, successEvent)).rejects.toThrow('429');
   });
 });
