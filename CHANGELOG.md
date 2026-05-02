@@ -1,3 +1,10 @@
+## v0.3.11
+
+Released: 2026-05-02
+
+### Bug Fixes
+- fix(ui): show update progress and tooltip in dashboard agents grid (84d0c66)
+
 ## v0.3.10
 
 Released: 2026-05-02

@@ -1,6 +1,6 @@
 {
   "name": "watchwarden-controller",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
