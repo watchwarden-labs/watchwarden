@@ -545,20 +545,36 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		_ = dockerClient.cli.ContainerStop(ctx, resolvedID, container.StopOptions{Timeout: &timeout})
 		// If the container shares another container's network namespace, ensure that
 		// network container is running before attempting to start this one.
+		// Docker Compose bakes the network container's ID into HostConfig.NetworkMode at
+		// creation time; if that container was recreated the ID is stale and ContainerStart
+		// will fail with "No such container: <stale-id>".  Detect that case early and
+		// return a clear error instead of a confusing daemon message.
+		var netStartErr error
 		if info, err := dockerClient.cli.ContainerInspect(ctx, resolvedID); err == nil && info.HostConfig != nil {
 			nm := string(info.HostConfig.NetworkMode)
 			if strings.HasPrefix(nm, "container:") {
 				netContainerRef := strings.TrimPrefix(nm, "container:")
-				if netInfo, err := dockerClient.cli.ContainerInspect(ctx, netContainerRef); err == nil {
-					if netInfo.State == nil || !netInfo.State.Running {
-						log.Printf("[container] Starting network container %s before %s", netContainerRef, cmd.ContainerID)
-						_ = dockerClient.cli.ContainerStart(ctx, netContainerRef, container.StartOptions{})
-						waitForContainerRunningOrHealthy(ctx, dockerClient.cli, netContainerRef, 60)
-					}
+				netInfo, netInspectErr := dockerClient.cli.ContainerInspect(ctx, netContainerRef)
+				if netInspectErr != nil {
+					// Stale reference — the network container was recreated; we cannot start
+					// without also recreating this container (docker compose up required).
+					netStartErr = fmt.Errorf(
+						"network container %s no longer exists (was recreated); redeploy with docker compose up",
+						netContainerRef,
+					)
+				} else if netInfo.State == nil || !netInfo.State.Running {
+					log.Printf("[container] Starting network container %s before %s", netContainerRef, cmd.ContainerID)
+					_ = dockerClient.cli.ContainerStart(ctx, netContainerRef, container.StartOptions{})
+					waitForContainerRunningOrHealthy(ctx, dockerClient.cli, netContainerRef, 60)
 				}
 			}
 		}
-		err := dockerClient.cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+		var err error
+		if netStartErr != nil {
+			err = netStartErr
+		} else {
+			err = dockerClient.cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+		}
 		success := err == nil
 		errStr := ""
 		if err != nil {
