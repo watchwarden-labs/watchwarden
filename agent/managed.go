@@ -547,31 +547,36 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		// network container is running before attempting to start this one.
 		// Docker Compose bakes the network container's ID into HostConfig.NetworkMode at
 		// creation time; if that container was recreated the ID is stale and ContainerStart
-		// will fail with "No such container: <stale-id>".  Detect that case early and
-		// return a clear error instead of a confusing daemon message.
-		var netStartErr error
-		if info, err := dockerClient.cli.ContainerInspect(ctx, resolvedID); err == nil && info.HostConfig != nil {
+		// will fail with "No such container: <stale-id>". In that case we find the current
+		// network provider via compose labels and recreate the container pointing to it.
+		var err error
+		if info, inspectErr := dockerClient.cli.ContainerInspect(ctx, resolvedID); inspectErr == nil && info.HostConfig != nil {
 			nm := string(info.HostConfig.NetworkMode)
 			if strings.HasPrefix(nm, "container:") {
 				netContainerRef := strings.TrimPrefix(nm, "container:")
 				netInfo, netInspectErr := dockerClient.cli.ContainerInspect(ctx, netContainerRef)
 				if netInspectErr != nil {
-					// Stale reference — the network container was recreated; we cannot start
-					// without also recreating this container (docker compose up required).
-					netStartErr = fmt.Errorf(
-						"network container %s no longer exists (was recreated); redeploy with docker compose up",
-						netContainerRef,
-					)
-				} else if netInfo.State == nil || !netInfo.State.Running {
-					log.Printf("[container] Starting network container %s before %s", netContainerRef, cmd.ContainerID)
-					_ = dockerClient.cli.ContainerStart(ctx, netContainerRef, container.StartOptions{})
-					waitForContainerRunningOrHealthy(ctx, dockerClient.cli, netContainerRef, 60)
+					// Stale reference — find the replacement container via compose labels and
+					// recreate so the new container points at the current network provider.
+					log.Printf("[container] Network container %s is stale; searching for replacement", netContainerRef)
+					newNetID, findErr := findNetworkProviderByLabels(ctx, dockerClient.cli, info.Config.Labels)
+					if findErr != nil {
+						err = fmt.Errorf("stale network container %s, could not find replacement: %w", netContainerRef, findErr)
+					} else {
+						log.Printf("[container] Recreating %s with network container %s", cmd.ContainerID, newNetID)
+						err = recreateWithNetworkContainer(ctx, dockerClient.cli, resolvedID, info, newNetID)
+					}
+				} else {
+					if netInfo.State == nil || !netInfo.State.Running {
+						log.Printf("[container] Starting network container %s before %s", netContainerRef, cmd.ContainerID)
+						_ = dockerClient.cli.ContainerStart(ctx, netContainerRef, container.StartOptions{})
+						waitForContainerRunningOrHealthy(ctx, dockerClient.cli, netContainerRef, 60)
+					}
+					err = dockerClient.cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
 				}
+			} else {
+				err = dockerClient.cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
 			}
-		}
-		var err error
-		if netStartErr != nil {
-			err = netStartErr
 		} else {
 			err = dockerClient.cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
 		}

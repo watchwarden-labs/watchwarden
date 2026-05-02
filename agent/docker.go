@@ -715,6 +715,72 @@ func (d *DockerClient) GetContainerLogs(ctx context.Context, containerID string,
 	return buf.String(), nil
 }
 
+// findNetworkProviderByLabels locates the currently running container that
+// provides the network namespace for a container in the same Docker Compose
+// project. It parses the com.docker.compose.depends_on label (format:
+// "svc:condition:required,...") to get candidate service names, then finds a
+// running container in the same project with one of those service names.
+func findNetworkProviderByLabels(ctx context.Context, cli DockerAPI, labels map[string]string) (string, error) {
+	project := labels["com.docker.compose.project"]
+	if project == "" {
+		return "", fmt.Errorf("container has no com.docker.compose.project label")
+	}
+	dependsOnRaw := labels["com.docker.compose.depends_on"]
+	if dependsOnRaw == "" {
+		return "", fmt.Errorf("container has no com.docker.compose.depends_on label")
+	}
+	// Parse "svc1:condition:required,svc2:condition:required" → ["svc1", "svc2"]
+	var depServices []string
+	for _, part := range strings.Split(dependsOnRaw, ",") {
+		svc := strings.SplitN(strings.TrimSpace(part), ":", 2)[0]
+		if svc != "" {
+			depServices = append(depServices, svc)
+		}
+	}
+	if len(depServices) == 0 {
+		return "", fmt.Errorf("could not parse service names from depends_on label: %q", dependsOnRaw)
+	}
+	running, err := cli.ContainerList(ctx, container.ListOptions{})
+	if err != nil {
+		return "", fmt.Errorf("list containers: %w", err)
+	}
+	for _, c := range running {
+		if c.Labels["com.docker.compose.project"] != project {
+			continue
+		}
+		svc := c.Labels["com.docker.compose.service"]
+		for _, dep := range depServices {
+			if svc == dep {
+				return c.ID, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no running container found for services %v in project %q", depServices, project)
+}
+
+// recreateWithNetworkContainer removes a stopped container and recreates it
+// with an updated NetworkMode pointing to newNetContainerID, then starts it.
+// This is required when the original network provider (e.g. gluetun) was
+// recreated and the baked-in container ID in HostConfig.NetworkMode is stale.
+func recreateWithNetworkContainer(
+	ctx context.Context,
+	cli DockerAPI,
+	oldID string,
+	info container.InspectResponse,
+	newNetContainerID string,
+) error {
+	name := strings.TrimPrefix(info.Name, "/")
+	info.HostConfig.NetworkMode = container.NetworkMode("container:" + newNetContainerID)
+	if err := cli.ContainerRemove(ctx, oldID, container.RemoveOptions{Force: true}); err != nil {
+		return fmt.Errorf("remove old container: %w", err)
+	}
+	resp, err := cli.ContainerCreate(ctx, info.Config, info.HostConfig, &network.NetworkingConfig{}, nil, name)
+	if err != nil {
+		return fmt.Errorf("create container: %w", err)
+	}
+	return cli.ContainerStart(ctx, resp.ID, container.StartOptions{})
+}
+
 // waitForContainerRunningOrHealthy polls until the container is running (and
 // healthy if it has a healthcheck), or until the timeout elapses. Returns true
 // if the container is ready within the deadline.
