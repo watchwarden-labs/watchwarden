@@ -1,3 +1,10 @@
+## v0.3.12
+
+Released: 2026-05-02
+
+### Bug Fixes
+- fix(agent): detect self-container via hostname fallback in UpdateContainer (bfd0ef8)
+
 ## v0.3.11
 
 Released: 2026-05-02
