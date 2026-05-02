@@ -1,3 +1,27 @@
+## v0.3.13
+
+Released: 2026-05-02
+
+### Features
+- feat(agent): restart unhealthy containers with dependency ordering (8bdf5be)
+
+### Bug Fixes
+- fix(agent): pull image before recreating container if not available locally (d2032e0)
+- fix(agent): clear hostname/domainname when recreating container-network container (c082b94)
+- fix(controller): disable Ryuk reaper in vitest — containers use withReuse() (340441f)
+- fix(controller): use withReuse() for test postgres container to prevent orphans (1b663b8)
+- fix(ui): clear container action spinner via CONTAINER_ACTION_RESULT event (2a9725a)
+- fix(agent): recreate container when network provider was recreated (8b9a162)
+- fix(agent): detect stale network container ref in CONTAINER_RESTART (0d6a63d)
+- fix(agent): start network-mode dependency container before restart (9fca08e)
+- fix(ui): treat restarting containers as unhealthy (9637074)
+
+### Other Changes
+- docs(website): update test count to 462+ (3935224)
+- docs: update test count to 462 (236 controller, 154 agent, 72 UI) (6512719)
+- test: add coverage for container restart, network-aware start, and spinner fix (1bd089a)
+- refactor(agent): extract startContainerWithNetworkAwareness helper (a56e9db)
+
 ## v0.3.12
 
 Released: 2026-05-02
