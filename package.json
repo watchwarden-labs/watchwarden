@@ -19,6 +19,7 @@
     "docker:d": "npm run docker:build && npm run docker:up",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "docker:clean": "docker compose down --rmi local"
   }
 }

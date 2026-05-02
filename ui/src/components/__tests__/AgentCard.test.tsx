@@ -124,4 +124,43 @@ describe('AgentCard', () => {
     fireEvent.click(screen.getByText('Update All'));
     expect(onUpdate).toHaveBeenCalledOnce();
   });
+
+  it('shows unhealthy badge for restarting containers', () => {
+    const [c0] = mockAgent.containers ?? [];
+    const agentWithRestarting = {
+      ...mockAgent,
+      containers: [
+        {
+          ...c0,
+          status: 'restarting',
+          health_status: 'none',
+        },
+      ],
+    };
+    render(<AgentCard agent={agentWithRestarting} />);
+    expect(screen.getByText('1 unhealthy')).toBeInTheDocument();
+  });
+
+  it('counts both unhealthy and restarting in unhealthy badge', () => {
+    const [c0, c1] = mockAgent.containers ?? [];
+    const agentWithMixed = {
+      ...mockAgent,
+      containers: [
+        {
+          ...c0,
+          has_update: 0,
+          status: 'running',
+          health_status: 'unhealthy',
+        },
+        {
+          ...c1,
+          has_update: 0,
+          status: 'restarting',
+          health_status: 'none',
+        },
+      ],
+    };
+    render(<AgentCard agent={agentWithMixed} />);
+    expect(screen.getByText('2 unhealthy')).toBeInTheDocument();
+  });
 });
