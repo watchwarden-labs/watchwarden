@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 # Getting Started
 
 :::info Project Status
-WatchWarden is in **early-adopter / beta** stage. The core features are implemented, tested (380+ automated tests), and security-reviewed — but the project has not yet seen extensive large-scale production use in diverse environments. Please test in your own staging environment before relying on it for critical workloads. See [Design Decisions](/docs/design-decisions#how-this-project-was-built) for background on development approach.
+WatchWarden is in **early-adopter / beta** stage. The core features are implemented, tested (462+ automated tests), and security-reviewed — but the project has not yet seen extensive large-scale production use in diverse environments. Please test in your own staging environment before relying on it for critical workloads. See [Design Decisions](/docs/design-decisions#how-this-project-was-built) for background on development approach.
 :::
 
 WatchWarden runs in two modes. Pick the one that fits your setup.

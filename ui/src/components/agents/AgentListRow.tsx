@@ -20,6 +20,9 @@ interface AgentListRowProps {
 export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: AgentListRowProps) {
   const containerCount = agent.containers?.length ?? 0;
   const updateCount = agent.containers?.filter((c) => c.has_update)?.length ?? 0;
+  const unhealthyCount =
+    agent.containers?.filter((c) => c.health_status === 'unhealthy' || c.status === 'restarting')
+      ?.length ?? 0;
 
   const allProgress = useStore((s) => s.updateProgress);
   const agentProgress = Object.entries(allProgress).filter(([key]) =>
@@ -70,6 +73,11 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
       <TableCell className="hidden sm:table-cell">
         <div className="flex items-center gap-2">
           <span>{containerCount}</span>
+          {unhealthyCount > 0 && (
+            <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[10px]">
+              {unhealthyCount} unhealthy
+            </Badge>
+          )}
           {updateCount > 0 && (
             <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px]">
               {updateCount} update{updateCount !== 1 ? 's' : ''}

@@ -15,7 +15,7 @@
 
 WatchWarden is currently in an **early-adopter / beta** stage.
 
-- The core architecture and features were initially developed with significant assistance from AI tools, then iterated on through manual review, refactoring, security audits, and automated tests (380+ tests across controller, agent, and UI).
+- The core architecture and features were initially developed with significant assistance from AI tools, then iterated on through manual review, refactoring, security audits, and automated tests (462+ tests across controller, agent, and UI).
 - Security features (API token authentication, scoped access, rate limiting, timing-safe comparisons) were designed with modern best practices and have passed focused security reviews.
 - The project is actively used by the maintainer across multiple Docker hosts, but **has not yet seen extensive large-scale production use** in diverse environments. Some edge cases in complex setups (unusual network modes, non-standard registries, large container counts) may still surface.
 

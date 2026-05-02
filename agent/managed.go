@@ -445,7 +445,10 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			resolvedID = r
 		}
 		log.Printf("[container] Starting %s", cmd.ContainerID)
-		err := dockerClient.cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+		err := startContainerWithNetworkAwareness(ctx, dockerClient.cli, resolvedID, cmd.ContainerID, func(ctx context.Context, ref string) error {
+			_, err := dockerClient.PullImage(ctx, ref)
+			return err
+		})
 		success := err == nil
 		errStr := ""
 		if err != nil {
@@ -524,6 +527,121 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		if containers, err := dockerClient.ListContainers(ctx); err == nil {
 			wsClient.Send(Message{Type: "HEARTBEAT", Payload: map[string]interface{}{"containers": containers}})
 		}
+	})
+
+	wsClient.OnMessage("CONTAINER_RESTART", func(payload json.RawMessage) {
+		var cmd struct {
+			ContainerID string `json:"containerId"`
+		}
+		if err := json.Unmarshal(payload, &cmd); err != nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		resolvedID := cmd.ContainerID
+		if r, err := dockerClient.ResolveContainerID(ctx, cmd.ContainerID); err == nil {
+			resolvedID = r
+		}
+		log.Printf("[container] Restarting %s", cmd.ContainerID)
+		timeout := 10
+		_ = dockerClient.cli.ContainerStop(ctx, resolvedID, container.StopOptions{Timeout: &timeout})
+		err := startContainerWithNetworkAwareness(ctx, dockerClient.cli, resolvedID, cmd.ContainerID, func(ctx context.Context, ref string) error {
+			_, err := dockerClient.PullImage(ctx, ref)
+			return err
+		})
+		success := err == nil
+		errStr := ""
+		if err != nil {
+			errStr = err.Error()
+			log.Printf("[container] Restart %s failed: %v", cmd.ContainerID, err)
+		} else {
+			log.Printf("[container] Restarted %s", cmd.ContainerID)
+		}
+		wsClient.Send(Message{Type: "CONTAINER_ACTION_RESULT", Payload: map[string]interface{}{
+			"action": "restart", "containerId": cmd.ContainerID, "success": success, "error": errStr,
+		}})
+		if containers, err := dockerClient.ListContainers(ctx); err == nil {
+			wsClient.Send(Message{Type: "HEARTBEAT", Payload: map[string]interface{}{"containers": containers}})
+		}
+	})
+
+	// RESTART_UNHEALTHY restarts a set of containers in dependency order:
+	// all containers are stopped in reverse-priority order first, then started
+	// in forward-priority order with optional health waits between batches.
+	// Batches are computed by the controller (topological sort by priority/depends_on).
+	wsClient.OnMessage("RESTART_UNHEALTHY", func(payload json.RawMessage) {
+		var cmd struct {
+			Batches []struct {
+				ContainerIDs   []string `json:"containerIds"`
+				WaitForHealthy bool     `json:"waitForHealthy"`
+				HealthTimeout  int      `json:"healthTimeout"`
+			} `json:"batches"`
+		}
+		if err := json.Unmarshal(payload, &cmd); err != nil {
+			log.Printf("[handler] RESTART_UNHEALTHY: invalid payload: %v", err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+
+		// Resolve all IDs up front to avoid repeated lookups.
+		type idPair struct{ original, resolved string }
+		batchResolved := make([][]idPair, len(cmd.Batches))
+		for i, batch := range cmd.Batches {
+			for _, id := range batch.ContainerIDs {
+				resolved := id
+				if r, err := dockerClient.ResolveContainerID(ctx, id); err == nil {
+					resolved = r
+				}
+				batchResolved[i] = append(batchResolved[i], idPair{id, resolved})
+			}
+		}
+
+		// Phase 1: stop all containers in reverse-batch order (dependents before dependencies).
+		log.Printf("[restart-unhealthy] Stopping %d batches", len(cmd.Batches))
+		stopTimeout := 10
+		for i := len(batchResolved) - 1; i >= 0; i-- {
+			for _, pair := range batchResolved[i] {
+				log.Printf("[restart-unhealthy] Stopping %s", pair.original)
+				if err := dockerClient.cli.ContainerStop(ctx, pair.resolved, container.StopOptions{Timeout: &stopTimeout}); err != nil {
+					log.Printf("[restart-unhealthy] Stop %s failed: %v (continuing)", pair.original, err)
+				}
+			}
+		}
+		// Brief pause so network namespaces are fully released before we start dependencies.
+		time.Sleep(2 * time.Second)
+
+		// Phase 2: start containers in forward-batch order (dependencies before dependents).
+		for i, batch := range cmd.Batches {
+			log.Printf("[restart-unhealthy] Starting batch %d/%d (%d containers)", i+1, len(cmd.Batches), len(batchResolved[i]))
+			for _, pair := range batchResolved[i] {
+				log.Printf("[restart-unhealthy] Starting %s", pair.original)
+				if err := dockerClient.cli.ContainerStart(ctx, pair.resolved, container.StartOptions{}); err != nil {
+					log.Printf("[restart-unhealthy] Start %s failed: %v", pair.original, err)
+				}
+			}
+
+			// Wait for each container in the batch to be healthy before proceeding.
+			if batch.WaitForHealthy && i < len(cmd.Batches)-1 {
+				timeout := batch.HealthTimeout
+				if timeout <= 0 {
+					timeout = 120
+				}
+				log.Printf("[restart-unhealthy] Waiting up to %ds for batch %d to be healthy", timeout, i+1)
+				for _, pair := range batchResolved[i] {
+					if waitForContainerRunningOrHealthy(ctx, dockerClient.cli, pair.resolved, timeout) {
+						log.Printf("[restart-unhealthy] %s is ready", pair.original)
+					} else {
+						log.Printf("[restart-unhealthy] %s did not become healthy in time — proceeding anyway", pair.original)
+					}
+				}
+			}
+		}
+
+		if containers, err := dockerClient.ListContainers(ctx); err == nil {
+			wsClient.Send(Message{Type: "HEARTBEAT", Payload: map[string]interface{}{"containers": containers}})
+		}
+		log.Printf("[restart-unhealthy] Complete")
 	})
 
 	wsClient.OnMessage("CONTAINER_LOGS", func(payload json.RawMessage) {

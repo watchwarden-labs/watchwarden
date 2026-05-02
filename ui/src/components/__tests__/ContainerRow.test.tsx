@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Container } from '@/api/hooks/useAgents';
 import { useStore } from '@/store/useStore';
@@ -249,5 +250,41 @@ describe('ContainerRow', () => {
     );
     expandRow();
     expect(screen.getByRole('button', { name: /Save policy/i })).toBeInTheDocument();
+  });
+
+  // ── Status badges ───────────────────────────────────────────────────────────
+
+  it('shows UNHEALTHY badge for container with status restarting', () => {
+    renderInTable(
+      <ContainerRow agentId="agent-1" container={{ ...baseContainer, status: 'restarting' }} />,
+    );
+    expect(screen.getByText('UNHEALTHY')).toBeInTheDocument();
+  });
+
+  it('lastActionResult clears restart spinner', () => {
+    const container = { ...baseContainer, docker_id: 'd-restart-1' };
+    useStore.setState({ lastActionResult: null });
+    renderInTable(<ContainerRow agentId="agent-1" container={container} />);
+
+    // Click Restart button — pendingAction becomes 'restart', spinner appears
+    fireEvent.click(screen.getByRole('button', { name: 'Restart' }));
+    // The Restart button renders a Loader2 spinner when pendingAction === 'restart'
+    // The button is still present (just with spinner icon), so it should be in the DOM
+    expect(screen.getByRole('button', { name: 'Restart' })).toBeInTheDocument();
+
+    // Now simulate the agent reporting the action is done
+    act(() => {
+      useStore.setState({
+        lastActionResult: { containerId: container.docker_id, action: 'restart', success: true },
+      });
+    });
+
+    // pendingAction should be cleared — spinner gone, button still present but no Loader2
+    expect(screen.getByRole('button', { name: 'Restart' })).toBeInTheDocument();
+    // No Loader2 animate-spin inside the Restart button after clear
+    const restartBtn = screen.getByRole('button', { name: 'Restart' });
+    expect(restartBtn.querySelector('.animate-spin')).toBeNull();
+
+    useStore.setState({ lastActionResult: null });
   });
 });

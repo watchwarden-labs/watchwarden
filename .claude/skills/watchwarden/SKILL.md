@@ -131,7 +131,7 @@ After every code change, run verification before declaring done:
 3. **UI**: `cd ui && npm run lint && npm test`
 4. **Docker** (if deploying): `docker compose build`
 
-Current test counts: ~139 controller, ~154 agent, ~29 UI (322+ total).
+Current test counts: ~236 controller, ~154 agent, ~72 UI (462+ total).
 
 ## Project Structure
 

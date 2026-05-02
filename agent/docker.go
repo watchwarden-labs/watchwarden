@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -712,4 +713,149 @@ func (d *DockerClient) GetContainerLogs(ctx context.Context, containerID string,
 		}
 	}
 	return buf.String(), nil
+}
+
+// startContainerWithNetworkAwareness starts a container, handling the case
+// where its HostConfig.NetworkMode references a stale network container ID.
+// Docker Compose bakes the network provider's container ID at creation time;
+// if that provider was recreated (new ID), ContainerStart fails with
+// "No such container: <stale-id>". This function detects the stale ref,
+// finds the current provider via compose labels, recreates the target
+// container pointing to the new ID, and starts it.
+func startContainerWithNetworkAwareness(
+	ctx context.Context,
+	cli DockerAPI,
+	resolvedID, logID string,
+	pullImage func(ctx context.Context, imageRef string) error,
+) error {
+	info, err := cli.ContainerInspect(ctx, resolvedID)
+	if err != nil || info.HostConfig == nil {
+		return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+	}
+	nm := string(info.HostConfig.NetworkMode)
+	if !strings.HasPrefix(nm, "container:") {
+		return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+	}
+	netContainerRef := strings.TrimPrefix(nm, "container:")
+	netInfo, netInspectErr := cli.ContainerInspect(ctx, netContainerRef)
+	if netInspectErr != nil {
+		// Stale ref — find the replacement network provider via compose labels.
+		log.Printf("[container] Network container %s is stale for %s; searching replacement", netContainerRef, logID)
+		newNetID, findErr := findNetworkProviderByLabels(ctx, cli, info.Config.Labels)
+		if findErr != nil {
+			return fmt.Errorf("stale network container %s, could not find replacement: %w", netContainerRef, findErr)
+		}
+		log.Printf("[container] Recreating %s with network container %s", logID, newNetID)
+		return recreateWithNetworkContainer(ctx, cli, resolvedID, info, newNetID, pullImage)
+	}
+	if netInfo.State == nil || !netInfo.State.Running {
+		log.Printf("[container] Starting network container %s before %s", netContainerRef, logID)
+		_ = cli.ContainerStart(ctx, netContainerRef, container.StartOptions{})
+		waitForContainerRunningOrHealthy(ctx, cli, netContainerRef, 60)
+	}
+	return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+}
+
+// findNetworkProviderByLabels locates the currently running container that
+// provides the network namespace for a container in the same Docker Compose
+// project. It parses the com.docker.compose.depends_on label (format:
+// "svc:condition:required,...") to get candidate service names, then finds a
+// running container in the same project with one of those service names.
+func findNetworkProviderByLabels(ctx context.Context, cli DockerAPI, labels map[string]string) (string, error) {
+	project := labels["com.docker.compose.project"]
+	if project == "" {
+		return "", fmt.Errorf("container has no com.docker.compose.project label")
+	}
+	dependsOnRaw := labels["com.docker.compose.depends_on"]
+	if dependsOnRaw == "" {
+		return "", fmt.Errorf("container has no com.docker.compose.depends_on label")
+	}
+	// Parse "svc1:condition:required,svc2:condition:required" → ["svc1", "svc2"]
+	var depServices []string
+	for _, part := range strings.Split(dependsOnRaw, ",") {
+		svc := strings.SplitN(strings.TrimSpace(part), ":", 2)[0]
+		if svc != "" {
+			depServices = append(depServices, svc)
+		}
+	}
+	if len(depServices) == 0 {
+		return "", fmt.Errorf("could not parse service names from depends_on label: %q", dependsOnRaw)
+	}
+	running, err := cli.ContainerList(ctx, container.ListOptions{})
+	if err != nil {
+		return "", fmt.Errorf("list containers: %w", err)
+	}
+	for _, c := range running {
+		if c.Labels["com.docker.compose.project"] != project {
+			continue
+		}
+		svc := c.Labels["com.docker.compose.service"]
+		for _, dep := range depServices {
+			if svc == dep {
+				return c.ID, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no running container found for services %v in project %q", depServices, project)
+}
+
+// recreateWithNetworkContainer removes a stopped container and recreates it
+// with an updated NetworkMode pointing to newNetContainerID, then starts it.
+// This is required when the original network provider (e.g. gluetun) was
+// recreated and the baked-in container ID in HostConfig.NetworkMode is stale.
+func recreateWithNetworkContainer(
+	ctx context.Context,
+	cli DockerAPI,
+	oldID string,
+	info container.InspectResponse,
+	newNetContainerID string,
+	pullImage func(ctx context.Context, imageRef string) error,
+) error {
+	name := strings.TrimPrefix(info.Name, "/")
+	info.HostConfig.NetworkMode = container.NetworkMode("container:" + newNetContainerID)
+	// Docker rejects container-network mode when a hostname or domainname is set
+	// in the container config ("conflicting options: hostname and the network mode").
+	info.Config.Hostname = ""
+	info.Config.Domainname = ""
+	if err := cli.ContainerRemove(ctx, oldID, container.RemoveOptions{Force: true}); err != nil {
+		return fmt.Errorf("remove old container: %w", err)
+	}
+	resp, err := cli.ContainerCreate(ctx, info.Config, info.HostConfig, &network.NetworkingConfig{}, nil, name)
+	if err != nil && pullImage != nil {
+		// Image may have been pruned locally — pull and retry once.
+		log.Printf("[container] ContainerCreate failed (%v); pulling %s and retrying", err, info.Config.Image)
+		if pullErr := pullImage(ctx, info.Config.Image); pullErr != nil {
+			log.Printf("[container] Pull %s failed: %v", info.Config.Image, pullErr)
+		} else {
+			resp, err = cli.ContainerCreate(ctx, info.Config, info.HostConfig, &network.NetworkingConfig{}, nil, name)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("create container: %w", err)
+	}
+	return cli.ContainerStart(ctx, resp.ID, container.StartOptions{})
+}
+
+// waitForContainerRunningOrHealthy polls until the container is running (and
+// healthy if it has a healthcheck), or until the timeout elapses. Returns true
+// if the container is ready within the deadline.
+func waitForContainerRunningOrHealthy(ctx context.Context, cli DockerAPI, containerID string, timeoutSecs int) bool {
+	deadline := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
+	for time.Now().Before(deadline) {
+		info, err := cli.ContainerInspect(ctx, containerID)
+		if err == nil && info.ContainerJSONBase != nil && info.State != nil && info.State.Running {
+			if info.State.Health == nil {
+				return true // no healthcheck — running is enough
+			}
+			if info.State.Health.Status == "healthy" {
+				return true
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(5 * time.Second):
+		}
+	}
+	return false
 }

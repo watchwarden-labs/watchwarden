@@ -49,6 +49,11 @@ interface WatchWardenState {
   invalidateAgents?: () => void;
   setInvalidateAgents: (fn: () => void) => void;
 
+  // Last CONTAINER_ACTION_RESULT received from the agent — ContainerRow watches
+  // this to clear its pending-action spinner regardless of whether the action
+  // succeeded or failed.
+  lastActionResult: { containerId: string; action: string; success: boolean } | null;
+
   // WS event handler
   handleWSEvent: (event: Record<string, unknown>) => void;
 
@@ -141,6 +146,8 @@ export const useStore = create<WatchWardenState>((set, get) => ({
 
   invalidateAgents: undefined,
   setInvalidateAgents: (fn) => set({ invalidateAgents: fn }),
+
+  lastActionResult: null,
 
   handleWSEvent: (event) => {
     const type = event.type as string;
@@ -247,6 +254,12 @@ export const useStore = create<WatchWardenState>((set, get) => ({
     }
 
     if (type === 'CONTAINER_ACTION_RESULT') {
+      const containerId = event.containerId as string | undefined;
+      const action = event.action as string | undefined;
+      const success = event.success as boolean | undefined;
+      if (containerId && action) {
+        set({ lastActionResult: { containerId, action, success: success ?? false } });
+      }
       // Refresh agent data so the container status updates in the UI
       get().invalidateAgents?.();
       setTimeout(() => get().invalidateAgents?.(), 1500);

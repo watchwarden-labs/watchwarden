@@ -396,6 +396,83 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  fastify.post<{ Params: { id: string; containerId: string } }>(
+    '/api/agents/:id/containers/:containerId/restart',
+    async (request, reply) => {
+      const agent = await getAgent(request.params.id);
+      if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+      if (agent.status !== 'online') return reply.code(409).send({ error: 'Agent is not online' });
+      hub.sendToAgent(request.params.id, {
+        type: 'CONTAINER_RESTART',
+        payload: { containerId: request.params.containerId },
+      });
+      return reply.code(202).send({ message: 'Restart initiated' });
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    '/api/agents/:id/restart-unhealthy',
+    async (request, reply) => {
+      const agent = await getAgent(request.params.id);
+      if (!agent) return reply.code(404).send({ error: 'Agent not found' });
+      if (agent.status !== 'online') return reply.code(409).send({ error: 'Agent is not online' });
+
+      const allContainers = await getContainersByAgent(request.params.id);
+
+      // Collect unhealthy/restarting containers
+      const unhealthyIds = new Set(
+        allContainers
+          .filter((c) => c.health_status === 'unhealthy' || c.status === 'restarting')
+          .map((c) => c.docker_id),
+      );
+
+      if (unhealthyIds.size === 0) {
+        return reply.code(200).send({ message: 'No unhealthy containers' });
+      }
+
+      // Expand: include direct depends_on dependencies of unhealthy containers
+      // so gluetun (which qbittorrent depends on) is also restarted first
+      const nameToId = new Map(allContainers.map((c) => [c.name, c.docker_id]));
+      const expandedIds = new Set(unhealthyIds);
+      for (const c of allContainers) {
+        if (!unhealthyIds.has(c.docker_id)) continue;
+        if (!c.depends_on) continue;
+        try {
+          const deps = JSON.parse(c.depends_on) as string[];
+          for (const depName of deps) {
+            const depId = nameToId.get(depName);
+            if (depId) expandedIds.add(depId);
+          }
+        } catch {
+          // Invalid JSON — ignore
+        }
+      }
+
+      const { resolveUpdateBatches } = await import('../../scheduler/orchestrator.js');
+      const batches = await resolveUpdateBatches(request.params.id, Array.from(expandedIds));
+
+      if (batches.length === 0) {
+        return reply.code(200).send({ message: 'No containers to restart' });
+      }
+
+      hub.sendToAgent(request.params.id, {
+        type: 'RESTART_UNHEALTHY',
+        payload: {
+          batches: batches.map((b) => ({
+            containerIds: b.containerIds,
+            waitForHealthy: b.waitForHealthy,
+            healthTimeout: 120,
+          })),
+        },
+      });
+
+      return reply.code(202).send({
+        message: `Restart initiated for ${expandedIds.size} container(s)`,
+        containerIds: Array.from(expandedIds),
+      });
+    },
+  );
+
   fastify.delete<{ Params: { id: string; containerId: string } }>(
     '/api/agents/:id/containers/:containerId',
     async (request, reply) => {

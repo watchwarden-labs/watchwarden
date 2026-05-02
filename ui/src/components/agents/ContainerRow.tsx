@@ -10,6 +10,7 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  RotateCw,
   ScrollText,
   Square,
   Trash2,
@@ -19,6 +20,7 @@ import {
   type Container,
   useCheckContainer,
   useContainerDelete,
+  useContainerRestart,
   useContainerStart,
   useContainerStop,
   useUpdateContainerOrchestration,
@@ -117,6 +119,7 @@ function statusLabel(status: string, pendingAction: string | null, isChecking: b
   if (pendingAction === 'stop') return 'stopping…';
   if (pendingAction === 'start') return 'starting…';
   if (pendingAction === 'delete') return 'deleting…';
+  if (pendingAction === 'restart') return 'restarting…';
   if (isChecking) return 'checking…';
   return status;
 }
@@ -145,9 +148,9 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
     }
   });
 
-  const [pendingAction, setPendingAction] = useState<'start' | 'stop' | 'delete' | 'check' | null>(
-    null,
-  );
+  const [pendingAction, setPendingAction] = useState<
+    'start' | 'stop' | 'delete' | 'check' | 'restart' | null
+  >(null);
 
   const progressKey = `${agentId}:${container.docker_id}`;
   const progress = useStore((s) => s.updateProgress[progressKey]);
@@ -156,6 +159,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
   const checkContainer = useCheckContainer();
   const startContainer = useContainerStart();
   const stopContainer = useContainerStop();
+  const restartContainer = useContainerRestart();
   const deleteContainer = useContainerDelete();
   const updatePolicy = useUpdateContainerPolicy();
   const updateOrch = useUpdateContainerOrchestration();
@@ -195,6 +199,21 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
     const timer = setTimeout(() => setPendingAction(null), 30000);
     return () => clearTimeout(timer);
   }, [pendingAction]);
+
+  // Clear the spinner when the agent reports the action is done (success or failure).
+  // This handles cases where the container data doesn't change after the action
+  // (e.g. start failed — status stays "exited" — so the status-watching effect above
+  // never fires).
+  const lastActionResult = useStore((s) => s.lastActionResult);
+  useEffect(() => {
+    if (!lastActionResult || !pendingAction) return;
+    const id = container.docker_id;
+    const resultId = lastActionResult.containerId;
+    const idMatches = resultId === id || id.startsWith(resultId) || resultId.startsWith(id);
+    if (idMatches && lastActionResult.action === pendingAction) {
+      setPendingAction(null);
+    }
+  }, [lastActionResult, container.docker_id, pendingAction]);
 
   function handleStart() {
     setPendingAction('start');
@@ -238,6 +257,22 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
           addToast({
             type: 'error',
             message: `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        },
+      },
+    );
+  }
+
+  function handleRestart() {
+    setPendingAction('restart');
+    restartContainer.mutate(
+      { agentId, containerId: container.docker_id },
+      {
+        onError: (err) => {
+          setPendingAction(null);
+          addToast({
+            type: 'error',
+            message: `Restart failed: ${err instanceof Error ? err.message : String(err)}`,
           });
         },
       },
@@ -460,6 +495,18 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
               );
             })()}
 
+            {/* Health status badge */}
+            {(container.health_status === 'unhealthy' || container.status === 'restarting') && (
+              <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[10px] px-1.5 py-0">
+                UNHEALTHY
+              </Badge>
+            )}
+            {container.health_status === 'starting' && (
+              <Badge className="bg-warning/15 text-warning border-warning/30 text-[10px] px-1.5 py-0">
+                STARTING
+              </Badge>
+            )}
+
             {/* Update / diff badges */}
             {hasUpdate && !isExcluded && !isPinned && (
               <Badge className="bg-warning/15 text-warning border-warning/30 text-[10px] px-1.5 py-0">
@@ -615,6 +662,30 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Rollback</TooltipContent>
+                  </Tooltip>
+                )}
+
+                {(isRunning ||
+                  container.health_status === 'unhealthy' ||
+                  container.status === 'restarting') && (
+                  <Tooltip>
+                    <TooltipTrigger render={<span />}>
+                      <Button
+                        aria-label="Restart"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        disabled={isActionPending}
+                        onClick={handleRestart}
+                      >
+                        {pendingAction === 'restart' ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <RotateCw size={15} />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Restart container</TooltipContent>
                   </Tooltip>
                 )}
 

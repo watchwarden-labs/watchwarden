@@ -391,6 +391,147 @@ describe('sendToAgent return value guards', () => {
     expect(res.statusCode).toBe(409);
     expect(JSON.parse(res.body).error).toContain('not online');
   });
+
+  // --- POST /:id/containers/:containerId/restart ---
+
+  it('POST /:id/containers/:containerId/restart returns 404 when agent not found', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/nonexistent-agent/containers/some-container/restart',
+      headers: authHeaders(),
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(JSON.parse(res.body).error).toContain('not found');
+  });
+
+  it('POST /:id/containers/:containerId/restart returns 409 when agent is offline', async () => {
+    await insertAgent({
+      id: 'restart-agent-1',
+      name: 'Restart Agent',
+      hostname: 'srv-restart',
+      token_hash: '$2a$10$hash-restart-agent-1',
+    });
+    await updateAgentStatus('restart-agent-1', 'offline', Date.now());
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/restart-agent-1/containers/some-container/restart',
+      headers: authHeaders(),
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toContain('not online');
+  });
+
+  it('POST /:id/containers/:containerId/restart returns 202 and calls sendToAgent with CONTAINER_RESTART when agent is online', async () => {
+    await updateAgentStatus('restart-agent-1', 'online', Date.now());
+    mockHub.sendToAgent.mockReturnValue(true);
+    mockHub.sendToAgent.mockClear();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/restart-agent-1/containers/docker-id-abc/restart',
+      headers: authHeaders(),
+    });
+
+    expect(res.statusCode).toBe(202);
+    expect(mockHub.sendToAgent).toHaveBeenCalledWith('restart-agent-1', {
+      type: 'CONTAINER_RESTART',
+      payload: { containerId: 'docker-id-abc' },
+    });
+  });
+
+  // --- POST /:id/restart-unhealthy ---
+
+  it('POST /:id/restart-unhealthy returns 404 when agent not found', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/nonexistent-agent/restart-unhealthy',
+      headers: authHeaders(),
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(JSON.parse(res.body).error).toContain('not found');
+  });
+
+  it('POST /:id/restart-unhealthy returns 409 when agent is offline', async () => {
+    await insertAgent({
+      id: 'unhealthy-agent-1',
+      name: 'Unhealthy Agent',
+      hostname: 'srv-unhealthy',
+      token_hash: '$2a$10$hash-unhealthy-agent-1',
+    });
+    await updateAgentStatus('unhealthy-agent-1', 'offline', Date.now());
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/unhealthy-agent-1/restart-unhealthy',
+      headers: authHeaders(),
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toContain('not online');
+  });
+
+  it('POST /:id/restart-unhealthy returns 200 with "No unhealthy containers" when agent has no unhealthy containers', async () => {
+    await updateAgentStatus('unhealthy-agent-1', 'online', Date.now());
+    // Insert a healthy container
+    const containers: ContainerInfo[] = [
+      {
+        id: 'healthy-c-1',
+        docker_id: 'docker-healthy-1',
+        name: 'healthy-nginx',
+        image: 'nginx:latest',
+        current_digest: null,
+        status: 'running',
+        health_status: 'healthy',
+      },
+    ];
+    await upsertContainers('unhealthy-agent-1', containers);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/unhealthy-agent-1/restart-unhealthy',
+      headers: authHeaders(),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).message).toContain('No unhealthy containers');
+  });
+
+  it('POST /:id/restart-unhealthy returns 202 with containerIds when agent has unhealthy containers', async () => {
+    // Replace containers with an unhealthy one
+    const containers: ContainerInfo[] = [
+      {
+        id: 'unhealthy-c-1',
+        docker_id: 'docker-unhealthy-1',
+        name: 'broken-app',
+        image: 'myapp:latest',
+        current_digest: null,
+        status: 'running',
+        health_status: 'unhealthy',
+      },
+    ];
+    await upsertContainers('unhealthy-agent-1', containers);
+    mockHub.sendToAgent.mockReturnValue(true);
+    mockHub.sendToAgent.mockClear();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/unhealthy-agent-1/restart-unhealthy',
+      headers: authHeaders(),
+    });
+
+    expect(res.statusCode).toBe(202);
+    const body = JSON.parse(res.body);
+    expect(Array.isArray(body.containerIds)).toBe(true);
+    expect(body.containerIds).toContain('docker-unhealthy-1');
+    expect(mockHub.sendToAgent).toHaveBeenCalledWith(
+      'unhealthy-agent-1',
+      expect.objectContaining({ type: 'RESTART_UNHEALTHY' }),
+    );
+  });
 });
 
 describe('BUG-05: Manual update rejects when update already in flight', () => {

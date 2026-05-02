@@ -5,7 +5,10 @@ import postgres from 'postgres';
 let container: StartedPostgreSqlContainer;
 
 export async function setup() {
-  container = await new PostgreSqlContainer('postgres:18-alpine').start();
+  // withReuse() reuses an existing container across test runs instead of
+  // spawning a new one each time. This prevents orphaned containers when
+  // the test process is interrupted (Ctrl-C / crash) and Ryuk never fires.
+  container = await new PostgreSqlContainer('postgres:18-alpine').withReuse().start();
   const connectionUri = container.getConnectionUri();
 
   // Run migrations

@@ -60,7 +60,7 @@ A significant portion of WatchWarden's initial implementation was developed with
 The codebase has since been through multiple rounds of:
 
 - **Manual review and refactoring** — restructuring for clarity, consistency, and maintainability.
-- **Automated testing** — 380+ tests across controller (Vitest + testcontainers), agent (Go testing + testify), and UI (Vitest + React Testing Library).
+- **Automated testing** — 462+ tests across controller (Vitest + testcontainers), agent (Go testing + testify), and UI (Vitest + React Testing Library).
 - **Security audits** — dedicated reviews of authentication, token handling, input validation, rate limiting, and error responses. Findings were documented and remediated.
 - **Real-world testing** — the maintainer runs WatchWarden across multiple Docker hosts managing 20+ containers.
 

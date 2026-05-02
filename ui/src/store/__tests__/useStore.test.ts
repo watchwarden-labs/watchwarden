@@ -256,6 +256,49 @@ describe('useStore', () => {
     });
   });
 
+  describe('handleWSEvent CONTAINER_ACTION_RESULT', () => {
+    beforeEach(() => {
+      useStore.setState({ lastActionResult: null });
+    });
+
+    it('sets lastActionResult on success', () => {
+      useStore.getState().handleWSEvent({
+        type: 'CONTAINER_ACTION_RESULT',
+        containerId: 'abc123',
+        action: 'restart',
+        success: true,
+      });
+      expect(useStore.getState().lastActionResult).toEqual({
+        containerId: 'abc123',
+        action: 'restart',
+        success: true,
+      });
+    });
+
+    it('sets lastActionResult with success false', () => {
+      useStore.getState().handleWSEvent({
+        type: 'CONTAINER_ACTION_RESULT',
+        containerId: 'abc123',
+        action: 'restart',
+        success: false,
+      });
+      expect(useStore.getState().lastActionResult).toEqual({
+        containerId: 'abc123',
+        action: 'restart',
+        success: false,
+      });
+    });
+
+    it('does not set lastActionResult when containerId is missing', () => {
+      useStore.getState().handleWSEvent({
+        type: 'CONTAINER_ACTION_RESULT',
+        action: 'restart',
+        success: true,
+      });
+      expect(useStore.getState().lastActionResult).toBeNull();
+    });
+  });
+
   describe('Finding 5.3: UPDATE_COMPLETE selective clearing', () => {
     it('only clears containers listed in results array', () => {
       useStore.getState().setUpdateProgress('a-1:c-1', {

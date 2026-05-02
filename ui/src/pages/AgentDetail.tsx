@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from 'date-fns';
-import { Box, Info, RefreshCw, Scissors, Shield, Trash2 } from 'lucide-react';
+import { Box, Info, RefreshCw, RotateCw, Scissors, Shield, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -7,6 +7,7 @@ import {
   useCheckAgent,
   useDeleteAgent,
   usePruneAgent,
+  useRestartUnhealthy,
   useUpdateAgent,
   useUpdateAgentConfig,
 } from '@/api/hooks/useAgents';
@@ -41,6 +42,7 @@ export function AgentDetail() {
   const { data: agent, isLoading } = useAgent(id ?? '');
   const checkAgent = useCheckAgent();
   const updateAgent = useUpdateAgent();
+  const restartUnhealthy = useRestartUnhealthy();
   const updateConfig = useUpdateAgentConfig();
   const deleteAgent = useDeleteAgent();
   const pruneAgent = usePruneAgent();
@@ -182,6 +184,25 @@ export function AgentDetail() {
                 <RefreshCw size={14} className={isChecking ? 'animate-spin' : ''} />
                 {isChecking ? 'Checking...' : 'Check All'}
               </Button>
+              {(agent.containers?.some((c) => c.health_status === 'unhealthy') ?? false) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                  disabled={restartUnhealthy.isPending}
+                  onClick={() =>
+                    restartUnhealthy.mutate(agent.id, {
+                      onSuccess: () =>
+                        addToast({ type: 'info', message: 'Restarting unhealthy containers...' }),
+                      onError: () =>
+                        addToast({ type: 'error', message: 'Restart unhealthy failed' }),
+                    })
+                  }
+                >
+                  <RotateCw size={14} />
+                  Restart Unhealthy
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={() =>
@@ -209,7 +230,13 @@ export function AgentDetail() {
             <Card className="overflow-hidden">
               {(() => {
                 const filtered = [...agent.containers]
-                  .filter((c) => showStopped || c.status === 'running')
+                  .filter(
+                    (c) =>
+                      showStopped ||
+                      c.status === 'running' ||
+                      c.status === 'restarting' ||
+                      c.health_status === 'unhealthy',
+                  )
                   .sort((a, b) => a.name.localeCompare(b.name));
                 const page = filtered.slice(
                   containerPage * CONTAINER_PAGE_SIZE,
