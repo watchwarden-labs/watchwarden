@@ -481,7 +481,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
             })()}
 
             {/* Health status badge */}
-            {container.health_status === 'unhealthy' && (
+            {(container.health_status === 'unhealthy' || container.status === 'restarting') && (
               <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[10px] px-1.5 py-0">
                 UNHEALTHY
               </Badge>
@@ -650,7 +650,9 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                   </Tooltip>
                 )}
 
-                {(isRunning || container.health_status === 'unhealthy') && (
+                {(isRunning ||
+                  container.health_status === 'unhealthy' ||
+                  container.status === 'restarting') && (
                   <Tooltip>
                     <TooltipTrigger render={<span />}>
                       <Button

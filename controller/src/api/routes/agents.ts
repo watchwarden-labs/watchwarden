@@ -419,9 +419,11 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
 
       const allContainers = await getContainersByAgent(request.params.id);
 
-      // Collect unhealthy containers
+      // Collect unhealthy/restarting containers
       const unhealthyIds = new Set(
-        allContainers.filter((c) => c.health_status === 'unhealthy').map((c) => c.docker_id),
+        allContainers
+          .filter((c) => c.health_status === 'unhealthy' || c.status === 'restarting')
+          .map((c) => c.docker_id),
       );
 
       if (unhealthyIds.size === 0) {

@@ -230,7 +230,13 @@ export function AgentDetail() {
             <Card className="overflow-hidden">
               {(() => {
                 const filtered = [...agent.containers]
-                  .filter((c) => showStopped || c.status === 'running')
+                  .filter(
+                    (c) =>
+                      showStopped ||
+                      c.status === 'running' ||
+                      c.status === 'restarting' ||
+                      c.health_status === 'unhealthy',
+                  )
                   .sort((a, b) => a.name.localeCompare(b.name));
                 const page = filtered.slice(
                   containerPage * CONTAINER_PAGE_SIZE,

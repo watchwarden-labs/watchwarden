@@ -18,7 +18,8 @@ export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps
   const containerCount = agent.containers?.length ?? 0;
   const updateCount = agent.containers?.filter((c) => c.has_update)?.length ?? 0;
   const unhealthyCount =
-    agent.containers?.filter((c) => c.health_status === 'unhealthy')?.length ?? 0;
+    agent.containers?.filter((c) => c.health_status === 'unhealthy' || c.status === 'restarting')
+      ?.length ?? 0;
 
   const allProgress = useStore((s) => s.updateProgress);
   const agentProgress = Object.entries(allProgress).filter(([key]) =>
