@@ -200,6 +200,21 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
     return () => clearTimeout(timer);
   }, [pendingAction]);
 
+  // Clear the spinner when the agent reports the action is done (success or failure).
+  // This handles cases where the container data doesn't change after the action
+  // (e.g. start failed — status stays "exited" — so the status-watching effect above
+  // never fires).
+  const lastActionResult = useStore((s) => s.lastActionResult);
+  useEffect(() => {
+    if (!lastActionResult || !pendingAction) return;
+    const id = container.docker_id;
+    const resultId = lastActionResult.containerId;
+    const idMatches = resultId === id || id.startsWith(resultId) || resultId.startsWith(id);
+    if (idMatches && lastActionResult.action === pendingAction) {
+      setPendingAction(null);
+    }
+  }, [lastActionResult, container.docker_id, pendingAction]);
+
   function handleStart() {
     setPendingAction('start');
     startContainer.mutate(
