@@ -257,6 +257,22 @@ export const useStore = create<WatchWardenState>((set, get) => ({
       get().invalidateAgents?.();
       // Delayed refetch to pick up container data from the post-update heartbeat
       setTimeout(() => get().invalidateAgents?.(), 2000);
+      // Fallback: force-clear any remaining progress for this agent after 5 s.
+      // The controller prevents concurrent updates per agent, so anything left
+      // after the cleanup above is a stale entry (e.g. old agent without
+      // originalContainerId) that the targeted clear couldn't match by ID.
+      setTimeout(() => {
+        const remaining = get().updateProgress;
+        const next: Record<string, UpdateProgress> = {};
+        for (const [key, val] of Object.entries(remaining)) {
+          if (!key.startsWith(`${agentId}:`)) next[key] = val;
+        }
+        set({ updateProgress: next });
+        // Also purge any buffered entries for this agent
+        for (const key of Object.keys(progressBuffer)) {
+          if (key.startsWith(`${agentId}:`)) delete progressBuffer[key];
+        }
+      }, 5000);
     }
 
     if (type === 'CONTAINER_ACTION_RESULT') {
