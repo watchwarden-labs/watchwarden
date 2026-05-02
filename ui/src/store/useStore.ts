@@ -225,12 +225,18 @@ export const useStore = create<WatchWardenState>((set, get) => ({
     if (type === 'UPDATE_COMPLETE' && agentId) {
       const results = event.results as Array<{
         containerId: string;
+        originalContainerId?: string;
         success: boolean;
       }>;
       // FIX-5.3: only clear progress for containers listed in results, not all
       // containers for this agent. This prevents a concurrent update on container B
       // from losing its progress when container A's update completes first.
-      const completedKeys = new Set((results ?? []).map((r) => `${agentId}:${r.containerId}`));
+      // Use originalContainerId when present — UpdateContainer returns the NEW
+      // container's Docker ID in containerId (needed for DB), but progress is
+      // keyed by the original ID throughout the update lifecycle.
+      const completedKeys = new Set(
+        (results ?? []).map((r) => `${agentId}:${r.originalContainerId ?? r.containerId}`),
+      );
       // Also clear any buffered progress for these containers
       for (const key of completedKeys) {
         delete progressBuffer[key];

@@ -85,6 +85,11 @@ type UpdateResult struct {
 	Error         string `json:"error,omitempty"`
 	DurationMs    int64  `json:"durationMs,omitempty"`
 	IsRollback    bool   `json:"isRollback,omitempty"`
+	// OriginalContainerID is the container ID that was passed to the update/rollback
+	// function (the pre-recreation ID). ContainerID holds the new container's ID on
+	// success. The UI keys update-progress by the original ID, so this field lets
+	// it clear the correct entry from the store after update.
+	OriginalContainerID string `json:"originalContainerId,omitempty"`
 }
 
 // DockerVersionInfo holds Docker server version details.
