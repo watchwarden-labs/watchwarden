@@ -51,6 +51,8 @@ func NewUpdater(docker *DockerClient) *Updater {
 	selfID := getSelfContainerID(context.Background(), docker.cli)
 	if selfID != "" {
 		log.Printf("[updater] detected self container ID: %s", selfID[:12])
+	} else {
+		log.Printf("[updater] WARNING: could not detect self container ID — self-update will use SelfUpdate path only if re-detection at update time succeeds; check cgroup/HOSTNAME accessibility")
 	}
 	return &Updater{
 		docker:          docker,

@@ -158,10 +158,28 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 
 		// Separate self-update from other containers — self must run LAST
 		// because the agent process will die during self-update.
+		//
+		// If self-detection failed at startup (selfContainerID empty), retry now.
+		// This handles transient failures (Docker socket not ready at boot) and
+		// environments where cgroup v2 private namespace makes startup detection fail.
+		if updater.selfContainerID == "" {
+			if detected := getSelfContainerID(context.Background(), dockerClient.cli); detected != "" {
+				updater.selfContainerID = detected
+				log.Printf("[handler] late self-detection succeeded: %s", detected[:12])
+			}
+		}
+
 		var normalIDs []string
 		var selfID string
 		for _, id := range cmd.ContainerIDs {
-			if updater.IsSelfContainer(id) {
+			// Resolve stale container IDs — the controller may hold an old Docker ID
+			// from before a previous recreation. IsSelfContainer compares against the
+			// current container ID, so a stale ID would fail the check.
+			resolved := id
+			if r, err := dockerClient.ResolveContainerID(ctx, id); err == nil {
+				resolved = r
+			}
+			if updater.IsSelfContainer(id) || updater.IsSelfContainer(resolved) {
 				selfID = id
 			} else {
 				normalIDs = append(normalIDs, id)
@@ -240,12 +258,26 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 
+		// Retry self-detection if it failed at startup (same logic as UPDATE handler).
+		if updater.selfContainerID == "" {
+			if detected := getSelfContainerID(context.Background(), dockerClient.cli); detected != "" {
+				updater.selfContainerID = detected
+				log.Printf("[handler] late self-detection succeeded: %s", detected[:12])
+			}
+		}
+
 		// Collect the self-container ID if it appears in any batch — it must run
 		// last via SelfUpdate (not UpdateContainer), same as the UPDATE handler.
+		// Resolve stale IDs before comparing so a previously-recreated container
+		// still matches selfContainerID.
 		var selfID string
 		for _, batch := range cmd.Batches {
 			for _, id := range batch.ContainerIDs {
-				if updater.IsSelfContainer(id) {
+				resolved := id
+				if r, err := dockerClient.ResolveContainerID(ctx, id); err == nil {
+					resolved = r
+				}
+				if updater.IsSelfContainer(id) || updater.IsSelfContainer(resolved) {
 					selfID = id
 				}
 			}

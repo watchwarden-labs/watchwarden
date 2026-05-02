@@ -24,30 +24,70 @@ import (
 // getSelfContainerID returns the full Docker container ID of the agent process,
 // or empty string if not running in a container.
 //
-// Primary: parse /proc/self/cgroup — reliable across standalone Docker and
-// Docker Compose. Compose sets HOSTNAME to the service name, not the container
-// ID, so the HOSTNAME approach fails there.
+// Tries four methods in order:
+//  1. /proc/self/cgroup — works with cgroupv1 and cgroupv2 without private namespace.
+//  2. /proc/1/cpuset — an alternative cgroupv1 path that some kernels expose.
+//  3. HOSTNAME env var — Docker sets this to the 12-char short container ID by
+//     default; also works when the user has set an explicit hostname.
+//  4. os.Hostname() syscall — same value as HOSTNAME but bypasses env var.
 //
-// Fallback: use HOSTNAME for environments where cgroups are unavailable
-// (e.g. non-Linux hosts or very old kernels).
+// Note: cgroupv2 with --cgroupns=private (Docker 20.10+ default) makes the
+// cgroup paths appear as "0::/" inside the container. In that case methods 1
+// and 2 return "" and the fallbacks are used.
 func getSelfContainerID(ctx context.Context, cli DockerAPI) string {
+	containerID := func(info container.InspectResponse) string {
+		if info.ContainerJSONBase == nil {
+			return ""
+		}
+		return info.ID
+	}
+
+	// Method 1: /proc/self/cgroup (cgroupv1 and cgroupv2 without private NS)
 	if data, err := os.ReadFile("/proc/self/cgroup"); err == nil {
 		if id := extractContainerIDFromCgroup(string(data)); id != "" {
 			if info, err := cli.ContainerInspect(ctx, id); err == nil {
-				return info.ID
+				if id := containerID(info); id != "" {
+					return id
+				}
 			}
 		}
 	}
 
-	hostname := os.Getenv("HOSTNAME")
-	if hostname == "" || len(hostname) < 12 {
-		return ""
+	// Method 2: /proc/1/cpuset — alternative cgroupv1 path, format "/docker/<64hex>"
+	if data, err := os.ReadFile("/proc/1/cpuset"); err == nil {
+		for _, seg := range strings.Split(strings.TrimSpace(string(data)), "/") {
+			if len(seg) == 64 && isLowercaseHex(seg) {
+				if info, err := cli.ContainerInspect(ctx, seg); err == nil {
+					if id := containerID(info); id != "" {
+						return id
+					}
+				}
+			}
+		}
 	}
-	info, err := cli.ContainerInspect(ctx, hostname)
-	if err != nil {
-		return ""
+
+	// Method 3: HOSTNAME env var — Docker sets this to the short container ID
+	// (12 hex chars) unless an explicit hostname is configured. Also handles
+	// explicit hostnames (e.g. service name in Compose).
+	if hostname := os.Getenv("HOSTNAME"); hostname != "" {
+		if info, err := cli.ContainerInspect(ctx, hostname); err == nil {
+			if id := containerID(info); id != "" {
+				return id
+			}
+		}
 	}
-	return info.ID
+
+	// Method 4: os.Hostname() syscall — identical to HOSTNAME in containers but
+	// works even if the env var was stripped.
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		if info, err := cli.ContainerInspect(ctx, hostname); err == nil {
+			if id := containerID(info); id != "" {
+				return id
+			}
+		}
+	}
+
+	return ""
 }
 
 // extractContainerIDFromCgroup scans cgroup entries for a 64-char hex container
