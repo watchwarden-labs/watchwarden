@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"os"
 	"os/signal"
 	"sync"
@@ -542,6 +543,21 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		log.Printf("[container] Restarting %s", cmd.ContainerID)
 		timeout := 10
 		_ = dockerClient.cli.ContainerStop(ctx, resolvedID, container.StopOptions{Timeout: &timeout})
+		// If the container shares another container's network namespace, ensure that
+		// network container is running before attempting to start this one.
+		if info, err := dockerClient.cli.ContainerInspect(ctx, resolvedID); err == nil && info.HostConfig != nil {
+			nm := string(info.HostConfig.NetworkMode)
+			if strings.HasPrefix(nm, "container:") {
+				netContainerRef := strings.TrimPrefix(nm, "container:")
+				if netInfo, err := dockerClient.cli.ContainerInspect(ctx, netContainerRef); err == nil {
+					if netInfo.State == nil || !netInfo.State.Running {
+						log.Printf("[container] Starting network container %s before %s", netContainerRef, cmd.ContainerID)
+						_ = dockerClient.cli.ContainerStart(ctx, netContainerRef, container.StartOptions{})
+						waitForContainerRunningOrHealthy(ctx, dockerClient.cli, netContainerRef, 60)
+					}
+				}
+			}
+		}
 		err := dockerClient.cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
 		success := err == nil
 		errStr := ""
