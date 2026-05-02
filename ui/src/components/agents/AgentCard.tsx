@@ -4,6 +4,8 @@ import { StatusDot } from '@/components/common/StatusDot';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useStore } from '@/store/useStore';
 
 interface AgentCardProps {
   agent: Agent;
@@ -16,12 +18,41 @@ export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps
   const containerCount = agent.containers?.length ?? 0;
   const updateCount = agent.containers?.filter((c) => c.has_update)?.length ?? 0;
 
+  const allProgress = useStore((s) => s.updateProgress);
+  const agentProgress = Object.entries(allProgress).filter(([key]) =>
+    key.startsWith(`${agent.id}:`),
+  );
+  const isUpdating = agentProgress.length > 0;
+
+  const overlayActive = checking || isUpdating;
+  const overlayLabel = checking ? 'Checking...' : 'Updating...';
+
+  const tooltipLines = agentProgress.map(([, p]) => `${p.containerName}: ${p.step}`);
+
   return (
     <Card className="card-hover h-full flex flex-col relative overflow-hidden">
-      {checking && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px] rounded-xl">
-          <Loader2 className="size-8 animate-spin text-primary" />
-        </div>
+      {overlayActive && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 bg-background/60 backdrop-blur-[1px] rounded-xl cursor-default" />
+              }
+            >
+              <Loader2 className="size-8 animate-spin text-primary" />
+              <span className="text-xs text-primary font-medium">{overlayLabel}</span>
+            </TooltipTrigger>
+            {isUpdating && tooltipLines.length > 0 && (
+              <TooltipContent side="bottom">
+                <div className="flex flex-col gap-0.5">
+                  {tooltipLines.map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </div>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       )}
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
@@ -75,7 +106,7 @@ export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps
               e.stopPropagation();
               onCheck?.();
             }}
-            disabled={checking}
+            disabled={checking || isUpdating}
           >
             <RefreshCw size={14} className={checking ? 'animate-spin' : ''} />
             {checking ? 'Checking...' : 'Check'}
@@ -87,6 +118,7 @@ export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps
               e.stopPropagation();
               onUpdate?.();
             }}
+            disabled={isUpdating}
           >
             <ArrowUpCircle size={14} />
             Update All

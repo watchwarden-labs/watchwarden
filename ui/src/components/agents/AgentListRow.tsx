@@ -6,6 +6,8 @@ import { StatusDot } from '@/components/common/StatusDot';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useStore } from '@/store/useStore';
 
 interface AgentListRowProps {
   agent: Agent;
@@ -19,6 +21,20 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
   const containerCount = agent.containers?.length ?? 0;
   const updateCount = agent.containers?.filter((c) => c.has_update)?.length ?? 0;
 
+  const allProgress = useStore((s) => s.updateProgress);
+  const agentProgress = Object.entries(allProgress).filter(([key]) =>
+    key.startsWith(`${agent.id}:`),
+  );
+  const isUpdating = agentProgress.length > 0;
+  const tooltipLines = agentProgress.map(([, p]) => `${p.containerName}: ${p.step}`);
+
+  const statusIcon =
+    checking || isUpdating ? (
+      <Loader2 className="size-3.5 animate-spin text-primary shrink-0" />
+    ) : (
+      <StatusDot status={agent.status} />
+    );
+
   return (
     <TableRow className="group">
       <TableCell>
@@ -26,12 +42,28 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
           to={`/agents/${agent.id}`}
           className="flex items-center gap-2 hover:text-primary transition-colors"
         >
-          {checking ? (
-            <Loader2 className="size-3.5 animate-spin text-primary shrink-0" />
+          {isUpdating && tooltipLines.length > 0 ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger render={<span className="flex items-center gap-2" />}>
+                  {statusIcon}
+                  <span className="font-medium">{agent.name}</span>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <div className="flex flex-col gap-0.5">
+                    {tooltipLines.map((line) => (
+                      <span key={line}>{line}</span>
+                    ))}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : (
-            <StatusDot status={agent.status} />
+            <>
+              {statusIcon}
+              <span className="font-medium">{agent.name}</span>
+            </>
           )}
-          <span className="font-medium">{agent.name}</span>
         </Link>
       </TableCell>
       <TableCell className="hidden md:table-cell text-muted-foreground">{agent.hostname}</TableCell>
@@ -67,7 +99,7 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
               e.preventDefault();
               onCheck();
             }}
-            disabled={checking}
+            disabled={checking || isUpdating}
             aria-label="Check for updates"
           >
             <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
@@ -79,7 +111,9 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
               e.preventDefault();
               onUpdate();
             }}
+            disabled={isUpdating}
           >
+            {isUpdating ? <Loader2 size={12} className="animate-spin" /> : null}
             Update
           </Button>
           {agent.status === 'offline' && onDelete && (
