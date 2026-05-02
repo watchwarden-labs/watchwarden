@@ -169,6 +169,25 @@ export const useStore = create<WatchWardenState>((set, get) => ({
       get().invalidateAgents?.();
     }
 
+    // On heartbeat, purge stale progress for this agent. A heartbeat means the
+    // agent is idle; any progress entry older than 60 s was either completed
+    // (UPDATE_COMPLETE missed during a disconnect) or orphaned by a crash.
+    if (type === 'HEARTBEAT_RECEIVED' && agentId) {
+      const staleThreshold = Date.now() - 60_000;
+      const current = get().updateProgress;
+      const next: Record<string, UpdateProgress> = {};
+      for (const [key, val] of Object.entries(current)) {
+        if (key.startsWith(`${agentId}:`) && val.timestamp < staleThreshold) continue;
+        next[key] = val;
+      }
+      if (Object.keys(next).length !== Object.keys(current).length) {
+        set({ updateProgress: next });
+        for (const key of Object.keys(progressBuffer)) {
+          if (key.startsWith(`${agentId}:`)) delete progressBuffer[key];
+        }
+      }
+    }
+
     if (type === 'CHECK_COMPLETE' && agentId) {
       get().setAgentChecking(agentId, false);
       const updatesAvailable = (event.updatesAvailable as number) ?? 0;
