@@ -14,6 +14,9 @@ export default defineConfig({
 		env: {
 			DOCKER_HOST: `unix://${process.env["HOME"]}/.colima/default/docker.sock`,
 			TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: "/var/run/docker.sock",
+			// All test containers use withReuse() so Ryuk is not needed.
+			// Disabling it prevents the reaper sidecar from lingering after tests finish.
+			TESTCONTAINERS_RYUK_DISABLED: "true",
 		},
 	},
 });
