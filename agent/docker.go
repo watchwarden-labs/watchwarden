@@ -722,7 +722,12 @@ func (d *DockerClient) GetContainerLogs(ctx context.Context, containerID string,
 // "No such container: <stale-id>". This function detects the stale ref,
 // finds the current provider via compose labels, recreates the target
 // container pointing to the new ID, and starts it.
-func startContainerWithNetworkAwareness(ctx context.Context, cli DockerAPI, resolvedID, logID string) error {
+func startContainerWithNetworkAwareness(
+	ctx context.Context,
+	cli DockerAPI,
+	resolvedID, logID string,
+	pullImage func(ctx context.Context, imageRef string) error,
+) error {
 	info, err := cli.ContainerInspect(ctx, resolvedID)
 	if err != nil || info.HostConfig == nil {
 		return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
@@ -741,7 +746,7 @@ func startContainerWithNetworkAwareness(ctx context.Context, cli DockerAPI, reso
 			return fmt.Errorf("stale network container %s, could not find replacement: %w", netContainerRef, findErr)
 		}
 		log.Printf("[container] Recreating %s with network container %s", logID, newNetID)
-		return recreateWithNetworkContainer(ctx, cli, resolvedID, info, newNetID)
+		return recreateWithNetworkContainer(ctx, cli, resolvedID, info, newNetID, pullImage)
 	}
 	if netInfo.State == nil || !netInfo.State.Running {
 		log.Printf("[container] Starting network container %s before %s", netContainerRef, logID)
@@ -804,6 +809,7 @@ func recreateWithNetworkContainer(
 	oldID string,
 	info container.InspectResponse,
 	newNetContainerID string,
+	pullImage func(ctx context.Context, imageRef string) error,
 ) error {
 	name := strings.TrimPrefix(info.Name, "/")
 	info.HostConfig.NetworkMode = container.NetworkMode("container:" + newNetContainerID)
@@ -815,6 +821,15 @@ func recreateWithNetworkContainer(
 		return fmt.Errorf("remove old container: %w", err)
 	}
 	resp, err := cli.ContainerCreate(ctx, info.Config, info.HostConfig, &network.NetworkingConfig{}, nil, name)
+	if err != nil && pullImage != nil {
+		// Image may have been pruned locally — pull and retry once.
+		log.Printf("[container] ContainerCreate failed (%v); pulling %s and retrying", err, info.Config.Image)
+		if pullErr := pullImage(ctx, info.Config.Image); pullErr != nil {
+			log.Printf("[container] Pull %s failed: %v", info.Config.Image, pullErr)
+		} else {
+			resp, err = cli.ContainerCreate(ctx, info.Config, info.HostConfig, &network.NetworkingConfig{}, nil, name)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("create container: %w", err)
 	}

@@ -213,7 +213,7 @@ func TestStartContainerWithNetworkAwareness_BridgeMode(t *testing.T) {
 		},
 	}
 
-	err := startContainerWithNetworkAwareness(context.Background(), mock, "mycontainer", "mycontainer")
+	err := startContainerWithNetworkAwareness(context.Background(), mock, "mycontainer", "mycontainer", nil)
 	require.NoError(t, err)
 
 	calls := mock.getCalls()
@@ -259,7 +259,7 @@ func TestStartContainerWithNetworkAwareness_NetworkContainerRunning(t *testing.T
 		},
 	}
 
-	err := startContainerWithNetworkAwareness(context.Background(), mock, targetID, targetID)
+	err := startContainerWithNetworkAwareness(context.Background(), mock, targetID, targetID, nil)
 	require.NoError(t, err)
 
 	calls := mock.getCalls()
@@ -317,7 +317,7 @@ func TestStartContainerWithNetworkAwareness_NetworkContainerStopped(t *testing.T
 		}
 	}
 
-	err := startContainerWithNetworkAwareness(context.Background(), mock, targetID, targetID)
+	err := startContainerWithNetworkAwareness(context.Background(), mock, targetID, targetID, nil)
 	require.NoError(t, err)
 
 	calls := mock.getCalls()
@@ -377,7 +377,7 @@ func TestStartContainerWithNetworkAwareness_StaleNetIDWithComposeLabels(t *testi
 		},
 	}
 
-	err := startContainerWithNetworkAwareness(context.Background(), mock, targetID, targetID)
+	err := startContainerWithNetworkAwareness(context.Background(), mock, targetID, targetID, nil)
 	require.NoError(t, err)
 
 	calls := mock.getCalls()
@@ -424,7 +424,7 @@ func TestStartContainerWithNetworkAwareness_StaleNetIDNoComposeLabels(t *testing
 		},
 	}
 
-	err := startContainerWithNetworkAwareness(context.Background(), mock, targetID, targetID)
+	err := startContainerWithNetworkAwareness(context.Background(), mock, targetID, targetID, nil)
 	assert.Error(t, err, "should return error when stale net container and no compose labels")
 	assert.Contains(t, err.Error(), staleNetID)
 }
@@ -546,7 +546,7 @@ func TestRecreateWithNetworkContainer_HappyPath(t *testing.T) {
 		},
 	}
 
-	err := recreateWithNetworkContainer(context.Background(), mock, oldID, info, newNetID)
+	err := recreateWithNetworkContainer(context.Background(), mock, oldID, info, newNetID, nil)
 	require.NoError(t, err)
 
 	// Hostname and Domainname must be cleared — Docker rejects them with container network mode

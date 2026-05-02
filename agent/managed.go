@@ -445,7 +445,10 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			resolvedID = r
 		}
 		log.Printf("[container] Starting %s", cmd.ContainerID)
-		err := startContainerWithNetworkAwareness(ctx, dockerClient.cli, resolvedID, cmd.ContainerID)
+		err := startContainerWithNetworkAwareness(ctx, dockerClient.cli, resolvedID, cmd.ContainerID, func(ctx context.Context, ref string) error {
+			_, err := dockerClient.PullImage(ctx, ref)
+			return err
+		})
 		success := err == nil
 		errStr := ""
 		if err != nil {
@@ -542,7 +545,10 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		log.Printf("[container] Restarting %s", cmd.ContainerID)
 		timeout := 10
 		_ = dockerClient.cli.ContainerStop(ctx, resolvedID, container.StopOptions{Timeout: &timeout})
-		err := startContainerWithNetworkAwareness(ctx, dockerClient.cli, resolvedID, cmd.ContainerID)
+		err := startContainerWithNetworkAwareness(ctx, dockerClient.cli, resolvedID, cmd.ContainerID, func(ctx context.Context, ref string) error {
+			_, err := dockerClient.PullImage(ctx, ref)
+			return err
+		})
 		success := err == nil
 		errStr := ""
 		if err != nil {
