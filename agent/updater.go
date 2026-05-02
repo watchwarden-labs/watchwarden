@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -744,6 +745,28 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 	u.snapshots[snapshot.Name] = snapshot
 	u.mu.Unlock()
 	saveSnapshot(containerID, snapshot)
+
+	// 5b. Last-resort self-container detection.
+	// getSelfContainerID (called at startup and at UPDATE handler entry) uses cgroup
+	// paths and HOSTNAME to identify the agent's own container. On cgroupv2 hosts with
+	// private cgroup namespace (Docker 20.10+ default) cgroup paths show "0::/" and
+	// HOSTNAME-based inspect can fail transiently, leaving selfContainerID empty.
+	//
+	// If we reach here with selfContainerID still empty and the post-pull snapshot's
+	// configured hostname matches our own hostname, this IS our container.
+	// Stopping it via ContainerStop would send SIGTERM to the current process and kill
+	// us before recreation is complete. Delegate to SelfUpdate instead.
+	//
+	// Note: entry.mu is still held via defer; SelfUpdate uses only selfUpdateMu so
+	// there is no deadlock. If SelfUpdate succeeds the process is killed by force-remove
+	// and the deferred unlock never fires — that is expected. If SelfUpdate fails it
+	// returns an error and the defer fires normally.
+	if u.selfContainerID == "" && snapshot.Config != nil {
+		if myHostname, _ := os.Hostname(); myHostname != "" && snapshot.Config.Hostname == myHostname {
+			log.Printf("[update] self-container detected via hostname match — delegating to SelfUpdate for %s", snapshot.Name)
+			return u.SelfUpdate(ctx, containerID)
+		}
+	}
 
 	// 6. Stop old container
 	u.emitProgress(containerID, snapshot.Name, "stopping", "")
