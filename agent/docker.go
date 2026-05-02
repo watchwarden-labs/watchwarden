@@ -807,6 +807,10 @@ func recreateWithNetworkContainer(
 ) error {
 	name := strings.TrimPrefix(info.Name, "/")
 	info.HostConfig.NetworkMode = container.NetworkMode("container:" + newNetContainerID)
+	// Docker rejects container-network mode when a hostname or domainname is set
+	// in the container config ("conflicting options: hostname and the network mode").
+	info.Config.Hostname = ""
+	info.Config.Domainname = ""
 	if err := cli.ContainerRemove(ctx, oldID, container.RemoveOptions{Force: true}); err != nil {
 		return fmt.Errorf("remove old container: %w", err)
 	}

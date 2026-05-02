@@ -538,11 +538,20 @@ func TestRecreateWithNetworkContainer_HappyPath(t *testing.T) {
 			HostConfig: &container.HostConfig{NetworkMode: "container:stale-net-id"},
 			State:      &container.State{Running: false},
 		},
-		Config: &container.Config{Image: "myapp:latest", Labels: map[string]string{}},
+		Config: &container.Config{
+			Image:      "myapp:latest",
+			Hostname:   "myapp-hostname",
+			Domainname: "local",
+			Labels:     map[string]string{},
+		},
 	}
 
 	err := recreateWithNetworkContainer(context.Background(), mock, oldID, info, newNetID)
 	require.NoError(t, err)
+
+	// Hostname and Domainname must be cleared — Docker rejects them with container network mode
+	assert.Empty(t, info.Config.Hostname, "Hostname must be cleared before ContainerCreate")
+	assert.Empty(t, info.Config.Domainname, "Domainname must be cleared before ContainerCreate")
 
 	calls := mock.getCalls()
 
