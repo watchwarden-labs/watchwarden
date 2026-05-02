@@ -823,14 +823,15 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 	}
 
 	return &UpdateResult{
-		ContainerID:   newID,
-		ContainerName: snapshot.Name,
-		Success:       true,
-		OldDigest:     snapshot.ImageDigest,
-		NewDigest:     newDigest,
-		OldImage:      snapshot.ImageRef,
-		NewImage:      imageRef,
-		DurationMs:    time.Since(start).Milliseconds(),
+		ContainerID:         newID,
+		OriginalContainerID: containerID,
+		ContainerName:       snapshot.Name,
+		Success:             true,
+		OldDigest:           snapshot.ImageDigest,
+		NewDigest:           newDigest,
+		OldImage:            snapshot.ImageRef,
+		NewImage:            imageRef,
+		DurationMs:          time.Since(start).Milliseconds(),
 	}, nil
 }
 
@@ -870,14 +871,15 @@ func (u *Updater) RollbackContainer(ctx context.Context, containerID string) (*U
 	}
 
 	return &UpdateResult{
-		ContainerID:   newID,
-		ContainerName: snapshot.Name,
-		Success:       true,
-		OldDigest:     snapshot.ImageDigest,
-		OldImage:      snapshot.ImageRef,
-		NewImage:      snapshot.ImageRef,
-		DurationMs:    time.Since(start).Milliseconds(),
-		IsRollback:    true,
+		ContainerID:         newID,
+		OriginalContainerID: containerID,
+		ContainerName:       snapshot.Name,
+		Success:             true,
+		OldDigest:           snapshot.ImageDigest,
+		OldImage:            snapshot.ImageRef,
+		NewImage:            snapshot.ImageRef,
+		DurationMs:          time.Since(start).Milliseconds(),
+		IsRollback:          true,
 	}, nil
 }
 
@@ -1146,14 +1148,15 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 	}
 
 	return &UpdateResult{
-		ContainerID:   newID,
-		ContainerName: snapshot.Name,
-		Success:       true,
-		OldDigest:     snapshot.ImageDigest,
-		NewDigest:     newDigest,
-		OldImage:      snapshot.ImageRef,
-		NewImage:      bgImageRef,
-		DurationMs:    time.Since(start).Milliseconds(),
+		ContainerID:         newID,
+		OriginalContainerID: containerID,
+		ContainerName:       snapshot.Name,
+		Success:             true,
+		OldDigest:           snapshot.ImageDigest,
+		NewDigest:           newDigest,
+		OldImage:            snapshot.ImageRef,
+		NewImage:            bgImageRef,
+		DurationMs:          time.Since(start).Milliseconds(),
 	}, nil
 }
 

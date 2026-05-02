@@ -154,6 +154,9 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
 
   const progressKey = `${agentId}:${container.docker_id}`;
   const progress = useStore((s) => s.updateProgress[progressKey]);
+  const agentHasActiveUpdate = useStore((s) =>
+    Object.keys(s.updateProgress).some((k) => k.startsWith(`${agentId}:`)),
+  );
   const addToast = useStore((s) => s.addToast);
   const checkingAgents = useStore((s) => s.checkingAgents);
   const checkContainer = useCheckContainer();
@@ -593,6 +596,11 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                 />
               ))}
               <span className="text-[10px] text-primary ml-1">{progress.step}</span>
+            </div>
+          ) : agentHasActiveUpdate && hasUpdate && !isExcluded && !isPinned ? (
+            <div className="flex items-center gap-1">
+              <Loader2 size={12} className="animate-spin text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground">queued</span>
             </div>
           ) : (
             <TooltipProvider>

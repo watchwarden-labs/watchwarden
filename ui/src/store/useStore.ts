@@ -169,6 +169,25 @@ export const useStore = create<WatchWardenState>((set, get) => ({
       get().invalidateAgents?.();
     }
 
+    // On heartbeat, purge stale progress for this agent. A heartbeat means the
+    // agent is idle; any progress entry older than 60 s was either completed
+    // (UPDATE_COMPLETE missed during a disconnect) or orphaned by a crash.
+    if (type === 'HEARTBEAT_RECEIVED' && agentId) {
+      const staleThreshold = Date.now() - 60_000;
+      const current = get().updateProgress;
+      const next: Record<string, UpdateProgress> = {};
+      for (const [key, val] of Object.entries(current)) {
+        if (key.startsWith(`${agentId}:`) && val.timestamp < staleThreshold) continue;
+        next[key] = val;
+      }
+      if (Object.keys(next).length !== Object.keys(current).length) {
+        set({ updateProgress: next });
+        for (const key of Object.keys(progressBuffer)) {
+          if (key.startsWith(`${agentId}:`)) delete progressBuffer[key];
+        }
+      }
+    }
+
     if (type === 'CHECK_COMPLETE' && agentId) {
       get().setAgentChecking(agentId, false);
       const updatesAvailable = (event.updatesAvailable as number) ?? 0;
@@ -225,12 +244,18 @@ export const useStore = create<WatchWardenState>((set, get) => ({
     if (type === 'UPDATE_COMPLETE' && agentId) {
       const results = event.results as Array<{
         containerId: string;
+        originalContainerId?: string;
         success: boolean;
       }>;
       // FIX-5.3: only clear progress for containers listed in results, not all
       // containers for this agent. This prevents a concurrent update on container B
       // from losing its progress when container A's update completes first.
-      const completedKeys = new Set((results ?? []).map((r) => `${agentId}:${r.containerId}`));
+      // Use originalContainerId when present — UpdateContainer returns the NEW
+      // container's Docker ID in containerId (needed for DB), but progress is
+      // keyed by the original ID throughout the update lifecycle.
+      const completedKeys = new Set(
+        (results ?? []).map((r) => `${agentId}:${r.originalContainerId ?? r.containerId}`),
+      );
       // Also clear any buffered progress for these containers
       for (const key of completedKeys) {
         delete progressBuffer[key];
@@ -251,6 +276,22 @@ export const useStore = create<WatchWardenState>((set, get) => ({
       get().invalidateAgents?.();
       // Delayed refetch to pick up container data from the post-update heartbeat
       setTimeout(() => get().invalidateAgents?.(), 2000);
+      // Fallback: force-clear any remaining progress for this agent after 5 s.
+      // The controller prevents concurrent updates per agent, so anything left
+      // after the cleanup above is a stale entry (e.g. old agent without
+      // originalContainerId) that the targeted clear couldn't match by ID.
+      setTimeout(() => {
+        const remaining = get().updateProgress;
+        const next: Record<string, UpdateProgress> = {};
+        for (const [key, val] of Object.entries(remaining)) {
+          if (!key.startsWith(`${agentId}:`)) next[key] = val;
+        }
+        set({ updateProgress: next });
+        // Also purge any buffered entries for this agent
+        for (const key of Object.keys(progressBuffer)) {
+          if (key.startsWith(`${agentId}:`)) delete progressBuffer[key];
+        }
+      }, 5000);
     }
 
     if (type === 'CONTAINER_ACTION_RESULT') {
