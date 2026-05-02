@@ -238,6 +238,27 @@ export function useUpdateContainerOrchestration() {
   });
 }
 
+export function useContainerRestart() {
+  return useMutation({
+    mutationFn: ({ agentId, containerId }: { agentId: string; containerId: string }) =>
+      apiRequest<{ message: string }>(`/agents/${agentId}/containers/${containerId}/restart`, {
+        method: 'POST',
+      }),
+  });
+}
+
+export function useRestartUnhealthy() {
+  return useMutation({
+    mutationFn: (agentId: string) =>
+      apiRequest<{ message: string; containerIds?: string[] }>(
+        `/agents/${agentId}/restart-unhealthy`,
+        {
+          method: 'POST',
+        },
+      ),
+  });
+}
+
 export function useUpdateAgentConfig() {
   const queryClient = useQueryClient();
   return useMutation({

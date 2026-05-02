@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -712,4 +713,28 @@ func (d *DockerClient) GetContainerLogs(ctx context.Context, containerID string,
 		}
 	}
 	return buf.String(), nil
+}
+
+// waitForContainerRunningOrHealthy polls until the container is running (and
+// healthy if it has a healthcheck), or until the timeout elapses. Returns true
+// if the container is ready within the deadline.
+func waitForContainerRunningOrHealthy(ctx context.Context, cli DockerAPI, containerID string, timeoutSecs int) bool {
+	deadline := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
+	for time.Now().Before(deadline) {
+		info, err := cli.ContainerInspect(ctx, containerID)
+		if err == nil && info.ContainerJSONBase != nil && info.State != nil && info.State.Running {
+			if info.State.Health == nil {
+				return true // no healthcheck — running is enough
+			}
+			if info.State.Health.Status == "healthy" {
+				return true
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(5 * time.Second):
+		}
+	}
+	return false
 }

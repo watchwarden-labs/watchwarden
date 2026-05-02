@@ -17,6 +17,8 @@ interface AgentCardProps {
 export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps) {
   const containerCount = agent.containers?.length ?? 0;
   const updateCount = agent.containers?.filter((c) => c.has_update)?.length ?? 0;
+  const unhealthyCount =
+    agent.containers?.filter((c) => c.health_status === 'unhealthy')?.length ?? 0;
 
   const allProgress = useStore((s) => s.updateProgress);
   const agentProgress = Object.entries(allProgress).filter(([key]) =>
@@ -68,14 +70,21 @@ export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps
               </Badge>
             )}
           </div>
-          {updateCount > 0 && (
-            <Badge
-              data-testid="update-badge"
-              className="bg-primary/15 text-primary border-primary/30"
-            >
-              {updateCount} update{updateCount !== 1 ? 's' : ''}
-            </Badge>
-          )}
+          <div className="flex items-center gap-1.5">
+            {unhealthyCount > 0 && (
+              <Badge className="bg-destructive/15 text-destructive border-destructive/30">
+                {unhealthyCount} unhealthy
+              </Badge>
+            )}
+            {updateCount > 0 && (
+              <Badge
+                data-testid="update-badge"
+                className="bg-primary/15 text-primary border-primary/30"
+              >
+                {updateCount} update{updateCount !== 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col justify-between">
