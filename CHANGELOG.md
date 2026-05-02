@@ -1,3 +1,10 @@
+## v0.3.10
+
+Released: 2026-05-02
+
+### Bug Fixes
+- fix(agent): improve self-container detection with fallback methods and late retry (3f33a69)
+
 ## v0.3.9
 
 Released: 2026-05-01
