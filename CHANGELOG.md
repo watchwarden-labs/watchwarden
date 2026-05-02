@@ -1,3 +1,12 @@
+## v0.3.14
+
+Released: 2026-05-02
+
+### Bug Fixes
+- fix(ui): clear stale agent progress on heartbeat after disconnect (b33041c)
+- fix(ui): force-clear stale agent progress 5 s after UPDATE_COMPLETE (80b1799)
+- fix(ui): show queued state and clear spinner correctly after bulk update (97d3dd5)
+
 ## v0.3.13
 
 Released: 2026-05-02
