@@ -715,6 +715,42 @@ func (d *DockerClient) GetContainerLogs(ctx context.Context, containerID string,
 	return buf.String(), nil
 }
 
+// startContainerWithNetworkAwareness starts a container, handling the case
+// where its HostConfig.NetworkMode references a stale network container ID.
+// Docker Compose bakes the network provider's container ID at creation time;
+// if that provider was recreated (new ID), ContainerStart fails with
+// "No such container: <stale-id>". This function detects the stale ref,
+// finds the current provider via compose labels, recreates the target
+// container pointing to the new ID, and starts it.
+func startContainerWithNetworkAwareness(ctx context.Context, cli DockerAPI, resolvedID, logID string) error {
+	info, err := cli.ContainerInspect(ctx, resolvedID)
+	if err != nil || info.HostConfig == nil {
+		return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+	}
+	nm := string(info.HostConfig.NetworkMode)
+	if !strings.HasPrefix(nm, "container:") {
+		return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+	}
+	netContainerRef := strings.TrimPrefix(nm, "container:")
+	netInfo, netInspectErr := cli.ContainerInspect(ctx, netContainerRef)
+	if netInspectErr != nil {
+		// Stale ref — find the replacement network provider via compose labels.
+		log.Printf("[container] Network container %s is stale for %s; searching replacement", netContainerRef, logID)
+		newNetID, findErr := findNetworkProviderByLabels(ctx, cli, info.Config.Labels)
+		if findErr != nil {
+			return fmt.Errorf("stale network container %s, could not find replacement: %w", netContainerRef, findErr)
+		}
+		log.Printf("[container] Recreating %s with network container %s", logID, newNetID)
+		return recreateWithNetworkContainer(ctx, cli, resolvedID, info, newNetID)
+	}
+	if netInfo.State == nil || !netInfo.State.Running {
+		log.Printf("[container] Starting network container %s before %s", netContainerRef, logID)
+		_ = cli.ContainerStart(ctx, netContainerRef, container.StartOptions{})
+		waitForContainerRunningOrHealthy(ctx, cli, netContainerRef, 60)
+	}
+	return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+}
+
 // findNetworkProviderByLabels locates the currently running container that
 // provides the network namespace for a container in the same Docker Compose
 // project. It parses the com.docker.compose.depends_on label (format:
