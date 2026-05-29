@@ -1,3 +1,19 @@
+## v0.3.17
+
+Released: 2026-05-29
+
+### Bug Fixes
+- fix: resolve all remaining CodeQL alerts including untrusted checkouts, uncontrolled allocations, and local rate-limit registrations (c5659ba)
+- fix: sever static analysis taint for dynamic RegExp syntax validation (2f9c142)
+- fix: resolve CodeQL alerts and update CI dependency caching keys (8d99f5e)
+- fix: resolve all open CodeQL security and quality alerts (fe04db8)
+- fix: delete duplicate stale ui/package-lock.json (2dc26dc)
+- fix: resolve security vulnerabilities in website directory (e1bc12c)
+
+### Other Changes
+- chore(agent): migrate to secure modular moby sdk and resolve dependabot alerts (a13ba20)
+- security: prevent untrusted checkout TOCTOU in pr-beta build workflow (4cc403d)
+
 ## v0.3.16
 
 Released: 2026-05-29
