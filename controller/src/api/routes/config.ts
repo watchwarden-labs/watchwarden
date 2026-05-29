@@ -22,7 +22,10 @@ const VALID_UPDATE_LEVELS = new Set(['', 'all', 'major', 'minor', 'patch']);
 
 const SENSITIVE_CONFIG_KEYS = new Set(['jwt_secret', 'admin_password_hash']);
 
+import rateLimit from '@fastify/rate-limit';
+
 const configRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   fastify.addHook('preHandler', requireAuth);
 
   fastify.get('/api/config', async () => {

@@ -16,7 +16,10 @@ import { requireAuth } from '../middleware/auth.js';
 const VALID_SCOPES = ['full', 'read', 'write'];
 const MAX_TOKEN_NAME_LENGTH = 128;
 
+import rateLimit from '@fastify/rate-limit';
+
 const apiTokenRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   // All token management routes require UI admin auth (JWT)
   fastify.addHook('preHandler', requireAuth);
 

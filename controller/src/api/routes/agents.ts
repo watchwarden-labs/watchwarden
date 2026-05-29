@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import rateLimit from '@fastify/rate-limit';
 import type { FastifyPluginAsync } from 'fastify';
 import cron from 'node-cron';
 import { v4 as uuidv4 } from 'uuid';
@@ -19,6 +20,7 @@ import type { AgentHub } from '../../ws/hub.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const agentsRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   const hub = (fastify as unknown as { hub: AgentHub }).hub;
   fastify.addHook('preHandler', requireAuth);
 

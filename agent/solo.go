@@ -55,6 +55,9 @@ func (l *EventLog) Recent(n int) []Event {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	total := len(l.entries)
+	if n > 1000 {
+		n = 1000
+	}
 	if n > l.maxSize {
 		n = l.maxSize
 	}

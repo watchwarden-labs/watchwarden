@@ -186,7 +186,18 @@ async function start() {
   registerAuditHook(app);
 
   // Health check endpoint (used by Docker HEALTHCHECK)
-  app.get('/api/health', async () => ({ status: 'ok' }));
+  app.get(
+    '/api/health',
+    {
+      config: {
+        rateLimit: {
+          max: 1000,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async () => ({ status: 'ok' }),
+  );
 
   // 9. Error handler — never leak internal details to clients
   app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {

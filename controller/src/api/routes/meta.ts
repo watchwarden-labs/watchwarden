@@ -38,7 +38,10 @@ try {
 
 export { controllerVersion };
 
+import rateLimit from '@fastify/rate-limit';
+
 const metaRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   fastify.addHook('preHandler', requireAuth);
 
   // --- Versions ---

@@ -14,7 +14,10 @@ const COOKIE_OPTS = {
   maxAge: 2 * 60 * 60, // 2 hours in seconds
 };
 
+import rateLimit from '@fastify/rate-limit';
+
 const authRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   fastify.post<{ Body: { password?: string } }>(
     '/api/auth/login',
     {
