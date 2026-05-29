@@ -1,3 +1,13 @@
+## v0.3.15
+
+Released: 2026-05-29
+
+### Features
+- feat: harden security by switching to SHA-256 agent token hashing, updating Nginx configuration, and securing diagnostic endpoints (a2b0cd7)
+
+### Other Changes
+- refactor: remove unused bcryptjs dependency from agent routes (f94d0b7)
+
 ## v0.3.14
 
 Released: 2026-05-02
