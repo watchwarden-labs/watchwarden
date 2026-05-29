@@ -136,7 +136,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: ui/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - name: Build shared types
         run: npm run build

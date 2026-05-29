@@ -134,8 +134,13 @@ async function start() {
     credentials: true,
   });
   await app.register(rateLimit, {
-    global: false, // opt-in per route
+    global: true,
+    max: 100,
+    timeWindow: '1 minute',
     keyGenerator: (request) => request.ip,
+    allowList: (request) => {
+      return request.url === '/api/health' || request.url === '/ws/agent';
+    },
   });
   // 1MB max WS frame — mirrors agent's conn.SetReadLimit(1 << 20)
   await app.register(fastifyWebsocket, {
