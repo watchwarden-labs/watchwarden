@@ -25,7 +25,10 @@ async function syncCredentialsToAgents(hub: AgentHub) {
   });
 }
 
+import rateLimit from '@fastify/rate-limit';
+
 const registriesRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   fastify.addHook('preHandler', requireAuth);
   const hub = (fastify as unknown as { hub: AgentHub }).hub;
 

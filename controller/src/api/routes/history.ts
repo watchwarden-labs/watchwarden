@@ -1,8 +1,10 @@
+import rateLimit from '@fastify/rate-limit';
 import type { FastifyPluginAsync } from 'fastify';
 import { getHistory, getHistoryStats } from '../../db/queries.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const historyRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   fastify.addHook('preHandler', requireAuth);
 
   fastify.get<{

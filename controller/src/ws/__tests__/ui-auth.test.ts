@@ -47,20 +47,32 @@ describe('/ws/ui authentication', () => {
     await app.register(fastifyWebsocket);
 
     // Mirrors the /ws/ui handler in index.ts exactly
-    app.get('/ws/ui', { websocket: true }, async (socket, request) => {
-      const cookieToken = (request.cookies as Record<string, string | undefined>)?.ww_token;
-      const queryToken = new URL(request.url, 'http://x').searchParams.get('token');
-      const token = cookieToken ?? queryToken;
-      const secret = await setConfig('jwt_secret', JWT_SECRET).then(() => JWT_SECRET);
-      try {
-        if (!token || !secret) throw new Error('missing token');
-        jwt.verify(token, secret);
-      } catch {
-        socket.close(4001, 'Unauthorized');
-        return;
-      }
-      broadcaster.handleConnection(socket);
-    });
+    app.get(
+      '/ws/ui',
+      {
+        websocket: true,
+        config: {
+          rateLimit: {
+            max: 100,
+            timeWindow: '1 minute',
+          },
+        },
+      },
+      async (socket, request) => {
+        const cookieToken = (request.cookies as Record<string, string | undefined>)?.ww_token;
+        const queryToken = new URL(request.url, 'http://x').searchParams.get('token');
+        const token = cookieToken ?? queryToken;
+        const secret = await setConfig('jwt_secret', JWT_SECRET).then(() => JWT_SECRET);
+        try {
+          if (!token || !secret) throw new Error('missing token');
+          jwt.verify(token, secret);
+        } catch {
+          socket.close(4001, 'Unauthorized');
+          return;
+        }
+        broadcaster.handleConnection(socket);
+      },
+    );
 
     const address = await app.listen({ port: 0, host: '127.0.0.1' });
     port = parseInt(new URL(address).port, 10);

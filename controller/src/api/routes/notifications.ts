@@ -1,3 +1,4 @@
+import rateLimit from '@fastify/rate-limit';
 import type { FastifyPluginAsync } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -13,6 +14,7 @@ import { notifier } from '../../notifications/notifier.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const notificationRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   fastify.addHook('preHandler', requireAuth);
 
   fastify.get('/api/notifications', async () => {
