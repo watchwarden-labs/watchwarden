@@ -129,6 +129,21 @@ export async function executeOrchestratedUpdate(
   const batches = await resolveUpdateBatches(agentId, containerIds);
   const strategy = options?.strategy ?? 'stop-first';
 
+  // Broadcast 'queued' status for all target containers to the UI
+  for (const b of batches) {
+    for (let i = 0; i < b.containerIds.length; i++) {
+      const containerId = b.containerIds[i];
+      const containerName = b.containerNames[i];
+      hub.broadcast({
+        type: 'UPDATE_PROGRESS',
+        agentId,
+        containerId,
+        containerName,
+        step: 'queued',
+      });
+    }
+  }
+
   if (batches.length <= 1) {
     // Single batch or no labels — use regular UPDATE
     hub.sendToAgent(agentId, {

@@ -154,9 +154,6 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
 
   const progressKey = `${agentId}:${container.docker_id}`;
   const progress = useStore((s) => s.updateProgress[progressKey]);
-  const agentHasActiveUpdate = useStore((s) =>
-    Object.keys(s.updateProgress).some((k) => k.startsWith(`${agentId}:`)),
-  );
   const addToast = useStore((s) => s.addToast);
   const checkingAgents = useStore((s) => s.checkingAgents);
   const checkContainer = useCheckContainer();
@@ -582,26 +579,28 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
         {/* Action buttons */}
         <div className="shrink-0">
           {progress ? (
-            <div className="flex items-center gap-1">
-              {STEPS.map((s) => (
-                <span
-                  key={s}
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    s === progress.step
-                      ? 'bg-primary animate-pulse'
-                      : STEPS.indexOf(s) < STEPS.indexOf(progress.step as (typeof STEPS)[number])
-                        ? 'bg-success'
-                        : 'bg-border'
-                  }`}
-                />
-              ))}
-              <span className="text-[10px] text-primary ml-1">{progress.step}</span>
-            </div>
-          ) : agentHasActiveUpdate && hasUpdate && !isExcluded && !isPinned ? (
-            <div className="flex items-center gap-1">
-              <Loader2 size={12} className="animate-spin text-muted-foreground" />
-              <span className="text-[10px] text-muted-foreground">queued</span>
-            </div>
+            progress.step === 'queued' ? (
+              <div className="flex items-center gap-1">
+                <Loader2 size={12} className="animate-spin text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">queued</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                {STEPS.map((s) => (
+                  <span
+                    key={s}
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      s === progress.step
+                        ? 'bg-primary animate-pulse'
+                        : STEPS.indexOf(s) < STEPS.indexOf(progress.step as (typeof STEPS)[number])
+                          ? 'bg-success'
+                          : 'bg-border'
+                    }`}
+                  />
+                ))}
+                <span className="text-[10px] text-primary ml-1">{progress.step}</span>
+              </div>
+            )
           ) : (
             <TooltipProvider>
               <div className="flex items-center gap-0.5">
