@@ -14,6 +14,35 @@ declare module 'fastify' {
   }
 }
 
+/** Current token hash algorithm version stored in api_tokens.hash_version. */
+export const CURRENT_HASH_VERSION = 1;
+
+/** Module-level salt — set once at startup via initApiTokenSalt(). */
+let apiTokenSalt: string | null = null;
+
+/**
+ * Must be called once during startup (after DB migrations) before any
+ * request handling begins. Loads or generates the per-deployment PBKDF2
+ * salt for API token hashing, eliminating the per-request DB round-trip
+ * and the startup race condition.
+ */
+export async function initApiTokenSalt(): Promise<void> {
+  let salt = await getConfig('api_token_salt');
+  if (!salt) {
+    salt = randomBytes(32).toString('hex');
+    await setConfig('api_token_salt', salt);
+  }
+  apiTokenSalt = salt;
+}
+
+/** Returns the initialised salt. Throws if initApiTokenSalt() was not called. */
+export function getApiTokenSalt(): string {
+  if (!apiTokenSalt) {
+    throw new Error('API token salt not initialised — call initApiTokenSalt() during startup');
+  }
+  return apiTokenSalt;
+}
+
 /**
  * Hash a raw API token with PBKDF2 for comparison against stored hashes.
  * PBKDF2 satisfies security scanners requiring computationally hard credential hashing.
@@ -57,14 +86,27 @@ export async function requireApiToken(request: FastifyRequest, reply: FastifyRep
     return;
   }
 
-  let salt = await getConfig('api_token_salt');
-  if (!salt) {
-    salt = randomBytes(32).toString('hex');
-    await setConfig('api_token_salt', salt);
-  }
+  const salt = getApiTokenSalt();
   const hash = hashApiToken(raw, salt);
-  const match = candidates.find((t) => safeHashEqual(t.token_hash, hash));
+  const match = candidates.find((t) => {
+    // Reject tokens issued before the PBKDF2 migration (hash_version 0).
+    // These hashes were computed with a different algorithm and will never match,
+    // so we surface a clear actionable error rather than a silent auth failure.
+    if (t.hash_version < CURRENT_HASH_VERSION) return false;
+    return safeHashEqual(t.token_hash, hash);
+  });
+
   if (!match) {
+    // Check whether a candidate exists but has a legacy hash version, so we can
+    // return a more helpful error message.
+    const hasLegacy = candidates.some((t) => t.hash_version < CURRENT_HASH_VERSION);
+    if (hasLegacy) {
+      reply.code(401).send({
+        error:
+          'This API token was issued before a security upgrade and is no longer valid. Please revoke it and create a new one.',
+      });
+      return;
+    }
     reply.code(401).send({ error: 'Invalid API token' });
     return;
   }

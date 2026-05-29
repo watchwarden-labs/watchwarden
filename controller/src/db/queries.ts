@@ -869,6 +869,7 @@ function mapApiToken(row: Record<string, unknown>): ApiToken {
     name: row.name as string,
     token_hash: row.token_hash as string,
     token_prefix: row.token_prefix as string,
+    hash_version: Number(row.hash_version ?? 0),
     scopes: row.scopes as string,
     created_at: Number(row.created_at),
     expires_at: row.expires_at ? Number(row.expires_at) : null,
@@ -879,9 +880,9 @@ function mapApiToken(row: Record<string, unknown>): ApiToken {
 
 export async function insertApiToken(token: NewApiToken): Promise<void> {
   await sql`
-    INSERT INTO api_tokens (id, name, token_hash, token_prefix, scopes, created_at, expires_at)
+    INSERT INTO api_tokens (id, name, token_hash, token_prefix, hash_version, scopes, created_at, expires_at)
     VALUES (${token.id}, ${token.name}, ${token.token_hash}, ${token.token_prefix},
-      ${token.scopes ?? '["full"]'}, ${Date.now()}, ${token.expires_at ?? null})
+      ${token.hash_version}, ${token.scopes ?? '["full"]'}, ${Date.now()}, ${token.expires_at ?? null})
   `;
 }
 

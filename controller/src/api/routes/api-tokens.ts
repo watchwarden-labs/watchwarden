@@ -3,14 +3,16 @@ import type { FastifyPluginAsync } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import {
   getApiToken,
-  getConfig,
   insertApiToken,
   insertAuditLog,
   listApiTokens,
   revokeApiToken,
-  setConfig,
 } from '../../db/queries.js';
-import { hashApiToken } from '../middleware/api-token-auth.js';
+import {
+  CURRENT_HASH_VERSION,
+  getApiTokenSalt,
+  hashApiToken,
+} from '../middleware/api-token-auth.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const VALID_SCOPES = ['full', 'read', 'write'];
@@ -57,12 +59,7 @@ const apiTokenRoutes: FastifyPluginAsync = async (fastify) => {
 
     const id = uuidv4();
     const rawToken = `ww_${randomBytes(32).toString('hex')}`;
-    let salt = await getConfig('api_token_salt');
-    if (!salt) {
-      salt = randomBytes(32).toString('hex');
-      await setConfig('api_token_salt', salt);
-    }
-    const tokenHash = hashApiToken(rawToken, salt);
+    const tokenHash = hashApiToken(rawToken, getApiTokenSalt());
     const tokenPrefix = rawToken.slice(0, 8);
     const scopeStr = JSON.stringify(resolvedScopes);
 
@@ -77,6 +74,7 @@ const apiTokenRoutes: FastifyPluginAsync = async (fastify) => {
       name: name.trim(),
       token_hash: tokenHash,
       token_prefix: tokenPrefix,
+      hash_version: CURRENT_HASH_VERSION,
       scopes: scopeStr,
       expires_at: expiresAt,
     });

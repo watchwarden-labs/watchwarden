@@ -2,7 +2,14 @@
 
 Released: 2026-05-29
 
+> [!CAUTION]
+> **Breaking Change — API Tokens must be re-issued after upgrade.**
+>
+> The API token hashing algorithm was changed from SHA-256 to PBKDF2-SHA256 (with a unique per-deployment salt) in this release. Any API tokens issued before upgrading to v0.3.17 are permanently invalid and **must be revoked and re-created** in Settings → API Tokens. Attempting to use an old token will return HTTP 401 with an explicit message: *"This API token was issued before a security upgrade and is no longer valid. Please revoke it and create a new one."*
+
 ### Bug Fixes
+- fix(api-tokens): migrate hashing to PBKDF2 with per-deployment salt, reject legacy tokens with clear error
+- fix(api-tokens): move salt initialisation to startup to eliminate per-request race condition
 - fix: resolve all remaining CodeQL alerts including untrusted checkouts, uncontrolled allocations, and local rate-limit registrations (c5659ba)
 - fix: sever static analysis taint for dynamic RegExp syntax validation (2f9c142)
 - fix: resolve CodeQL alerts and update CI dependency caching keys (8d99f5e)

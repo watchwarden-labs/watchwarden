@@ -6,6 +6,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import bcrypt from 'bcryptjs';
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
+import { initApiTokenSalt } from './api/middleware/api-token-auth.js';
 import { registerAuditHook } from './api/middleware/audit.js';
 import agentsRoutes from './api/routes/agents.js';
 import apiTokenRoutes from './api/routes/api-tokens.js';
@@ -79,6 +80,12 @@ async function start() {
     await setConfig('encryption_salt', encSalt);
   }
   initCrypto(encSalt);
+
+  // 4b. Initialise the PBKDF2 salt used for API token hashing.
+  // Must be done at startup (before any requests) to avoid a per-request
+  // DB round-trip and the race condition where concurrent first requests
+  // could each generate a different salt.
+  await initApiTokenSalt();
 
   // 5. Auto-register local agent if LOCAL_AGENT_TOKEN is set
   const localAgentToken = process.env.LOCAL_AGENT_TOKEN;

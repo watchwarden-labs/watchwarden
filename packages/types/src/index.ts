@@ -394,6 +394,7 @@ export interface ApiToken {
   name: string;
   token_hash: string;
   token_prefix: string;
+  hash_version: number;
   scopes: string;
   created_at: number;
   expires_at: number | null;
@@ -406,6 +407,7 @@ export interface NewApiToken {
   name: string;
   token_hash: string;
   token_prefix: string;
+  hash_version: number;
   scopes?: string;
   expires_at?: number | null;
 }
