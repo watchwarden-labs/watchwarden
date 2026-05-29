@@ -1,3 +1,10 @@
+## v0.3.18
+
+Released: 2026-05-29
+
+### Bug Fixes
+- fix(api-tokens): migrate hashing to PBKDF2, add hash_version migration, fix salt race condition (3fe25e3)
+
 ## v0.3.17
 
 Released: 2026-05-29
