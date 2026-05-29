@@ -9,7 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 // containerLockEntry wraps a mutex with a deleted flag to support safe cleanup.
@@ -175,7 +176,11 @@ func (u *Updater) SelfUpdate(ctx context.Context, containerID string) (*UpdateRe
 	// Without this check a container that immediately exits (e.g. bad config) would
 	// kill us and leave the service down.
 	time.Sleep(2 * time.Second)
-	info, inspectErr := u.docker.cli.ContainerInspect(ctx, newID)
+	infoResult, inspectErr := u.docker.cli.ContainerInspect(ctx, newID, client.ContainerInspectOptions{})
+	var info container.InspectResponse
+	if inspectErr == nil {
+		info = infoResult.Container
+	}
 	if inspectErr != nil || !info.State.Running {
 		reason := "container not running after start"
 		if inspectErr != nil {
@@ -185,7 +190,7 @@ func (u *Updater) SelfUpdate(ctx context.Context, containerID string) (*UpdateRe
 		}
 		log.Printf("[self-update] health check failed for new %s: %s — rolling back", canonicalName, reason)
 		// Remove the unhealthy new container so the name is freed.
-		_ = u.docker.cli.ContainerRemove(ctx, newID, container.RemoveOptions{Force: true})
+		_, _ = u.docker.cli.ContainerRemove(ctx, newID, client.ContainerRemoveOptions{Force: true})
 		if renameErr := u.docker.ContainerRename(ctx, containerID, canonicalName); renameErr != nil {
 			log.Printf("[self-update] rollback rename failed: %v — container running as %s", renameErr, tempName)
 		} else {
@@ -205,7 +210,7 @@ func (u *Updater) SelfUpdate(ctx context.Context, containerID string) (*UpdateRe
 	// Step 4: force-remove self. Docker sends SIGKILL and removes the container
 	// atomically — the process will not return from this call.
 	log.Printf("[self-update] new %s healthy; force-removing self (%s)", canonicalName, tempName)
-	_ = u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
+	_, _ = u.docker.cli.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})
 
 	// Unreachable: the force-remove killed us.
 	return &UpdateResult{
@@ -265,16 +270,17 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 
 	// Build set of all existing container names (running + stopped) and a map
 	// from name to container ID/state for rename operations.
-	existing, err := u.docker.cli.ContainerList(ctx, container.ListOptions{All: true})
+	existingResult, err := u.docker.cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		log.Printf("[recovery] Failed to list containers: %v", err)
 		return
 	}
+	existing := existingResult.Items
 	existingNames := make(map[string]bool, len(existing))
 	nameToID := make(map[string]string, len(existing))
 	runningNames := make(map[string]bool, len(existing)) // only containers in "running" state
 	for _, c := range existing {
-		isRunning := c.State == "running"
+		isRunning := string(c.State) == "running"
 		for _, n := range c.Names {
 			clean := strings.TrimPrefix(n, "/")
 			existingNames[clean] = true
@@ -300,9 +306,9 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 			log.Printf("[recovery] Removing orphaned blue-green container %s (original %s still exists)", name, originalName)
 			if runningNames[name] {
 				timeout := 10
-				_ = u.docker.cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout})
+				_, _ = u.docker.cli.ContainerStop(ctx, id, client.ContainerStopOptions{Timeout: &timeout})
 			}
-			_ = u.docker.cli.ContainerRemove(ctx, id, container.RemoveOptions{})
+			_, _ = u.docker.cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{})
 			continue
 		}
 		// Original missing — complete the transition by renaming
@@ -338,15 +344,15 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 			// Case A: update succeeded, new container runs under original name, -ww-old is leftover.
 			log.Printf("[recovery] Removing orphaned self-update container %s (new %s is running)", name, originalName)
 			timeout := 10
-			_ = u.docker.cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout})
-			_ = u.docker.cli.ContainerRemove(ctx, id, container.RemoveOptions{})
+			_, _ = u.docker.cli.ContainerStop(ctx, id, client.ContainerStopOptions{Timeout: &timeout})
+			_, _ = u.docker.cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{})
 		} else if orphanRunning && !originalRunning {
 			// Case B: -ww-old is the real container (self-update failed, old code left a
 			// created-but-never-started container under originalName). Remove the bad original
 			// and restore the proper name.
 			if existingNames[originalName] {
 				log.Printf("[recovery] Removing bad orphan %s (created but never started)", originalName)
-				_ = u.docker.cli.ContainerRemove(ctx, nameToID[originalName], container.RemoveOptions{Force: true})
+				_, _ = u.docker.cli.ContainerRemove(ctx, nameToID[originalName], client.ContainerRemoveOptions{Force: true})
 			}
 			log.Printf("[recovery] Self-update failed: renaming %s → %s to restore service", name, originalName)
 			if err := u.docker.ContainerRename(ctx, id, originalName); err != nil {
@@ -363,7 +369,7 @@ func (u *Updater) RecoverOrphans(ctx context.Context) {
 			} else {
 				log.Printf("[recovery] Self-update failed: renaming stopped %s → %s", name, originalName)
 			}
-			_ = u.docker.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true})
+			_, _ = u.docker.cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true})
 			if !existingNames[originalName] {
 				existingNames[originalName] = true // renamed, second pass can skip
 			}
@@ -564,7 +570,8 @@ func (u *Updater) CheckForUpdates(ctx context.Context, containerIDs []string) ([
 		var newDigest string
 
 		if u.registryClient != nil {
-			if info, inspErr := u.docker.cli.ContainerInspect(ctx, id); inspErr == nil && info.Config != nil {
+			if infoResult, inspErr := u.docker.cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{}); inspErr == nil && infoResult.Container.Config != nil {
+				info := infoResult.Container
 				if pattern := info.Config.Labels["com.watchwarden.tag_pattern"]; pattern != "" {
 					tags, listErr := u.registryClient.ListTags(ctx, snapshot.ImageRef)
 					if listErr == nil {
@@ -771,7 +778,7 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 	// 6. Stop old container
 	u.emitProgress(containerID, snapshot.Name, "stopping", "")
 	timeout := 30
-	if err := u.docker.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
+	if _, err := u.docker.cli.ContainerStop(ctx, containerID, client.ContainerStopOptions{Timeout: &timeout}); err != nil {
 		return &UpdateResult{
 			ContainerID:   containerID,
 			ContainerName: snapshot.Name,
@@ -785,9 +792,9 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 
 	// 6. Remove old container (non-fatal if already gone, e.g. AutoRemove=true)
 	u.emitProgress(containerID, snapshot.Name, "removing", "")
-	if err := u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{}); err != nil {
+	if _, err := u.docker.cli.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{}); err != nil {
 		if !isNonFatalRemoveErr(err) {
-			_ = u.docker.cli.ContainerStart(ctx, containerID, container.StartOptions{})
+			_, _ = u.docker.cli.ContainerStart(ctx, containerID, client.ContainerStartOptions{})
 			return &UpdateResult{
 				ContainerID:   containerID,
 				ContainerName: snapshot.Name,
@@ -853,8 +860,8 @@ func (u *Updater) RollbackContainer(ctx context.Context, containerID string) (*U
 	start := time.Now()
 
 	timeout := 30
-	_ = u.docker.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout})
-	if err := u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{}); err != nil && !isNonFatalRemoveErr(err) {
+	_, _ = u.docker.cli.ContainerStop(ctx, containerID, client.ContainerStopOptions{Timeout: &timeout})
+	if _, err := u.docker.cli.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{}); err != nil && !isNonFatalRemoveErr(err) {
 		log.Printf("[rollback] ContainerRemove %s failed: %v", containerID, err)
 	}
 
@@ -966,10 +973,10 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 	// 3. Stop + remove current
 	u.emitProgress(originalID, snapshot.Name, "stopping", "")
 	timeout := 30
-	_ = u.docker.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout})
+	_, _ = u.docker.cli.ContainerStop(ctx, containerID, client.ContainerStopOptions{Timeout: &timeout})
 
 	u.emitProgress(originalID, snapshot.Name, "removing", "")
-	if err := u.docker.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{}); err != nil && !isNonFatalRemoveErr(err) {
+	if _, err := u.docker.cli.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{}); err != nil && !isNonFatalRemoveErr(err) {
 		log.Printf("[rollback-to-image] ContainerRemove %s failed: %v", containerID, err)
 	}
 
@@ -1077,7 +1084,7 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 			strings.Contains(err.Error(), "address already in use") {
 			log.Printf("[blue-green] %s: port conflict, falling back to stop-first", snapshot.Name)
 			// Clean up the failed temp container if it was created
-			_ = u.docker.cli.ContainerRemove(ctx, tempName, container.RemoveOptions{Force: true})
+			_, _ = u.docker.cli.ContainerRemove(ctx, tempName, client.ContainerRemoveOptions{Force: true})
 			entry.mu.Unlock()
 			unlocked = true
 			return u.UpdateContainer(ctx, containerID)
@@ -1090,7 +1097,11 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 	// 5. Wait for new container to be healthy.
 	// Inspect the new container to check for healthcheck start_period and adjust timeout.
 	healthTimeout := 60 * time.Second
-	newInfo, inspErr := u.docker.cli.ContainerInspect(ctx, newID)
+	newInfoResult, inspErr := u.docker.cli.ContainerInspect(ctx, newID, client.ContainerInspectOptions{})
+	var newInfo container.InspectResponse
+	if inspErr == nil {
+		newInfo = newInfoResult.Container
+	}
 	if inspErr == nil && newInfo.Config != nil && newInfo.Config.Healthcheck != nil && newInfo.Config.Healthcheck.StartPeriod > 0 {
 		healthTimeout += newInfo.Config.Healthcheck.StartPeriod
 	}
@@ -1107,8 +1118,8 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanCancel()
 		cleanTimeout := 10
-		_ = u.docker.cli.ContainerStop(cleanCtx, newID, container.StopOptions{Timeout: &cleanTimeout})
-		_ = u.docker.cli.ContainerRemove(cleanCtx, newID, container.RemoveOptions{})
+		_, _ = u.docker.cli.ContainerStop(cleanCtx, newID, client.ContainerStopOptions{Timeout: &cleanTimeout})
+		_, _ = u.docker.cli.ContainerRemove(cleanCtx, newID, client.ContainerRemoveOptions{})
 		return &UpdateResult{ContainerID: containerID, ContainerName: snapshot.Name, Success: false,
 			OldDigest:  snapshot.ImageDigest,
 			Error:      "new container failed health check; old container kept running",
@@ -1130,10 +1141,10 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cleanupCancel()
 	timeout := 30
-	if err := u.docker.cli.ContainerStop(cleanupCtx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
+	if _, err := u.docker.cli.ContainerStop(cleanupCtx, containerID, client.ContainerStopOptions{Timeout: &timeout}); err != nil {
 		log.Printf("[blue-green] warning: failed to stop old container %s: %v", containerID, err)
 	}
-	if err := u.docker.cli.ContainerRemove(cleanupCtx, containerID, container.RemoveOptions{}); err != nil {
+	if _, err := u.docker.cli.ContainerRemove(cleanupCtx, containerID, client.ContainerRemoveOptions{}); err != nil {
 		log.Printf("[blue-green] warning: failed to remove old container %s: %v", containerID, err)
 	}
 
@@ -1165,7 +1176,7 @@ func (u *Updater) BlueGreenUpdate(ctx context.Context, containerID string) (*Upd
 func (u *Updater) waitForHealthy(ctx context.Context, containerID string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		info, err := u.docker.cli.ContainerInspect(ctx, containerID)
+		infoResult, err := u.docker.cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 		if err != nil {
 			select {
 			case <-ctx.Done():
@@ -1174,7 +1185,8 @@ func (u *Updater) waitForHealthy(ctx context.Context, containerID string, timeou
 			}
 			continue
 		}
-		status := info.State.Status
+		info := infoResult.Container
+		status := string(info.State.Status)
 		if status == "exited" || status == "dead" {
 			return false
 		}

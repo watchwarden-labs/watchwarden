@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/client"
 )
 
 // PruneResult holds the outcome of an image prune operation.
@@ -39,11 +39,12 @@ func (p *Pruner) Prune(ctx context.Context, keepPrevious int, dryRun bool) Prune
 	result := PruneResult{}
 
 	// 1. Get all running containers to find images in use
-	containers, err := p.docker.cli.ContainerList(ctx, container.ListOptions{All: true})
+	containersResult, err := p.docker.cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		result.Errors = append(result.Errors, "failed to list containers: "+err.Error())
 		return result
 	}
+	containers := containersResult.Items
 
 	// Build set of image IDs in use by containers
 	usedImages := make(map[string]bool)
@@ -52,11 +53,12 @@ func (p *Pruner) Prune(ctx context.Context, keepPrevious int, dryRun bool) Prune
 	}
 
 	// 2. List all images
-	images, err := p.docker.cli.ImageList(ctx, image.ListOptions{All: false})
+	imagesResult, err := p.docker.cli.ImageList(ctx, client.ImageListOptions{All: false})
 	if err != nil {
 		result.Errors = append(result.Errors, "failed to list images: "+err.Error())
 		return result
 	}
+	images := imagesResult.Items
 
 	// 3. Group images by repository (base name without tag)
 	type repoImage struct {
@@ -131,7 +133,7 @@ func (p *Pruner) removeImage(ctx context.Context, result *PruneResult, img image
 		return
 	}
 
-	_, err := p.docker.cli.ImageRemove(ctx, img.ID, image.RemoveOptions{PruneChildren: true})
+	_, err := p.docker.cli.ImageRemove(ctx, img.ID, client.ImageRemoveOptions{PruneChildren: true})
 	if err != nil {
 		result.Errors = append(result.Errors, "failed to remove "+name+": "+err.Error())
 		return

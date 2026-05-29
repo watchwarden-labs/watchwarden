@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -203,12 +204,10 @@ func TestStartContainerWithNetworkAwareness_BridgeMode(t *testing.T) {
 	mock := &mockDockerAPI{
 		inspectFn: func(id string) (container.InspectResponse, error) {
 			return container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{
-					Name:       "/" + id,
-					HostConfig: &container.HostConfig{NetworkMode: "bridge"},
-					State:      &container.State{Running: false},
-				},
-				Config: &container.Config{Labels: map[string]string{}},
+				Name:       "/" + id,
+				HostConfig: &container.HostConfig{NetworkMode: "bridge"},
+				State:      &container.State{Running: false},
+				Config:     &container.Config{Labels: map[string]string{}},
 			}, nil
 		},
 	}
@@ -239,19 +238,15 @@ func TestStartContainerWithNetworkAwareness_NetworkContainerRunning(t *testing.T
 			switch id {
 			case targetID:
 				return container.InspectResponse{
-					ContainerJSONBase: &container.ContainerJSONBase{
-						Name:       "/" + id,
-						HostConfig: &container.HostConfig{NetworkMode: container.NetworkMode("container:" + netID)},
-						State:      &container.State{Running: false},
-					},
-					Config: &container.Config{Labels: map[string]string{}},
+					Name:       "/" + id,
+					HostConfig: &container.HostConfig{NetworkMode: container.NetworkMode("container:" + netID)},
+					State:      &container.State{Running: false},
+					Config:     &container.Config{Labels: map[string]string{}},
 				}, nil
 			case netID:
 				return container.InspectResponse{
-					ContainerJSONBase: &container.ContainerJSONBase{
-						Name:  "/" + id,
-						State: &container.State{Running: true},
-					},
+					Name:  "/" + id,
+					State: &container.State{Running: true},
 				}, nil
 			default:
 				return container.InspectResponse{}, fmt.Errorf("no such container: %s", id)
@@ -289,12 +284,10 @@ func TestStartContainerWithNetworkAwareness_NetworkContainerStopped(t *testing.T
 		switch id {
 		case targetID:
 			return container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{
-					Name:       "/" + id,
-					HostConfig: &container.HostConfig{NetworkMode: container.NetworkMode("container:" + netID)},
-					State:      &container.State{Running: false},
-				},
-				Config: &container.Config{Labels: map[string]string{}},
+				Name:       "/" + id,
+				HostConfig: &container.HostConfig{NetworkMode: container.NetworkMode("container:" + netID)},
+				State:      &container.State{Running: false},
+				Config:     &container.Config{Labels: map[string]string{}},
 			}, nil
 		case netID:
 			// Report running only after ContainerStart:netID has been recorded,
@@ -307,10 +300,8 @@ func TestStartContainerWithNetworkAwareness_NetworkContainerStopped(t *testing.T
 				}
 			}
 			return container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{
-					Name:  "/" + id,
-					State: &container.State{Running: running},
-				},
+				Name:  "/" + id,
+				State: &container.State{Running: running},
 			}, nil
 		default:
 			return container.InspectResponse{}, fmt.Errorf("no such container: %s", id)
@@ -347,11 +338,9 @@ func TestStartContainerWithNetworkAwareness_StaleNetIDWithComposeLabels(t *testi
 			switch id {
 			case targetID:
 				return container.InspectResponse{
-					ContainerJSONBase: &container.ContainerJSONBase{
-						Name:       "/myapp",
-						HostConfig: &container.HostConfig{NetworkMode: container.NetworkMode("container:" + staleNetID)},
-						State:      &container.State{Running: false},
-					},
+					Name:       "/myapp",
+					HostConfig: &container.HostConfig{NetworkMode: container.NetworkMode("container:" + staleNetID)},
+					State:      &container.State{Running: false},
 					Config: &container.Config{Labels: map[string]string{
 						"com.docker.compose.project":    "myproject",
 						"com.docker.compose.depends_on": "vpn:service_started:true",
@@ -362,7 +351,7 @@ func TestStartContainerWithNetworkAwareness_StaleNetIDWithComposeLabels(t *testi
 				return container.InspectResponse{}, fmt.Errorf("no such container: %s", id)
 			}
 		},
-		containerListFn: func(_ context.Context, _ container.ListOptions) ([]container.Summary, error) {
+		containerListFn: func(_ context.Context, _ client.ContainerListOptions) ([]container.Summary, error) {
 			return []container.Summary{
 				{
 					ID:    newNetID,
@@ -411,11 +400,9 @@ func TestStartContainerWithNetworkAwareness_StaleNetIDNoComposeLabels(t *testing
 		inspectFn: func(id string) (container.InspectResponse, error) {
 			if id == targetID {
 				return container.InspectResponse{
-					ContainerJSONBase: &container.ContainerJSONBase{
-						Name:       "/myapp",
-						HostConfig: &container.HostConfig{NetworkMode: container.NetworkMode("container:" + staleNetID)},
-						State:      &container.State{Running: false},
-					},
+					Name:       "/myapp",
+					HostConfig: &container.HostConfig{NetworkMode: container.NetworkMode("container:" + staleNetID)},
+					State:      &container.State{Running: false},
 					// No compose labels
 					Config: &container.Config{Labels: map[string]string{}},
 				}, nil
@@ -458,7 +445,7 @@ func TestFindNetworkProviderByLabels_NoDependsOnLabel(t *testing.T) {
 func TestFindNetworkProviderByLabels_MatchingContainerFound(t *testing.T) {
 	const expectedID = "vpn-container-id"
 	mock := &mockDockerAPI{
-		containerListFn: func(_ context.Context, _ container.ListOptions) ([]container.Summary, error) {
+		containerListFn: func(_ context.Context, _ client.ContainerListOptions) ([]container.Summary, error) {
 			return []container.Summary{
 				{
 					ID:    expectedID,
@@ -496,7 +483,7 @@ func TestFindNetworkProviderByLabels_MatchingContainerFound(t *testing.T) {
 // is returned when no running container matches the project and service names.
 func TestFindNetworkProviderByLabels_NoMatchingContainer(t *testing.T) {
 	mock := &mockDockerAPI{
-		containerListFn: func(_ context.Context, _ container.ListOptions) ([]container.Summary, error) {
+		containerListFn: func(_ context.Context, _ client.ContainerListOptions) ([]container.Summary, error) {
 			return []container.Summary{
 				{
 					ID:    "wrong-project-container",
@@ -533,11 +520,9 @@ func TestRecreateWithNetworkContainer_HappyPath(t *testing.T) {
 	mock := &mockDockerAPI{}
 
 	info := container.InspectResponse{
-		ContainerJSONBase: &container.ContainerJSONBase{
-			Name:       "/myapp",
-			HostConfig: &container.HostConfig{NetworkMode: "container:stale-net-id"},
-			State:      &container.State{Running: false},
-		},
+		Name:       "/myapp",
+		HostConfig: &container.HostConfig{NetworkMode: "container:stale-net-id"},
+		State:      &container.State{Running: false},
 		Config: &container.Config{
 			Image:      "myapp:latest",
 			Hostname:   "myapp-hostname",
@@ -604,11 +589,9 @@ func TestWaitForContainerRunningOrHealthy_ImmediatelyRunning(t *testing.T) {
 	mock := &mockDockerAPI{
 		inspectFn: func(id string) (container.InspectResponse, error) {
 			return container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{
-					ID:    id,
-					Name:  "/" + id,
-					State: &container.State{Running: true, Health: nil},
-				},
+				ID:    id,
+				Name:  "/" + id,
+				State: &container.State{Running: true, Health: nil},
 			}, nil
 		},
 	}
@@ -624,13 +607,11 @@ func TestWaitForContainerRunningOrHealthy_RunningAndHealthy(t *testing.T) {
 	mock := &mockDockerAPI{
 		inspectFn: func(id string) (container.InspectResponse, error) {
 			return container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{
-					ID:   id,
-					Name: "/" + id,
-					State: &container.State{
-						Running: true,
-						Health:  &container.Health{Status: "healthy"},
-					},
+				ID:   id,
+				Name: "/" + id,
+				State: &container.State{
+					Running: true,
+					Health:  &container.Health{Status: "healthy"},
 				},
 			}, nil
 		},
@@ -648,13 +629,11 @@ func TestWaitForContainerRunningOrHealthy_TimeoutExpires(t *testing.T) {
 		inspectFn: func(id string) (container.InspectResponse, error) {
 			// Always return "starting" — never becomes healthy
 			return container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{
-					ID:   id,
-					Name: "/" + id,
-					State: &container.State{
-						Running: true,
-						Health:  &container.Health{Status: "starting"},
-					},
+				ID:   id,
+				Name: "/" + id,
+				State: &container.State{
+					Running: true,
+					Health:  &container.Health{Status: "starting"},
 				},
 			}, nil
 		},

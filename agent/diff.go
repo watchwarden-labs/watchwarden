@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/docker/docker/api/types/image"
+	"github.com/moby/moby/api/types/image"
 )
 
 // ImageDiff represents the configuration differences between two image versions.

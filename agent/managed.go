@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 // runManagedMode starts the agent in Controller-managed mode.
@@ -480,7 +480,7 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		}
 		log.Printf("[container] Stopping %s", cmd.ContainerID)
 		timeout := 10
-		err := dockerClient.cli.ContainerStop(ctx, resolvedID, container.StopOptions{Timeout: &timeout})
+		_, err := dockerClient.cli.ContainerStop(ctx, resolvedID, client.ContainerStopOptions{Timeout: &timeout})
 		success := err == nil
 		errStr := ""
 		if err != nil {
@@ -511,7 +511,7 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			resolvedID = r
 		}
 		log.Printf("[container] Deleting %s", cmd.ContainerID)
-		err := dockerClient.cli.ContainerRemove(ctx, resolvedID, container.RemoveOptions{Force: true})
+		_, err := dockerClient.cli.ContainerRemove(ctx, resolvedID, client.ContainerRemoveOptions{Force: true})
 		success := err == nil
 		errStr := ""
 		if err != nil {
@@ -544,7 +544,7 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		}
 		log.Printf("[container] Restarting %s", cmd.ContainerID)
 		timeout := 10
-		_ = dockerClient.cli.ContainerStop(ctx, resolvedID, container.StopOptions{Timeout: &timeout})
+		_, _ = dockerClient.cli.ContainerStop(ctx, resolvedID, client.ContainerStopOptions{Timeout: &timeout})
 		err := startContainerWithNetworkAwareness(ctx, dockerClient.cli, resolvedID, cmd.ContainerID, func(ctx context.Context, ref string) error {
 			_, err := dockerClient.PullImage(ctx, ref)
 			return err
@@ -603,7 +603,7 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		for i := len(batchResolved) - 1; i >= 0; i-- {
 			for _, pair := range batchResolved[i] {
 				log.Printf("[restart-unhealthy] Stopping %s", pair.original)
-				if err := dockerClient.cli.ContainerStop(ctx, pair.resolved, container.StopOptions{Timeout: &stopTimeout}); err != nil {
+				if _, err := dockerClient.cli.ContainerStop(ctx, pair.resolved, client.ContainerStopOptions{Timeout: &stopTimeout}); err != nil {
 					log.Printf("[restart-unhealthy] Stop %s failed: %v (continuing)", pair.original, err)
 				}
 			}
@@ -616,7 +616,7 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			log.Printf("[restart-unhealthy] Starting batch %d/%d (%d containers)", i+1, len(cmd.Batches), len(batchResolved[i]))
 			for _, pair := range batchResolved[i] {
 				log.Printf("[restart-unhealthy] Starting %s", pair.original)
-				if err := dockerClient.cli.ContainerStart(ctx, pair.resolved, container.StartOptions{}); err != nil {
+				if _, err := dockerClient.cli.ContainerStart(ctx, pair.resolved, client.ContainerStartOptions{}); err != nil {
 					log.Printf("[restart-unhealthy] Start %s failed: %v", pair.original, err)
 				}
 			}

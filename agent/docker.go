@@ -14,12 +14,10 @@ import (
 	"strings"
 	"time"
 
-	dockertypes "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/registry"
+	"github.com/moby/moby/client"
 )
 
 // getSelfContainerID returns the full Docker container ID of the agent process,
@@ -37,7 +35,7 @@ import (
 // and 2 return "" and the fallbacks are used.
 func getSelfContainerID(ctx context.Context, cli DockerAPI) string {
 	containerID := func(info container.InspectResponse) string {
-		if info.ContainerJSONBase == nil {
+		if info.ID == "" {
 			return ""
 		}
 		return info.ID
@@ -46,8 +44,8 @@ func getSelfContainerID(ctx context.Context, cli DockerAPI) string {
 	// Method 1: /proc/self/cgroup (cgroupv1 and cgroupv2 without private NS)
 	if data, err := os.ReadFile("/proc/self/cgroup"); err == nil {
 		if id := extractContainerIDFromCgroup(string(data)); id != "" {
-			if info, err := cli.ContainerInspect(ctx, id); err == nil {
-				if id := containerID(info); id != "" {
+			if res, err := cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{}); err == nil {
+				if id := containerID(res.Container); id != "" {
 					return id
 				}
 			}
@@ -58,8 +56,8 @@ func getSelfContainerID(ctx context.Context, cli DockerAPI) string {
 	if data, err := os.ReadFile("/proc/1/cpuset"); err == nil {
 		for _, seg := range strings.Split(strings.TrimSpace(string(data)), "/") {
 			if len(seg) == 64 && isLowercaseHex(seg) {
-				if info, err := cli.ContainerInspect(ctx, seg); err == nil {
-					if id := containerID(info); id != "" {
+				if res, err := cli.ContainerInspect(ctx, seg, client.ContainerInspectOptions{}); err == nil {
+					if id := containerID(res.Container); id != "" {
 						return id
 					}
 				}
@@ -71,8 +69,8 @@ func getSelfContainerID(ctx context.Context, cli DockerAPI) string {
 	// (12 hex chars) unless an explicit hostname is configured. Also handles
 	// explicit hostnames (e.g. service name in Compose).
 	if hostname := os.Getenv("HOSTNAME"); hostname != "" {
-		if info, err := cli.ContainerInspect(ctx, hostname); err == nil {
-			if id := containerID(info); id != "" {
+		if res, err := cli.ContainerInspect(ctx, hostname, client.ContainerInspectOptions{}); err == nil {
+			if id := containerID(res.Container); id != "" {
 				return id
 			}
 		}
@@ -81,8 +79,8 @@ func getSelfContainerID(ctx context.Context, cli DockerAPI) string {
 	// Method 4: os.Hostname() syscall — identical to HOSTNAME in containers but
 	// works even if the env var was stripped.
 	if hostname, err := os.Hostname(); err == nil && hostname != "" {
-		if info, err := cli.ContainerInspect(ctx, hostname); err == nil {
-			if id := containerID(info); id != "" {
+		if res, err := cli.ContainerInspect(ctx, hostname, client.ContainerInspectOptions{}); err == nil {
+			if id := containerID(res.Container); id != "" {
 				return id
 			}
 		}
@@ -258,10 +256,11 @@ func friendlyImageName(raw string, containerName string) string {
 
 // ListContainers returns info for all containers (running and stopped).
 func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, error) {
-	containers, err := d.cli.ContainerList(ctx, container.ListOptions{All: true})
+	containersResult, err := d.cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
+	containers := containersResult.Items
 
 	result := make([]ContainerInfo, 0, len(containers))
 	for _, c := range containers {
@@ -273,7 +272,7 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 		digest := ""
 		imageName := c.Image
 		if len(c.Image) > 0 {
-			imgInspect, _, err := d.cli.ImageInspectWithRaw(ctx, c.Image)
+			imgInspect, err := d.cli.ImageInspect(ctx, c.Image)
 			if err == nil {
 				if len(imgInspect.RepoDigests) > 0 {
 					digest = imgInspect.RepoDigests[0]
@@ -347,7 +346,7 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 			Name:          name,
 			Image:         imageName,
 			CurrentDigest: digest,
-			Status:        c.State,
+			Status:        string(c.State),
 			HealthStatus:  healthStatus,
 			Excluded:      excluded,
 			ExcludeReason: excludeReason,
@@ -368,18 +367,19 @@ func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, err
 // then falling back to searching by name. This handles stale IDs after container recreation.
 func (d *DockerClient) ResolveContainerID(ctx context.Context, containerIDOrName string) (string, error) {
 	// Try direct inspect first
-	info, err := d.cli.ContainerInspect(ctx, containerIDOrName)
+	res, err := d.cli.ContainerInspect(ctx, containerIDOrName, client.ContainerInspectOptions{})
 	if err == nil {
-		return info.ID, nil
+		return res.Container.ID, nil
 	}
 
 	// DS-04: use All:true so stopped containers are included in the fallback search.
 	// Previously All:false meant CONTAINER_START on a stopped container would fail
 	// with "container not found" even though it existed.
-	containers, listErr := d.cli.ContainerList(ctx, container.ListOptions{All: true})
+	containersResult, listErr := d.cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if listErr != nil {
 		return "", fmt.Errorf("failed to resolve container %s: %w", containerIDOrName, err)
 	}
+	containers := containersResult.Items
 
 	for _, c := range containers {
 		for _, name := range c.Names {
@@ -395,10 +395,11 @@ func (d *DockerClient) ResolveContainerID(ctx context.Context, containerIDOrName
 
 // InspectContainer returns a full snapshot of a container's configuration.
 func (d *DockerClient) InspectContainer(ctx context.Context, containerID string) (*ContainerSnapshot, error) {
-	info, err := d.cli.ContainerInspect(ctx, containerID)
+	res, err := d.cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect container %s: %w", containerID, err)
 	}
+	info := res.Container
 
 	// Build network config
 	networks := make(map[string]*network.EndpointSettings)
@@ -410,7 +411,7 @@ func (d *DockerClient) InspectContainer(ctx context.Context, containerID string)
 
 	// Get image digest
 	digest := ""
-	imgInspect, _, err := d.cli.ImageInspectWithRaw(ctx, info.Image)
+	imgInspect, err := d.cli.ImageInspect(ctx, info.Image)
 	if err == nil && len(imgInspect.RepoDigests) > 0 {
 		digest = imgInspect.RepoDigests[0]
 	}
@@ -427,7 +428,7 @@ func (d *DockerClient) InspectContainer(ctx context.Context, containerID string)
 
 // PullImage pulls an image and returns the new digest.
 func (d *DockerClient) PullImage(ctx context.Context, ref string) (string, error) {
-	pullOpts := image.PullOptions{}
+	pullOpts := client.ImagePullOptions{}
 	if d.credStore != nil {
 		if cred := d.credStore.GetForImage(ref); cred != nil {
 			authConfig := registry.AuthConfig{
@@ -487,7 +488,7 @@ func (d *DockerClient) PullImage(ctx context.Context, ref string) (string, error
 	// The pull stream's "Digest:" line may report the manifest list digest
 	// (multi-arch index) while the container uses the platform-specific digest.
 	// Inspecting gives us the actual digest Docker resolved for this platform.
-	imgInspect, _, err := d.cli.ImageInspectWithRaw(ctx, ref)
+	imgInspect, err := d.cli.ImageInspect(ctx, ref)
 	if err == nil && len(imgInspect.RepoDigests) > 0 {
 		// Use the repo digest that matches the registry (most specific)
 		for _, rd := range imgInspect.RepoDigests {
@@ -522,11 +523,11 @@ func (d *DockerClient) GetRemoteDigest(ctx context.Context, ref string) (string,
 			}
 		}
 	}
-	info, err := d.cli.DistributionInspect(ctx, ref, encodedAuth)
+	res, err := d.cli.DistributionInspect(ctx, ref, client.DistributionInspectOptions{EncodedRegistryAuth: encodedAuth})
 	if err != nil {
 		return "", fmt.Errorf("registry inspect %s: %w", ref, err)
 	}
-	return string(info.Descriptor.Digest), nil
+	return string(res.Descriptor.Digest), nil
 }
 
 // isSpecialNetworkMode returns true for network modes that are managed by HostConfig
@@ -583,7 +584,12 @@ func (d *DockerClient) recreateContainerWithName(ctx context.Context, snapshot *
 	}
 
 	// Create new container
-	resp, err := d.cli.ContainerCreate(ctx, &newConfig, snapshot.HostConfig, networkingConfig, nil, name)
+	resp, err := d.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           &newConfig,
+		HostConfig:       snapshot.HostConfig,
+		NetworkingConfig: networkingConfig,
+		Name:             name,
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %w", err)
 	}
@@ -599,21 +605,21 @@ func (d *DockerClient) recreateContainerWithName(ctx context.Context, snapshot *
 				first = false
 				continue // Skip first, already in create
 			}
-			if err := d.cli.NetworkConnect(ctx, netName, resp.ID, ep); err != nil {
+			if _, err := d.cli.NetworkConnect(ctx, netName, client.NetworkConnectOptions{Container: resp.ID, EndpointConfig: ep}); err != nil {
 				log.Printf("error: failed to connect network %s to container %s: %v", netName, resp.ID, err)
 				// Clean up the partially-configured container
 				timeout := 10
-				_ = d.cli.ContainerStop(ctx, resp.ID, container.StopOptions{Timeout: &timeout})
-				_ = d.cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{})
+				_, _ = d.cli.ContainerStop(ctx, resp.ID, client.ContainerStopOptions{Timeout: &timeout})
+				_, _ = d.cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{})
 				return "", fmt.Errorf("failed to connect network %s: %w", netName, err)
 			}
 		}
 	}
 
 	// Start the container
-	if err := d.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	if _, err := d.cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
 		// Clean up the created-but-not-started container so the name is freed.
-		_ = d.cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+		_, _ = d.cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
 		return "", fmt.Errorf("failed to start container: %w", err)
 	}
 
@@ -633,26 +639,27 @@ func (d *DockerClient) RecreateContainerNamed(ctx context.Context, snapshot *Con
 // ContainerRename renames a container.
 func (d *DockerClient) ContainerRename(ctx context.Context, containerID, newName string) error {
 	type renamer interface {
-		ContainerRename(ctx context.Context, containerID, newName string) error
+		ContainerRename(ctx context.Context, containerID string, options client.ContainerRenameOptions) (client.ContainerRenameResult, error)
 	}
 	r, ok := d.cli.(renamer)
 	if !ok {
 		return fmt.Errorf("underlying client does not support ContainerRename")
 	}
-	return r.ContainerRename(ctx, containerID, newName)
+	_, err := r.ContainerRename(ctx, containerID, client.ContainerRenameOptions{NewName: newName})
+	return err
 }
 
 // GetDockerVersion returns Docker server version info by duck-typing the underlying client.
 // Returns nil if the client does not support ServerVersion (e.g. in tests).
 func (d *DockerClient) GetDockerVersion(ctx context.Context) *DockerVersionInfo {
 	type serverVersioner interface {
-		ServerVersion(context.Context) (dockertypes.Version, error)
+		ServerVersion(context.Context, client.ServerVersionOptions) (client.ServerVersionResult, error)
 	}
 	sv, ok := d.cli.(serverVersioner)
 	if !ok {
 		return nil
 	}
-	v, err := sv.ServerVersion(ctx)
+	v, err := sv.ServerVersion(ctx, client.ServerVersionOptions{})
 	if err != nil {
 		return nil
 	}
@@ -667,12 +674,13 @@ func (d *DockerClient) GetDockerVersion(ctx context.Context) *DockerVersionInfo 
 // GetContainerLogs returns the last `tail` lines of a container's stdout/stderr.
 func (d *DockerClient) GetContainerLogs(ctx context.Context, containerID string, tail int) (string, error) {
 	// Check if container uses TTY (affects stream format)
-	info, err := d.cli.ContainerInspect(ctx, containerID)
+	res, err := d.cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("inspect failed: %w", err)
 	}
+	info := res.Container
 
-	reader, err := d.cli.ContainerLogs(ctx, containerID, container.LogsOptions{
+	reader, err := d.cli.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Tail:       strconv.Itoa(tail),
@@ -728,16 +736,19 @@ func startContainerWithNetworkAwareness(
 	resolvedID, logID string,
 	pullImage func(ctx context.Context, imageRef string) error,
 ) error {
-	info, err := cli.ContainerInspect(ctx, resolvedID)
-	if err != nil || info.HostConfig == nil {
-		return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+	res, err := cli.ContainerInspect(ctx, resolvedID, client.ContainerInspectOptions{})
+	if err != nil || res.Container.HostConfig == nil {
+		_, err := cli.ContainerStart(ctx, resolvedID, client.ContainerStartOptions{})
+		return err
 	}
+	info := res.Container
 	nm := string(info.HostConfig.NetworkMode)
 	if !strings.HasPrefix(nm, "container:") {
-		return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+		_, err := cli.ContainerStart(ctx, resolvedID, client.ContainerStartOptions{})
+		return err
 	}
 	netContainerRef := strings.TrimPrefix(nm, "container:")
-	netInfo, netInspectErr := cli.ContainerInspect(ctx, netContainerRef)
+	netRes, netInspectErr := cli.ContainerInspect(ctx, netContainerRef, client.ContainerInspectOptions{})
 	if netInspectErr != nil {
 		// Stale ref — find the replacement network provider via compose labels.
 		log.Printf("[container] Network container %s is stale for %s; searching replacement", netContainerRef, logID)
@@ -748,12 +759,14 @@ func startContainerWithNetworkAwareness(
 		log.Printf("[container] Recreating %s with network container %s", logID, newNetID)
 		return recreateWithNetworkContainer(ctx, cli, resolvedID, info, newNetID, pullImage)
 	}
+	netInfo := netRes.Container
 	if netInfo.State == nil || !netInfo.State.Running {
 		log.Printf("[container] Starting network container %s before %s", netContainerRef, logID)
-		_ = cli.ContainerStart(ctx, netContainerRef, container.StartOptions{})
+		_, _ = cli.ContainerStart(ctx, netContainerRef, client.ContainerStartOptions{})
 		waitForContainerRunningOrHealthy(ctx, cli, netContainerRef, 60)
 	}
-	return cli.ContainerStart(ctx, resolvedID, container.StartOptions{})
+	_, err = cli.ContainerStart(ctx, resolvedID, client.ContainerStartOptions{})
+	return err
 }
 
 // findNetworkProviderByLabels locates the currently running container that
@@ -781,10 +794,11 @@ func findNetworkProviderByLabels(ctx context.Context, cli DockerAPI, labels map[
 	if len(depServices) == 0 {
 		return "", fmt.Errorf("could not parse service names from depends_on label: %q", dependsOnRaw)
 	}
-	running, err := cli.ContainerList(ctx, container.ListOptions{})
+	runningResult, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		return "", fmt.Errorf("list containers: %w", err)
 	}
+	running := runningResult.Items
 	for _, c := range running {
 		if c.Labels["com.docker.compose.project"] != project {
 			continue
@@ -817,23 +831,34 @@ func recreateWithNetworkContainer(
 	// in the container config ("conflicting options: hostname and the network mode").
 	info.Config.Hostname = ""
 	info.Config.Domainname = ""
-	if err := cli.ContainerRemove(ctx, oldID, container.RemoveOptions{Force: true}); err != nil {
+	if _, err := cli.ContainerRemove(ctx, oldID, client.ContainerRemoveOptions{Force: true}); err != nil {
 		return fmt.Errorf("remove old container: %w", err)
 	}
-	resp, err := cli.ContainerCreate(ctx, info.Config, info.HostConfig, &network.NetworkingConfig{}, nil, name)
+	resp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           info.Config,
+		HostConfig:       info.HostConfig,
+		NetworkingConfig: &network.NetworkingConfig{},
+		Name:             name,
+	})
 	if err != nil && pullImage != nil {
 		// Image may have been pruned locally — pull and retry once.
 		log.Printf("[container] ContainerCreate failed (%v); pulling %s and retrying", err, info.Config.Image)
 		if pullErr := pullImage(ctx, info.Config.Image); pullErr != nil {
 			log.Printf("[container] Pull %s failed: %v", info.Config.Image, pullErr)
 		} else {
-			resp, err = cli.ContainerCreate(ctx, info.Config, info.HostConfig, &network.NetworkingConfig{}, nil, name)
+			resp, err = cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+				Config:           info.Config,
+				HostConfig:       info.HostConfig,
+				NetworkingConfig: &network.NetworkingConfig{},
+				Name:             name,
+			})
 		}
 	}
 	if err != nil {
 		return fmt.Errorf("create container: %w", err)
 	}
-	return cli.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	_, err = cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
+	return err
 }
 
 // waitForContainerRunningOrHealthy polls until the container is running (and
@@ -842,8 +867,9 @@ func recreateWithNetworkContainer(
 func waitForContainerRunningOrHealthy(ctx context.Context, cli DockerAPI, containerID string, timeoutSecs int) bool {
 	deadline := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
 	for time.Now().Before(deadline) {
-		info, err := cli.ContainerInspect(ctx, containerID)
-		if err == nil && info.ContainerJSONBase != nil && info.State != nil && info.State.Running {
+		res, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
+		if err == nil && res.Container.ID != "" && res.Container.State != nil && res.Container.State.Running {
+			info := res.Container
 			if info.State.Health == nil {
 				return true // no healthcheck — running is enough
 			}
