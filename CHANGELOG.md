@@ -1,3 +1,13 @@
+## v0.3.16
+
+Released: 2026-05-29
+
+### Features
+- feat: implement queued update state broadcast and update UI to display queue status (eb0fc75)
+
+### Bug Fixes
+- fix: resolve security vulnerabilities in npm and Go dependencies (fb427fd)
+
 ## v0.3.15
 
 Released: 2026-05-29
