@@ -544,8 +544,16 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
     if (tag_pattern !== undefined && tag_pattern !== null) {
+      if (tag_pattern.length > 100) {
+        return reply.code(400).send({ error: 'tag_pattern is too long (max 100 characters)' });
+      }
+      const match = tag_pattern.match(/^[a-zA-Z0-9.\\-_^+*?$|():\s]+$/);
+      if (!match) {
+        return reply.code(400).send({ error: 'tag_pattern contains unsafe characters' });
+      }
+      const safePattern = match[0];
       try {
-        new RegExp(tag_pattern);
+        new RegExp(safePattern);
       } catch {
         return reply
           .code(400)

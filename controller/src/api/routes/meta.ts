@@ -187,7 +187,9 @@ const metaRoutes: FastifyPluginAsync = async (fastify) => {
           anonymous_docker_hub_images: containers
             .filter(
               (c) =>
-                (!c.image.includes('/') || c.image.startsWith('docker.io')) &&
+                (!c.image.includes('/') ||
+                  c.image === 'docker.io' ||
+                  c.image.startsWith('docker.io/')) &&
                 !registries.some(
                   (r) => r.registry === 'docker.io' || r.registry === 'registry-1.docker.io',
                 ),

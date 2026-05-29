@@ -1,6 +1,11 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { listApiTokensByPrefix, touchApiTokenLastUsed } from '../../db/queries.js';
+import {
+  getConfig,
+  listApiTokensByPrefix,
+  setConfig,
+  touchApiTokenLastUsed,
+} from '../../db/queries.js';
 import type { ApiToken } from '../../types.js';
 
 declare module 'fastify' {
@@ -15,8 +20,8 @@ declare module 'fastify' {
  * strings — no need for slow hashing. The prefix speeds up lookup so we
  * don't hash-compare every token row.
  */
-export function hashApiToken(raw: string): string {
-  return createHash('sha256').update(raw).digest('hex');
+export function hashApiToken(raw: string, salt: string): string {
+  return createHmac('sha256', salt).update(raw).digest('hex');
 }
 
 /** Constant-time comparison of two hex-encoded hashes. */
@@ -53,7 +58,12 @@ export async function requireApiToken(request: FastifyRequest, reply: FastifyRep
     return;
   }
 
-  const hash = hashApiToken(raw);
+  let salt = await getConfig('api_token_salt');
+  if (!salt) {
+    salt = randomBytes(32).toString('hex');
+    await setConfig('api_token_salt', salt);
+  }
+  const hash = hashApiToken(raw, salt);
   const match = candidates.find((t) => safeHashEqual(t.token_hash, hash));
   if (!match) {
     reply.code(401).send({ error: 'Invalid API token' });
