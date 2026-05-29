@@ -6,6 +6,25 @@
     "controller",
     "ui"
   ],
+  "overrides": {
+    "uuid": "^11.1.1",
+    "esbuild": "^0.25.0",
+    "dockerode": {
+      "uuid": "^11.1.1"
+    },
+    "node-cron": {
+      "uuid": "^11.1.1"
+    },
+    "vite": {
+      "esbuild": "^0.25.0"
+    },
+    "vitest": {
+      "esbuild": "^0.25.0",
+      "vite": {
+        "esbuild": "^0.25.0"
+      }
+    }
+  },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "build:packages": "npm -w @watchwarden/types run build && npm -w @watchwarden/sdk run build",

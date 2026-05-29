@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types/image"
-	"github.com/docker/go-connections/nat"
 )
 
 // ImageDiff represents the configuration differences between two image versions.
@@ -206,10 +205,10 @@ func diffLabels(current, target map[string]string) (added map[string]string, rem
 	return
 }
 
-func portKeys(ports nat.PortSet) []string {
+func portKeys(ports map[string]struct{}) []string {
 	result := make([]string, 0, len(ports))
 	for p := range ports {
-		result = append(result, string(p))
+		result = append(result, p)
 	}
 	sort.Strings(result)
 	return result
