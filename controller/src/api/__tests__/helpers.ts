@@ -4,12 +4,16 @@ import bcrypt from 'bcryptjs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { truncateAll } from '../../__tests__/pg-setup.js';
 import { setConfig } from '../../db/queries.js';
+import { initApiTokenSalt } from '../middleware/api-token-auth.js';
 
 export async function buildTestApp(): Promise<FastifyInstance> {
   // Seed admin password
   const hash = await bcrypt.hash('testpassword', 10);
   await setConfig('admin_password_hash', hash);
   await setConfig('jwt_secret', 'test-jwt-secret');
+
+  // Initialise the API token salt (mirrors production startup sequence)
+  await initApiTokenSalt();
 
   const app = Fastify({ logger: false });
 
