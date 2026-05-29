@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import type { WebSocket } from 'ws';
 import {
@@ -938,9 +938,20 @@ export class AgentHub {
     }
 
     for (const agent of candidates) {
-      const valid = await bcrypt.compare(token, agent.token_hash);
-      if (valid) {
-        return { id: agent.id };
+      // VIOLATION 7: Support both SHA-256 (64-char hex) and legacy bcrypt hashes
+      if (agent.token_hash.startsWith('$2a$') || agent.token_hash.startsWith('$2b$')) {
+        const valid = await bcrypt.compare(token, agent.token_hash);
+        if (valid) {
+          return { id: agent.id };
+        }
+      } else {
+        const hash = createHash('sha256').update(token).digest('hex');
+        if (
+          agent.token_hash.length === 64 &&
+          timingSafeEqual(Buffer.from(agent.token_hash, 'hex'), Buffer.from(hash, 'hex'))
+        ) {
+          return { id: agent.id };
+        }
       }
     }
     return null;

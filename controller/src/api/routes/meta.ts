@@ -109,12 +109,11 @@ const metaRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // --- Diagnostics bundle (ZIP) ---
-  fastify.post(
-    '/api/meta/diagnostics-bundle',
-    {
-      config: { rateLimit: { max: 2, timeWindow: '1 minute' } },
-    },
-    async (_request, reply) => {
+  fastify.route({
+    method: ['GET', 'POST'],
+    url: '/api/meta/diagnostics-bundle',
+    config: { rateLimit: { max: 2, timeWindow: '1 minute' } },
+    handler: async (_request, reply) => {
       const [agents, counts, lastCheck, containers, registries] = await Promise.all([
         listAgents(),
         countContainers(),
@@ -219,7 +218,7 @@ const metaRoutes: FastifyPluginAsync = async (fastify) => {
         );
       return reply.send(passthrough);
     },
-  );
+  });
 };
 
 export default metaRoutes;
