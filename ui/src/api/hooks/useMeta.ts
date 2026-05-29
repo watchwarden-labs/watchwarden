@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useStore } from '../../store/useStore';
 import { apiRequest } from '../client';
 
 export interface AgentVersionInfo {
@@ -56,9 +57,16 @@ export function useUpdateLogging() {
 }
 
 export async function downloadDiagnosticsBundle(): Promise<void> {
+  const token = useStore.getState().authToken;
+  const headers: Record<string, string> = {};
+  if (token && token !== 'cookie') {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const res = await fetch('/api/meta/diagnostics-bundle', {
-    method: 'POST',
+    method: 'GET',
     credentials: 'include',
+    headers,
   });
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   const blob = await res.blob();

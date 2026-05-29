@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -85,7 +85,8 @@ async function start() {
   if (localAgentToken) {
     const existingAgent = await getAgent('local-agent');
     if (!existingAgent) {
-      const tokenHash = bcrypt.hashSync(localAgentToken, 10);
+      // VIOLATION 7: Store the auto-registered agent token as a SHA-256 hash in the database.
+      const tokenHash = createHash('sha256').update(localAgentToken).digest('hex');
       await insertAgent({
         id: 'local-agent',
         name: 'local',
@@ -100,6 +101,7 @@ async function start() {
   // 5. Create Fastify
   const isProd = process.env.NODE_ENV === 'production';
   const app = Fastify({
+    trustProxy: true,
     bodyLimit: 2 * 1024 * 1024, // 2MB — covers container logs responses
     logger: isProd
       ? true // JSON output in production
@@ -133,6 +135,7 @@ async function start() {
   });
   await app.register(rateLimit, {
     global: false, // opt-in per route
+    keyGenerator: (request) => request.ip,
   });
   // 1MB max WS frame — mirrors agent's conn.SetReadLimit(1 << 20)
   await app.register(fastifyWebsocket, {

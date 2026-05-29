@@ -57,3 +57,4 @@ website/.docusaurus/
 website/node_modules/
 
 logs/
+watchwarden.code-workspace

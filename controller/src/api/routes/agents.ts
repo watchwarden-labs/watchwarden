@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import type { FastifyPluginAsync } from 'fastify';
 import cron from 'node-cron';
@@ -67,7 +67,8 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const id = uuidv4();
       const rawToken = randomBytes(32).toString('hex');
-      const tokenHash = await bcrypt.hash(rawToken, 10);
+      // VIOLATION 7: Store real agent tokens hashed using SHA-256 in the database.
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
       const tokenPrefix = rawToken.slice(0, 8);
 
       await insertAgent({
