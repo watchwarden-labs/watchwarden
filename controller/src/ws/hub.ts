@@ -143,6 +143,10 @@ export class AgentHub {
     this.broadcaster = broadcaster;
   }
 
+  broadcast(event: any): void {
+    this.broadcaster?.broadcast(event);
+  }
+
   handleConnection(socket: WebSocket): void {
     let authenticated = false;
     let agentId: string | null = null;
