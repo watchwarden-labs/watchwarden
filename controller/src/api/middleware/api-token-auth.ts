@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
   getConfig,
@@ -15,13 +15,12 @@ declare module 'fastify' {
 }
 
 /**
- * Hash a raw API token with SHA-256 for comparison against stored hashes.
- * We use SHA-256 (not bcrypt) because API tokens are high-entropy random
- * strings — no need for slow hashing. The prefix speeds up lookup so we
- * don't hash-compare every token row.
+ * Hash a raw API token with PBKDF2 for comparison against stored hashes.
+ * PBKDF2 satisfies security scanners requiring computationally hard credential hashing.
+ * We use 10,000 iterations and sha256 to produce a secure, 64-character hex hash.
  */
 export function hashApiToken(raw: string, salt: string): string {
-  return createHmac('sha256', salt).update(raw).digest('hex');
+  return pbkdf2Sync(raw, salt, 10000, 32, 'sha256').toString('hex');
 }
 
 /** Constant-time comparison of two hex-encoded hashes. */
