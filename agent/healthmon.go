@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 // HealthMonitor watches container health after updates and triggers auto-rollback if unhealthy.
@@ -170,10 +170,11 @@ func (h *HealthMonitor) checkHealth(ctx context.Context, containerID string) str
 		return "removed" // Container no longer exists — not unhealthy, just gone
 	}
 
-	info, err := h.docker.cli.ContainerInspect(ctx, resolvedID)
+	res, err := h.docker.cli.ContainerInspect(ctx, resolvedID, client.ContainerInspectOptions{})
 	if err != nil {
 		return "removed" // Container disappeared between resolve and inspect
 	}
+	info := res.Container
 
 	// Check if container is running
 	if info.State == nil || !info.State.Running {
@@ -316,10 +317,11 @@ func (h *HealthMonitor) StartCrashLoopDetector(ctx context.Context, docker *Dock
 
 func (h *HealthMonitor) detectCrashLoops(ctx context.Context, docker *DockerClient, trackers map[string]*restartTracker) {
 	// List ALL containers (including stopped/restarting)
-	containers, err := docker.cli.ContainerList(ctx, container.ListOptions{All: true})
+	containersResult, err := docker.cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return
 	}
+	containers := containersResult.Items
 
 	for _, c := range containers {
 		name := ""
@@ -335,13 +337,13 @@ func (h *HealthMonitor) detectCrashLoops(ctx context.Context, docker *DockerClie
 		// Check if container is in a restart loop.
 		// "exited" is a normal stopped state — do NOT include it here or
 		// every stopped container will be reported as unhealthy every tick.
-		isRestarting := c.State == "restarting"
+		isRestarting := string(c.State) == "restarting"
 		restartCount := 0
-
+ 
 		// Get restart count from inspect
-		info, err := docker.cli.ContainerInspect(ctx, c.ID)
+		res, err := docker.cli.ContainerInspect(ctx, c.ID, client.ContainerInspectOptions{})
 		if err == nil {
-			restartCount = info.RestartCount
+			restartCount = res.Container.RestartCount
 		}
 
 		tracker, exists := trackers[c.ID]
