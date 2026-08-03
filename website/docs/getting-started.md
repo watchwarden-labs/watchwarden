@@ -83,6 +83,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchwarden"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   controller:
     image: ghcr.io/watchwarden-labs/watchwarden-controller:latest
@@ -120,7 +125,7 @@ volumes:
 Generate secrets and start:
 
 ```bash
-export POSTGRES_PASSWORD=$(openssl rand -base64 32)
+export POSTGRES_PASSWORD=$(openssl rand -hex 32)
 export ADMIN_PASSWORD=$(openssl rand -base64 16)
 export JWT_SECRET=$(openssl rand -base64 32)
 export ENCRYPTION_KEY=$(openssl rand -base64 32)

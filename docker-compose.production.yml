@@ -6,7 +6,7 @@
 # Dashboard: http://localhost:8080
 #
 # REQUIRED: Set these environment variables before running:
-#   export POSTGRES_PASSWORD=$(openssl rand -base64 32)
+#   export POSTGRES_PASSWORD=$(openssl rand -hex 32)
 #   export ADMIN_PASSWORD=$(openssl rand -base64 16)
 #   export JWT_SECRET=$(openssl rand -base64 32)
 #   export ENCRYPTION_KEY=$(openssl rand -base64 32)

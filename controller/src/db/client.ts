@@ -5,14 +5,25 @@ let _sql: ReturnType<typeof postgres> | null = null;
 export function initSql(connectionString?: string): ReturnType<typeof postgres> {
   const url = connectionString ?? process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL environment variable is required');
-  // DB-03: statement_timeout prevents a slow or deadlocked query from holding
-  // a connection indefinitely and exhausting the pool (max: 10) under load.
-  _sql = postgres(url, {
-    max: 10,
-    idle_timeout: 30,
-    connect_timeout: 10,
-    connection: { statement_timeout: 30_000 },
-  });
+  try {
+    // DB-03: statement_timeout prevents a slow or deadlocked query from holding
+    // a connection indefinitely and exhausting the pool (max: 10) under load.
+    _sql = postgres(url, {
+      max: 10,
+      idle_timeout: 30,
+      connect_timeout: 10,
+      connection: { statement_timeout: 30_000 },
+    });
+  } catch (err) {
+    // postgres.js parses DATABASE_URL with `new URL()` — an unescaped special
+    // character in POSTGRES_PASSWORD (/, #, etc.) throws a bare "Invalid URL"
+    // TypeError here with no indication of the actual cause.
+    throw new Error(
+      'DATABASE_URL is not a valid connection string. If POSTGRES_PASSWORD contains ' +
+        String.raw`special characters (/, @, :, #, %, \), URL-encode them or regenerate with ` +
+        `\`openssl rand -hex 32\`. Original error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   return _sql;
 }
 

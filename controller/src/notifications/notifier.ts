@@ -1,6 +1,7 @@
 import { insertNotificationLog, listNotificationChannels } from '../db/queries.js';
 import { decrypt } from '../lib/crypto.js';
 import { log } from '../lib/logger.js';
+import { sendEmail } from './senders/email.js';
 import { sendNtfy } from './senders/ntfy.js';
 import { sendSlack } from './senders/slack.js';
 import { sendTelegram } from './senders/telegram.js';
@@ -110,6 +111,9 @@ class Notifier {
         break;
       case 'ntfy':
         await sendNtfy(config, event, formatOptions);
+        break;
+      case 'email':
+        await sendEmail(config, event, formatOptions);
         break;
     }
   }

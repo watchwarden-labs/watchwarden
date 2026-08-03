@@ -3,6 +3,7 @@ import {
   Check,
   Hash,
   Loader2,
+  Mail,
   MessageCircle,
   Pencil,
   Send,
@@ -39,6 +40,7 @@ const typeIcons: Record<string, typeof MessageCircle> = {
   slack: Hash,
   webhook: Webhook,
   ntfy: Bell,
+  email: Mail,
 };
 
 const typeColors: Record<string, string> = {
@@ -46,6 +48,7 @@ const typeColors: Record<string, string> = {
   slack: 'text-warning',
   webhook: 'text-muted-foreground',
   ntfy: 'text-success',
+  email: 'text-accent',
 };
 
 const eventConfig: Record<string, { label: string; className: string }> = {
