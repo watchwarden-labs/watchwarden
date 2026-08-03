@@ -36,7 +36,7 @@ Single binary, no external dependencies. The agent handles everything locally.
 **Components:**
 - **Scheduler** — cron or interval-based check triggers
 - **Updater** — atomic update/rollback with per-container mutex
-- **Notifier** — Telegram, Slack, Webhook, ntfy notifications with custom templates
+- **Notifier** — Telegram, Slack, Webhook, ntfy, Email notifications with custom templates
 - **HTTP Server** — health check + status API
 - **Docker Client** — Docker SDK operations
 

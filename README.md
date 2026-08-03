@@ -87,7 +87,7 @@ WatchWarden is currently in an **early-adopter / beta** stage.
 - **Diagnostics bundle** — downloadable ZIP from Settings → About containing controller info, agent statuses, registry credential summary (passwords redacted), anonymous Docker Hub image list, and recent controller logs
 
 ### Notifications
-- **Telegram, Slack, Webhook, ntfy** — configurable channels with batched, deduplicated messages
+- **Telegram, Slack, Webhook, ntfy, Email** — configurable channels with batched, deduplicated messages
 - **Notification templates** — customize message format with Go text/template (`WW_NOTIFICATION_TEMPLATE`)
 - **Link templates** — auto-generated links to Docker Hub, GHCR, or Quay.io tag pages in notifications
 - **Auto-rollback alerts** — notifies when a container is automatically rolled back

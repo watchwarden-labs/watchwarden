@@ -6,6 +6,7 @@ import {
   ExternalLink,
   Hash,
   Loader2,
+  Mail,
   MessageCircle,
   Plus,
   Webhook,
@@ -65,6 +66,12 @@ const TYPES = [
     label: 'ntfy',
     icon: Bell,
     desc: 'Push to ntfy.sh or self-hosted ntfy',
+  },
+  {
+    value: 'email',
+    label: 'Email',
+    icon: Mail,
+    desc: 'Send via SMTP email',
   },
 ] as const;
 
@@ -184,6 +191,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
     if (type === 'slack') return !!config.webhookUrl;
     if (type === 'webhook') return !!config.url;
     if (type === 'ntfy') return !!config.topic;
+    if (type === 'email') return !!config.host && !!config.port && !!config.from && !!config.to;
     return false;
   };
 
@@ -463,6 +471,78 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                     autoComplete="new-password"
                   />
                 </div>
+              </>
+            )}
+
+            {type === 'email' && (
+              <>
+                <div className="flex gap-2">
+                  <div className="space-y-1.5 flex-1">
+                    <Label htmlFor="channel-email-host">SMTP Host</Label>
+                    <Input
+                      id="channel-email-host"
+                      value={config.host ?? ''}
+                      onChange={(e) => setConfigField('host', e.target.value)}
+                      placeholder="smtp.example.com"
+                    />
+                  </div>
+                  <div className="space-y-1.5 w-24">
+                    <Label htmlFor="channel-email-port">Port</Label>
+                    <Input
+                      id="channel-email-port"
+                      value={config.port ?? ''}
+                      onChange={(e) => setConfigField('port', e.target.value)}
+                      placeholder="587"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="channel-email-user">Username (optional)</Label>
+                  <Input
+                    id="channel-email-user"
+                    value={config.user ?? ''}
+                    onChange={(e) => setConfigField('user', e.target.value)}
+                    placeholder="smtp-user"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="channel-email-password">Password (optional)</Label>
+                  <Input
+                    id="channel-email-password"
+                    value={config.password ?? ''}
+                    onChange={(e) => setConfigField('password', e.target.value)}
+                    type="password"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="channel-email-from">From Address</Label>
+                  <Input
+                    id="channel-email-from"
+                    value={config.from ?? ''}
+                    onChange={(e) => setConfigField('from', e.target.value)}
+                    placeholder="watchwarden@example.com"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="channel-email-to">To Address(es)</Label>
+                  <Input
+                    id="channel-email-to"
+                    value={config.to ?? ''}
+                    onChange={(e) => setConfigField('to', e.target.value)}
+                    placeholder="you@example.com, team@example.com"
+                  />
+                </div>
+                {/* biome-ignore lint/a11y/noLabelWithoutControl: label wraps Checkbox */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={config.secure === 'true'}
+                    onCheckedChange={(checked) =>
+                      setConfigField('secure', checked ? 'true' : 'false')
+                    }
+                  />
+                  <span className="text-sm">Use TLS (usually port 465)</span>
+                </label>
               </>
             )}
 

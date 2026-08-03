@@ -191,6 +191,7 @@ Supported channels:
 - **Slack** — incoming webhook URL
 - **Webhook** — generic HTTP POST to any URL
 - **ntfy** — self-hosted or ntfy.sh push notifications
+- **Email** — SMTP, with optional auth and TLS
 
 Each channel supports custom templates and per-event filtering (updates available, update success, update failed).
 
