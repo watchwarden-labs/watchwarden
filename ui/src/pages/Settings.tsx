@@ -106,6 +106,7 @@ function GeneralTab() {
               </p>
             </div>
             <Switch
+              aria-label="Check on startup"
               checked={config?.check_on_startup === 'true'}
               onCheckedChange={(checked) =>
                 updateConfig.mutate(
@@ -138,6 +139,7 @@ function GeneralTab() {
               </p>
             </div>
             <select
+              aria-label="Maximum allowed update level"
               className="text-sm border rounded px-2 py-1 bg-background"
               value={config?.global_update_level ?? ''}
               onChange={(e) =>
@@ -171,10 +173,12 @@ function GeneralTab() {
           <div className="flex flex-col gap-2">
             <div className="flex flex-col sm:flex-row gap-2">
               <Input
+                aria-label="New admin password"
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="New password (min 8 characters)"
+                autoComplete="new-password"
                 minLength={8}
               />
               <Button
@@ -211,7 +215,7 @@ function GeneralTab() {
           <div className="flex items-center justify-between">
             <CardTitle>Agents</CardTitle>
             <Button size="sm" onClick={() => setRegisterOpen(true)}>
-              <Plus size={14} /> Register New Agent
+              <Plus size={14} data-icon="inline-start" /> Register New Agent
             </Button>
           </div>
         </CardHeader>

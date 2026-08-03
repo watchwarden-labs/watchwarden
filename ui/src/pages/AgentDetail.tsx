@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from 'date-fns';
-import { Box, Info, RefreshCw, RotateCw, Scissors, Shield, Trash2 } from 'lucide-react';
+import { Box, Info, Loader2, RefreshCw, RotateCw, Scissors, Shield, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -118,7 +118,7 @@ export function AgentDetail() {
         </div>
         {agent.status === 'offline' && (
           <Button variant="destructive" size="sm" onClick={handleDelete}>
-            <Trash2 size={14} /> Remove Agent
+            <Trash2 size={14} data-icon="inline-start" /> Remove Agent
           </Button>
         )}
       </div>
@@ -139,6 +139,7 @@ export function AgentDetail() {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <Switch
+                  id="show-stopped-toggle"
                   checked={showStopped}
                   onCheckedChange={(v) => {
                     setShowStopped(v);
@@ -147,15 +148,8 @@ export function AgentDetail() {
                   }}
                 />
                 <Label
+                  htmlFor="show-stopped-toggle"
                   className="text-xs text-muted-foreground cursor-pointer"
-                  onClick={() => {
-                    setShowStopped((v) => {
-                      const next = !v;
-                      localStorage.setItem('showStopped', String(next));
-                      return next;
-                    });
-                    setContainerPage(0);
-                  }}
                 >
                   Show stopped
                 </Label>
@@ -199,12 +193,17 @@ export function AgentDetail() {
                     })
                   }
                 >
-                  <RotateCw size={14} />
-                  Restart Unhealthy
+                  {restartUnhealthy.isPending ? (
+                    <Loader2 size={14} className="animate-spin" data-icon="inline-start" />
+                  ) : (
+                    <RotateCw size={14} data-icon="inline-start" />
+                  )}
+                  {restartUnhealthy.isPending ? 'Restarting...' : 'Restart Unhealthy'}
                 </Button>
               )}
               <Button
                 size="sm"
+                disabled={updateAgent.isPending}
                 onClick={() =>
                   updateAgent.mutate(
                     { id: agent.id },
@@ -214,8 +213,20 @@ export function AgentDetail() {
                   )
                 }
               >
-                Update All
+                {updateAgent.isPending && (
+                  <Loader2 size={14} className="animate-spin" data-icon="inline-start" />
+                )}
+                {updateAgent.isPending ? 'Updating...' : 'Update All'}
               </Button>
+              <span role="status" aria-live="polite" className="sr-only">
+                {isChecking
+                  ? 'Checking for updates…'
+                  : restartUnhealthy.isPending
+                    ? 'Restarting unhealthy containers…'
+                    : updateAgent.isPending
+                      ? 'Updating all containers…'
+                      : ''}
+              </span>
             </div>
           </div>
 
@@ -354,6 +365,7 @@ export function AgentDetail() {
               <CardContent>
                 <div className="flex items-center gap-3">
                   <Switch
+                    id="auto-update-toggle"
                     checked={agent.auto_update === 1}
                     onCheckedChange={(checked) =>
                       updateConfig.mutate({
@@ -362,7 +374,7 @@ export function AgentDetail() {
                       })
                     }
                   />
-                  <Label>Automatically update containers</Label>
+                  <Label htmlFor="auto-update-toggle">Automatically update containers</Label>
                 </div>
               </CardContent>
             </Card>
@@ -383,8 +395,11 @@ export function AgentDetail() {
               </p>
               <div className="flex items-end gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Keep previous versions</Label>
+                  <Label htmlFor="prune-keep" className="text-xs text-muted-foreground">
+                    Keep previous versions
+                  </Label>
                   <Input
+                    id="prune-keep"
                     type="number"
                     min={0}
                     max={10}
@@ -420,7 +435,7 @@ export function AgentDetail() {
                         size="sm"
                         disabled={agent.status !== 'online' || pruneAgent.isPending}
                       >
-                        <Scissors size={14} /> Prune Images
+                        <Scissors size={14} data-icon="inline-start" /> Prune Images
                       </Button>
                     }
                   />
@@ -489,6 +504,7 @@ function StabilityPolicyCard({ agentId }: { agentId: string }) {
       <CardContent className="space-y-4">
         <div className="flex items-center gap-3">
           <Switch
+            id="auto-rollback-toggle"
             checked={policy.auto_rollback_enabled}
             onCheckedChange={(checked) =>
               updatePolicy.mutate(
@@ -499,12 +515,15 @@ function StabilityPolicyCard({ agentId }: { agentId: string }) {
               )
             }
           />
-          <Label>Auto-rollback on unhealthy</Label>
+          <Label htmlFor="auto-rollback-toggle">Auto-rollback on unhealthy</Label>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Stability window (seconds)</Label>
+            <Label htmlFor="stability-window" className="text-xs text-muted-foreground">
+              Stability window (seconds)
+            </Label>
             <Input
+              id="stability-window"
               type="number"
               defaultValue={policy.stability_window_seconds}
               onBlur={(e) =>
@@ -516,8 +535,11 @@ function StabilityPolicyCard({ agentId }: { agentId: string }) {
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Max unhealthy (seconds)</Label>
+            <Label htmlFor="max-unhealthy" className="text-xs text-muted-foreground">
+              Max unhealthy (seconds)
+            </Label>
             <Input
+              id="max-unhealthy"
               type="number"
               defaultValue={policy.max_unhealthy_seconds}
               onBlur={(e) =>
@@ -529,10 +551,11 @@ function StabilityPolicyCard({ agentId }: { agentId: string }) {
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">
+            <Label htmlFor="min-age-hours" className="text-xs text-muted-foreground">
               Min age before auto-update (hours)
             </Label>
             <Input
+              id="min-age-hours"
               type="number"
               min={0}
               defaultValue={policy.min_age_hours ?? 0}

@@ -65,7 +65,7 @@ export function NotificationsTab() {
             </Button>
           </div>
           <Button onClick={() => setAddOpen(true)}>
-            <Plus size={16} /> Add Channel
+            <Plus size={16} data-icon="inline-start" /> Add Channel
           </Button>
         </div>
       </div>

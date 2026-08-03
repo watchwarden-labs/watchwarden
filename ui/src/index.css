@@ -230,3 +230,17 @@
   box-shadow: 0 0 24px rgba(79, 142, 247, 0.15);
   transform: translateY(-1px);
 }
+
+/* Respect the OS-level reduced-motion preference for every animation and
+   transition in the app (spinners, toasts, dialogs, hover glows, etc.)
+   instead of opting in per-component. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

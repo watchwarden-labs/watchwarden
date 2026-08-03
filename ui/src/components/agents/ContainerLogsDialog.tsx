@@ -89,7 +89,11 @@ export function ContainerLogsDialog({
               disabled={isLoading}
               aria-label="Refresh logs"
             >
-              <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} />
+              <RefreshCw
+                size={12}
+                data-icon="inline-start"
+                className={isFetching ? 'animate-spin' : ''}
+              />
               Refresh
             </Button>
           </div>
@@ -97,14 +101,22 @@ export function ContainerLogsDialog({
           <div className="flex items-center gap-4">
             {/* Auto-refresh toggle */}
             <div className="flex items-center gap-1.5">
-              <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
-              <Label className="text-xs text-muted-foreground">Auto-refresh</Label>
+              <Switch
+                id="auto-refresh-toggle"
+                checked={autoRefresh}
+                onCheckedChange={setAutoRefresh}
+              />
+              <Label htmlFor="auto-refresh-toggle" className="text-xs text-muted-foreground">
+                Auto-refresh
+              </Label>
             </div>
 
             {/* Wrap lines toggle */}
             <div className="flex items-center gap-1.5">
-              <Switch checked={wrapLines} onCheckedChange={setWrapLines} />
-              <Label className="text-xs text-muted-foreground">Wrap lines</Label>
+              <Switch id="wrap-lines-toggle" checked={wrapLines} onCheckedChange={setWrapLines} />
+              <Label htmlFor="wrap-lines-toggle" className="text-xs text-muted-foreground">
+                Wrap lines
+              </Label>
             </div>
           </div>
         </div>

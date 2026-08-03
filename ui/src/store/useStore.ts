@@ -324,6 +324,7 @@ export const useStore = create<WatchWardenState>((set, get) => ({
       const next = state.theme === 'dark' ? 'light' : 'dark';
       localStorage.setItem('watchwarden_theme', next);
       document.documentElement.classList.toggle('light', next === 'light');
+      document.documentElement.classList.toggle('dark', next === 'dark');
       return { theme: next };
     }),
 }));

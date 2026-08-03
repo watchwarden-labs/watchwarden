@@ -64,14 +64,18 @@ interface ContainerRowProps {
 /** Label above a config field — shows a lock + "Docker label" badge when the field is label-sourced. */
 function LabelRow({
   label,
+  htmlFor,
   lockedValue,
 }: {
   label: string;
+  htmlFor?: string;
   lockedValue: string | null | undefined;
 }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-sm font-medium">{label}</span>
+      <label htmlFor={htmlFor} className="text-sm font-medium">
+        {label}
+      </label>
       {lockedValue != null && (
         <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-amber-400/40 text-amber-600 bg-amber-400/10">
           <Lock size={9} />
@@ -836,7 +840,11 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
 
               {/* Max update level */}
               <div className="space-y-1.5">
-                <LabelRow label="Max update level" lockedValue={container.label_update_level} />
+                <LabelRow
+                  label="Max update level"
+                  htmlFor={container.label_update_level ? undefined : `level-${container.id}`}
+                  lockedValue={container.label_update_level}
+                />
                 {container.label_update_level ? (
                   <LabelLockNotice
                     value={container.label_update_level}
@@ -845,6 +853,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                 ) : (
                   <select
                     id={`level-${container.id}`}
+                    aria-label="Max update level"
                     value={editLevel}
                     onChange={(e) => setEditLevel(e.target.value)}
                     disabled={editPolicy === 'manual'}
@@ -861,7 +870,11 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
 
               {/* Tag pattern */}
               <div className="space-y-1.5">
-                <LabelRow label="Tag pattern" lockedValue={container.label_tag_pattern} />
+                <LabelRow
+                  label="Tag pattern"
+                  htmlFor={container.label_tag_pattern ? undefined : `tagpattern-${container.id}`}
+                  lockedValue={container.label_tag_pattern}
+                />
                 {container.label_tag_pattern ? (
                   <LabelLockNotice
                     value={container.label_tag_pattern}
@@ -902,6 +915,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                     </div>
                     <input
                       id={`tagpattern-${container.id}`}
+                      aria-label="Tag pattern"
                       type="text"
                       value={editTagPattern}
                       onChange={(e) => setEditTagPattern(e.target.value)}
@@ -927,6 +941,15 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                   )}
                 </Button>
               )}
+              <span role="status" aria-live="polite" className="sr-only">
+                {updatePolicy.isPending
+                  ? 'Saving policy…'
+                  : updatePolicy.isSuccess
+                    ? 'Policy saved'
+                    : updatePolicy.isError
+                      ? 'Failed to save policy'
+                      : ''}
+              </span>
             </div>
 
             {/* Orchestration */}
@@ -937,13 +960,18 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
 
               {/* Group */}
               <div className="space-y-1.5">
-                <LabelRow label="Update group" lockedValue={container.label_group} />
+                <LabelRow
+                  label="Update group"
+                  htmlFor={container.label_group ? undefined : `group-${container.id}`}
+                  lockedValue={container.label_group}
+                />
                 {container.label_group ? (
                   <LabelLockNotice value={container.label_group} field="com.watchwarden.group" />
                 ) : (
                   <>
                     <input
                       id={`group-${container.id}`}
+                      aria-label="Update group"
                       type="text"
                       value={editGroup}
                       onChange={(e) => setEditGroup(e.target.value)}
@@ -961,6 +989,9 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
               <div className="space-y-1.5">
                 <LabelRow
                   label="Priority"
+                  htmlFor={
+                    container.label_priority != null ? undefined : `priority-${container.id}`
+                  }
                   lockedValue={
                     container.label_priority != null ? String(container.label_priority) : null
                   }
@@ -974,6 +1005,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                   <>
                     <input
                       id={`priority-${container.id}`}
+                      aria-label="Priority"
                       type="number"
                       min={1}
                       max={999}
@@ -990,7 +1022,11 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
 
               {/* Depends on */}
               <div className="space-y-1.5">
-                <LabelRow label="Depends on" lockedValue={container.label_depends_on} />
+                <LabelRow
+                  label="Depends on"
+                  htmlFor={container.label_depends_on ? undefined : `depson-${container.id}`}
+                  lockedValue={container.label_depends_on}
+                />
                 {container.label_depends_on ? (
                   <LabelLockNotice
                     value={(() => {
@@ -1006,6 +1042,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                   <>
                     <input
                       id={`depson-${container.id}`}
+                      aria-label="Depends on"
                       type="text"
                       value={editDependsOn}
                       onChange={(e) => setEditDependsOn(e.target.value)}
@@ -1033,6 +1070,15 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
                   )}
                 </Button>
               )}
+              <span role="status" aria-live="polite" className="sr-only">
+                {updateOrch.isPending
+                  ? 'Saving orchestration…'
+                  : updateOrch.isSuccess
+                    ? 'Orchestration saved'
+                    : updateOrch.isError
+                      ? 'Failed to save orchestration'
+                      : ''}
+              </span>
             </div>
           </div>
         </div>

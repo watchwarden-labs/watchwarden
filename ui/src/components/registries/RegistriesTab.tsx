@@ -53,7 +53,7 @@ export function RegistriesTab() {
           </p>
         </div>
         <Button onClick={() => setAddOpen(true)}>
-          <Plus size={16} /> Add Registry
+          <Plus size={16} data-icon="inline-start" /> Add Registry
         </Button>
       </div>
 

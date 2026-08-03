@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Menu } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { apiRequest } from './api/client';
 import { Toaster } from './components/common/Toaster';
 import { Sidebar } from './components/layout/Sidebar';
 import { TopBar } from './components/layout/TopBar';
+import { Button } from './components/ui/button';
 import { AgentDetail } from './pages/AgentDetail';
 import { Agents } from './pages/Agents';
 import AuditLog from './pages/AuditLog';
@@ -44,12 +46,25 @@ function usePageTitle() {
 function AuthenticatedApp() {
   useSocket();
   usePageTitle();
+  const setMobileSidebarOpen = useStore((s) => s.setMobileSidebarOpen);
 
   return (
     <div className="flex min-h-screen w-full md:max-w-[1280px] md:mx-auto md:border-x border-border bg-grid">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar />
+        <TopBar
+          mobileNavTrigger={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={() => setMobileSidebarOpen(true)}
+              aria-label="Open navigation menu"
+            >
+              <Menu size={18} />
+            </Button>
+          }
+        />
         <main className="flex-1">
           <Routes>
             <Route path="/" element={<Dashboard />} />
@@ -68,13 +83,7 @@ function AuthenticatedApp() {
 function AppContent() {
   const authToken = useStore((s) => s.authToken);
   const setAuthToken = useStore((s) => s.setAuthToken);
-  const theme = useStore((s) => s.theme);
   const [checking, setChecking] = useState(() => !!localStorage.getItem('watchwarden_auth'));
-
-  // Apply theme class on mount and when theme changes
-  useEffect(() => {
-    document.documentElement.classList.toggle('light', theme === 'light');
-  }, [theme]);
 
   // On mount, verify the httpOnly cookie is still valid
   useEffect(() => {

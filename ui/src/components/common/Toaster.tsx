@@ -19,6 +19,8 @@ export function Toaster() {
       {toasts.map((toast) => (
         <div
           key={toast.id}
+          role={toast.type === 'error' ? 'alert' : 'status'}
+          aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
           className={`bg-card border rounded-lg px-4 py-3 flex items-start gap-3 animate-[slideIn_0.2s_ease-out] ${glowMap[toast.type]}`}
         >
           <p className="text-sm text-foreground flex-1">{toast.message}</p>

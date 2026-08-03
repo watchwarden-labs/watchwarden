@@ -107,6 +107,7 @@ export default function AuditLog() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">Events</CardTitle>
             <select
+              aria-label="Filter by action"
               value={actionFilter}
               onChange={(e) => {
                 setActionFilter(e.target.value);
@@ -128,7 +129,13 @@ export default function AuditLog() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-muted-foreground text-sm py-8 text-center">Loading...</p>
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-muted-foreground text-sm py-8 text-center"
+            >
+              Loading...
+            </p>
           ) : logs.length === 0 ? (
             <p className="text-muted-foreground text-sm py-8 text-center">No audit events found.</p>
           ) : (

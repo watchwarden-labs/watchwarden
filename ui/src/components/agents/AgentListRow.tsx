@@ -12,12 +12,20 @@ import { useStore } from '@/store/useStore';
 interface AgentListRowProps {
   agent: Agent;
   checking?: boolean;
+  updating?: boolean;
   onCheck: () => void;
   onUpdate: () => void;
   onDelete?: (e: React.MouseEvent) => void;
 }
 
-export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: AgentListRowProps) {
+export function AgentListRow({
+  agent,
+  checking,
+  updating,
+  onCheck,
+  onUpdate,
+  onDelete,
+}: AgentListRowProps) {
   const containerCount = agent.containers?.length ?? 0;
   const updateCount = agent.containers?.filter((c) => c.has_update)?.length ?? 0;
   const unhealthyCount =
@@ -28,7 +36,7 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
   const agentProgress = Object.entries(allProgress).filter(([key]) =>
     key.startsWith(`${agent.id}:`),
   );
-  const isUpdating = agentProgress.length > 0;
+  const isUpdating = agentProgress.length > 0 || !!updating;
   const tooltipLines = agentProgress.map(([, p]) => `${p.containerName}: ${p.step}`);
 
   const statusIcon =
@@ -125,7 +133,13 @@ export function AgentListRow({ agent, checking, onCheck, onUpdate, onDelete }: A
             Update
           </Button>
           {agent.status === 'offline' && onDelete && (
-            <Button variant="destructive" size="sm" className="h-7" onClick={onDelete}>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-7"
+              onClick={onDelete}
+              aria-label="Delete agent"
+            >
               <Trash2 size={12} />
             </Button>
           )}

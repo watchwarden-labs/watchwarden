@@ -276,6 +276,7 @@ export function VersionPickerModal({
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                 />
                 <Input
+                  aria-label="Search tags"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search tags..."
@@ -434,9 +435,21 @@ export function VersionPickerModal({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRollback}>Roll Back</AlertDialogAction>
+            <AlertDialogCancel disabled={rollback.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRollback} disabled={rollback.isPending}>
+              {rollback.isPending ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" data-icon="inline-start" /> Rolling
+                  back...
+                </>
+              ) : (
+                'Roll Back'
+              )}
+            </AlertDialogAction>
           </AlertDialogFooter>
+          <span role="status" aria-live="polite" className="sr-only">
+            {rollback.isPending ? `Rolling back ${container.name}…` : ''}
+          </span>
         </AlertDialogContent>
       </AlertDialog>
     </>
