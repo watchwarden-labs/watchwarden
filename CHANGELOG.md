@@ -1,3 +1,17 @@
+## v0.4.0
+
+Released: 2026-08-03
+
+### Features
+- feat(notifications): add email/SMTP notification channel (5a81ca5)
+
+### Bug Fixes
+- fix(deploy): fix broken Managed Mode docker-compose docs example (169b30e)
+- fix(ui): raise accessibility score from 24 to 74 (@shadscan/cli) (1068ed7)
+
+### Other Changes
+- chore: upgrade vitest to version 4.1.8 across controller and ui packages (67401c1)
+
 ## v0.3.18
 
 Released: 2026-05-29
