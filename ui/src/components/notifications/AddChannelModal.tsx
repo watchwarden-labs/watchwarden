@@ -283,8 +283,9 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
         {step === 2 && (
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label>Name</Label>
+              <Label htmlFor="channel-name">Name</Label>
               <Input
+                id="channel-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Team Updates"
@@ -295,7 +296,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
               <>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label>Bot Token</Label>
+                    <Label htmlFor="channel-bot-token">Bot Token</Label>
                     <a
                       href="https://core.telegram.org/bots#botfather"
                       target="_blank"
@@ -306,6 +307,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                     </a>
                   </div>
                   <Input
+                    id="channel-bot-token"
                     value={config.botToken ?? ''}
                     onChange={(e) => setConfigField('botToken', e.target.value)}
                     placeholder="123456:ABC-DEF..."
@@ -313,7 +315,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label>Chat ID</Label>
+                    <Label htmlFor="channel-chat-id">Chat ID</Label>
                     <a
                       href="https://t.me/userinfobot"
                       target="_blank"
@@ -324,6 +326,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                     </a>
                   </div>
                   <Input
+                    id="channel-chat-id"
                     value={config.chatId ?? ''}
                     onChange={(e) => setConfigField('chatId', e.target.value)}
                     placeholder="-1001234567890"
@@ -335,7 +338,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
             {type === 'slack' && (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label>Webhook URL</Label>
+                  <Label htmlFor="channel-slack-webhook-url">Webhook URL</Label>
                   <a
                     href="https://api.slack.com/messaging/webhooks"
                     target="_blank"
@@ -346,6 +349,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                   </a>
                 </div>
                 <Input
+                  id="channel-slack-webhook-url"
                   value={config.webhookUrl ?? ''}
                   onChange={(e) => setConfigField('webhookUrl', e.target.value)}
                   placeholder="https://hooks.slack.com/services/..."
@@ -356,18 +360,20 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
             {type === 'webhook' && (
               <>
                 <div className="space-y-1.5">
-                  <Label>URL</Label>
+                  <Label htmlFor="channel-webhook-url">URL</Label>
                   <Input
+                    id="channel-webhook-url"
                     value={config.url ?? ''}
                     onChange={(e) => setConfigField('url', e.target.value)}
                     placeholder="https://example.com/webhook"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Headers</Label>
+                  <Label id="channel-webhook-headers-label">Headers</Label>
                   {headers.map((h, i) => (
                     <div key={`header-${h.key || i}`} className="flex gap-2">
                       <Input
+                        aria-label="Header key"
                         placeholder="Key"
                         value={h.key}
                         onChange={(e) => {
@@ -377,6 +383,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                         }}
                       />
                       <Input
+                        aria-label="Header value"
                         placeholder="Value"
                         value={h.value}
                         onChange={(e) => {
@@ -400,7 +407,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                     size="sm"
                     onClick={() => setHeaders([...headers, { key: '', value: '' }])}
                   >
-                    <Plus size={14} /> Add header
+                    <Plus size={14} data-icon="inline-start" /> Add header
                   </Button>
                 </div>
               </>
@@ -410,7 +417,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
               <>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label>Server</Label>
+                    <Label htmlFor="channel-ntfy-server">Server</Label>
                     <a
                       href="https://ntfy.sh"
                       target="_blank"
@@ -421,34 +428,39 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                     </a>
                   </div>
                   <Input
+                    id="channel-ntfy-server"
                     value={config.server ?? 'https://ntfy.sh'}
                     onChange={(e) => setConfigField('server', e.target.value)}
                     placeholder="https://ntfy.sh"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Topic</Label>
+                  <Label htmlFor="channel-ntfy-topic">Topic</Label>
                   <Input
+                    id="channel-ntfy-topic"
                     value={config.topic ?? ''}
                     onChange={(e) => setConfigField('topic', e.target.value)}
                     placeholder="watchwarden"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Priority (optional)</Label>
+                  <Label htmlFor="channel-ntfy-priority">Priority (optional)</Label>
                   <Input
+                    id="channel-ntfy-priority"
                     value={config.priority ?? ''}
                     onChange={(e) => setConfigField('priority', e.target.value)}
                     placeholder="default, low, high, urgent"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Access Token (optional)</Label>
+                  <Label htmlFor="channel-ntfy-token">Access Token (optional)</Label>
                   <Input
+                    id="channel-ntfy-token"
                     value={config.token ?? ''}
                     onChange={(e) => setConfigField('token', e.target.value)}
                     placeholder="tk_..."
                     type="password"
+                    autoComplete="new-password"
                   />
                 </div>
               </>
@@ -466,8 +478,9 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
             {showAdvanced && (
               <div className="space-y-3 pl-1 border-l-2 border-secondary ml-1">
                 <div className="space-y-1.5 pl-3">
-                  <Label>Custom Template</Label>
+                  <Label htmlFor="channel-custom-template">Custom Template</Label>
                   <textarea
+                    id="channel-custom-template"
                     className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     value={customTemplate}
                     onChange={(e) => setCustomTemplate(e.target.value)}
@@ -481,7 +494,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                   </p>
                 </div>
                 <div className="space-y-1.5 pl-3">
-                  <Label>Link Template</Label>
+                  <Label htmlFor="channel-link-template">Link Template</Label>
                   <div className="flex flex-wrap gap-1.5 mb-1.5">
                     {[
                       { label: 'None', value: '' },
@@ -514,6 +527,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
                     ))}
                   </div>
                   <Input
+                    id="channel-link-template"
                     value={linkTemplate}
                     onChange={(e) => setLinkTemplate(e.target.value)}
                     placeholder="Custom: https://example.com/{{repository}}/{{tag}}"
@@ -584,7 +598,9 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
             <>
               {(savedChannelId || editChannel) && (
                 <Button variant="outline" onClick={handleTest} disabled={testChannel.isPending}>
-                  {testChannel.isPending ? <Loader2 size={14} className="animate-spin" /> : null}{' '}
+                  {testChannel.isPending ? (
+                    <Loader2 size={14} className="animate-spin" data-icon="inline-start" />
+                  ) : null}{' '}
                   Test
                 </Button>
               )}
@@ -594,11 +610,12 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
               >
                 {saveState === 'saving' ? (
                   <>
-                    <Loader2 size={14} className="animate-spin" /> Saving...
+                    <Loader2 size={14} className="animate-spin" data-icon="inline-start" />{' '}
+                    Saving...
                   </>
                 ) : saveState === 'success' ? (
                   <>
-                    <Check size={14} /> Saved
+                    <Check size={14} data-icon="inline-start" /> Saved
                   </>
                 ) : (
                   'Save'
@@ -607,6 +624,22 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
             </>
           )}
         </DialogFooter>
+        <span role="status" aria-live="polite" className="sr-only">
+          {testChannel.isPending
+            ? 'Sending test notification…'
+            : testChannel.isSuccess
+              ? 'Test notification sent'
+              : testChannel.isError
+                ? 'Test notification failed'
+                : ''}
+          {saveState === 'saving'
+            ? ' Saving channel…'
+            : saveState === 'success'
+              ? ' Channel saved'
+              : saveState === 'error'
+                ? ` ${errorMsg || 'Failed to save channel'}`
+                : ''}
+        </span>
       </DialogContent>
     </Dialog>
   );

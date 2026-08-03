@@ -13,11 +13,19 @@ const navItems = [
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
-function NavLinks({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+function NavLinks({
+  collapsed,
+  onNavigate,
+  label,
+}: {
+  collapsed: boolean;
+  onNavigate?: () => void;
+  label: string;
+}) {
   const location = useLocation();
 
   return (
-    <nav className="p-2 space-y-1">
+    <nav aria-label={label} className="p-2 space-y-1">
       {navItems.map(({ path, label, icon: Icon }) => {
         const active = location.pathname === path;
         return (
@@ -55,12 +63,12 @@ export function Sidebar() {
         )}
       >
         <div className="p-4">
-          <h1 className={`font-bold text-primary ${collapsed ? 'text-center text-sm' : 'text-lg'}`}>
+          <p className={`font-bold text-primary ${collapsed ? 'text-center text-sm' : 'text-lg'}`}>
             {collapsed ? 'WW' : 'WatchWarden'}
-          </h1>
+          </p>
         </div>
         <Separator />
-        <NavLinks collapsed={collapsed} />
+        <NavLinks collapsed={collapsed} label="Primary navigation" />
       </aside>
 
       {/* Mobile drawer overlay */}
@@ -76,17 +84,22 @@ export function Sidebar() {
           {/* Drawer */}
           <aside className="absolute left-0 top-0 h-full w-64 bg-card border-r border-border shadow-xl animate-in slide-in-from-left duration-200">
             <div className="p-4 flex items-center justify-between">
-              <h1 className="font-bold text-primary text-lg">WatchWarden</h1>
+              <p className="font-bold text-primary text-lg">WatchWarden</p>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
                 className="text-muted-foreground hover:text-foreground"
+                aria-label="Close menu"
               >
                 <X size={20} />
               </button>
             </div>
             <Separator />
-            <NavLinks collapsed={false} onNavigate={() => setMobileOpen(false)} />
+            <NavLinks
+              collapsed={false}
+              onNavigate={() => setMobileOpen(false)}
+              label="Mobile navigation"
+            />
           </aside>
         </div>
       )}

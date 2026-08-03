@@ -1,4 +1,5 @@
-import { ArrowUpCircle, Hexagon, LayoutGrid, List, RefreshCw } from 'lucide-react';
+import { ArrowUpCircle, Hexagon, LayoutGrid, List, Loader2, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAgents, useCheckAgent, useCheckAllAgents, useUpdateAgent } from '@/api/hooks/useAgents';
 import { useHistory } from '@/api/hooks/useHistory';
@@ -41,6 +42,7 @@ export function Dashboard() {
   const setAgentChecking = useStore((s) => s.setAgentChecking);
   const viewMode = useStore((s) => s.agentViewMode);
   const setViewMode = useStore((s) => s.setAgentViewMode);
+  const [pendingUpdateIds, setPendingUpdateIds] = useState<Set<string>>(new Set());
 
   const onlineCount = agents.filter((a) => a.status === 'online').length;
   const updateCount = agents.reduce(
@@ -48,6 +50,7 @@ export function Dashboard() {
     0,
   );
   const isCheckingAll = checkingAgents.size > 0;
+  const isUpdatingAll = pendingUpdateIds.size > 0;
 
   const handleCheck = (agentId: string) => {
     if (checkingAgents.has(agentId)) return;
@@ -57,6 +60,24 @@ export function Dashboard() {
       onError: () => setAgentChecking(agentId, false),
     });
     // Button stays disabled until CHECK_COMPLETE WS event clears it
+  };
+
+  // Covers the round-trip between clicking "Update" and the first WS UPDATE_PROGRESS
+  // event: without this, the trigger has no pending feedback until the agent responds.
+  const handleUpdate = (agentId: string) => {
+    setPendingUpdateIds((prev) => new Set(prev).add(agentId));
+    updateAgent.mutate(
+      { id: agentId },
+      {
+        onSettled: () =>
+          setPendingUpdateIds((prev) => {
+            const next = new Set(prev);
+            next.delete(agentId);
+            return next;
+          }),
+        onError: () => addToast({ type: 'error', message: 'Update failed' }),
+      },
+    );
   };
 
   return (
@@ -130,16 +151,17 @@ export function Dashboard() {
           <Button
             onClick={() => {
               agents.forEach((a) => {
-                updateAgent.mutate(
-                  { id: a.id },
-                  {
-                    onError: () => addToast({ type: 'error', message: 'Update failed' }),
-                  },
-                );
+                handleUpdate(a.id);
               });
             }}
+            disabled={isUpdatingAll}
           >
-            <ArrowUpCircle size={16} /> Update All
+            {isUpdatingAll ? (
+              <Loader2 size={16} className="animate-spin" data-icon="inline-start" />
+            ) : (
+              <ArrowUpCircle size={16} data-icon="inline-start" />
+            )}
+            {isUpdatingAll ? 'Updating...' : 'Update All'}
           </Button>
         </div>
       )}
@@ -194,12 +216,17 @@ export function Dashboard() {
         {!isLoading && agents.length > 0 && viewMode === 'grid' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {agents.map((agent) => (
-              <Link key={agent.id} to={`/agents/${agent.id}`}>
+              <Link
+                key={agent.id}
+                to={`/agents/${agent.id}`}
+                aria-label={`View details for ${agent.name}`}
+              >
                 <AgentCard
                   agent={agent}
                   checking={checkingAgents.has(agent.id)}
+                  updating={pendingUpdateIds.has(agent.id)}
                   onCheck={() => handleCheck(agent.id)}
-                  onUpdate={() => updateAgent.mutate({ id: agent.id })}
+                  onUpdate={() => handleUpdate(agent.id)}
                 />
               </Link>
             ))}
@@ -225,8 +252,9 @@ export function Dashboard() {
                     key={agent.id}
                     agent={agent}
                     checking={checkingAgents.has(agent.id)}
+                    updating={pendingUpdateIds.has(agent.id)}
                     onCheck={() => handleCheck(agent.id)}
-                    onUpdate={() => updateAgent.mutate({ id: agent.id })}
+                    onUpdate={() => handleUpdate(agent.id)}
                   />
                 ))}
               </TableBody>

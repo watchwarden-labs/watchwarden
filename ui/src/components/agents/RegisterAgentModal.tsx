@@ -106,8 +106,9 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
         {!result ? (
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label>Agent Name</Label>
+              <Label htmlFor="agent-name">Agent Name</Label>
               <Input
+                id="agent-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. production-server"
@@ -118,8 +119,9 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
               </p>
             </div>
             <div className="space-y-1.5">
-              <Label>Hostname</Label>
+              <Label htmlFor="agent-hostname">Hostname</Label>
               <Input
+                id="agent-hostname"
                 value={hostname}
                 onChange={(e) => setHostname(e.target.value)}
                 placeholder="e.g. srv-01.example.com"
@@ -150,11 +152,11 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
                   >
                     {copied === 'token' ? (
                       <>
-                        <Check size={12} className="text-success" /> Copied
+                        <Check size={12} className="text-success" data-icon="inline-start" /> Copied
                       </>
                     ) : (
                       <>
-                        <Copy size={12} /> Copy
+                        <Copy size={12} data-icon="inline-start" /> Copy
                       </>
                     )}
                   </Button>
@@ -177,11 +179,11 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
                   >
                     {copied === 'compose' ? (
                       <>
-                        <Check size={12} className="text-success" /> Copied
+                        <Check size={12} className="text-success" data-icon="inline-start" /> Copied
                       </>
                     ) : (
                       <>
-                        <Copy size={12} /> Copy
+                        <Copy size={12} data-icon="inline-start" /> Copy
                       </>
                     )}
                   </Button>
@@ -222,6 +224,15 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
             <Button onClick={resetAndClose}>Done</Button>
           )}
         </DialogFooter>
+        <span role="status" aria-live="polite" className="sr-only">
+          {registerAgent.isPending
+            ? 'Registering agent…'
+            : registerAgent.isError
+              ? 'Failed to register agent'
+              : result
+                ? 'Agent registered'
+                : ''}
+        </span>
       </DialogContent>
     </Dialog>
   );

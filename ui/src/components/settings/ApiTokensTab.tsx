@@ -116,7 +116,7 @@ export function ApiTokensTab() {
           </p>
         </div>
         <Button onClick={() => handleCloseCreate(true)}>
-          <Plus size={16} /> Create Token
+          <Plus size={16} data-icon="inline-start" /> Create Token
         </Button>
       </div>
 
@@ -186,6 +186,7 @@ export function ApiTokensTab() {
               </Alert>
               <div className="flex gap-2">
                 <Input
+                  aria-label="Generated API token"
                   readOnly
                   value={createdToken.token}
                   className="font-mono text-xs"
@@ -195,6 +196,7 @@ export function ApiTokensTab() {
                   variant="outline"
                   size="icon"
                   onClick={() => handleCopy(createdToken.token)}
+                  aria-label={copied ? 'Copied' : 'Copy token'}
                 >
                   {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
                 </Button>
@@ -276,6 +278,9 @@ export function ApiTokensTab() {
               </>
             )}
           </DialogFooter>
+          <span role="status" aria-live="polite" className="sr-only">
+            {createToken.isPending ? 'Creating token…' : ''}
+          </span>
         </DialogContent>
       </Dialog>
     </div>
@@ -341,7 +346,12 @@ function TokenRow({
           <AlertDialog>
             <AlertDialogTrigger
               render={
-                <Button variant="ghost" size="sm" className="text-destructive">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive"
+                  aria-label={`Revoke ${token.name}`}
+                >
                   <Trash2 size={14} />
                 </Button>
               }

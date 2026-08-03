@@ -107,11 +107,11 @@ export function RecoveryModeCard() {
                 onClick={handleDisable}
                 disabled={disableMutation.isPending}
               >
-                <ShieldOff size={14} /> Disable
+                <ShieldOff size={14} data-icon="inline-start" /> Disable
               </Button>
             ) : (
               <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)}>
-                <Shield size={14} /> Enable
+                <Shield size={14} data-icon="inline-start" /> Enable
               </Button>
             )}
           </div>
@@ -168,6 +168,9 @@ export function RecoveryModeCard() {
               {enableMutation.isPending ? 'Enabling...' : 'Enable Recovery Mode'}
             </Button>
           </DialogFooter>
+          <span role="status" aria-live="polite" className="sr-only">
+            {enableMutation.isPending ? 'Enabling recovery mode…' : ''}
+          </span>
         </DialogContent>
       </Dialog>
     </>

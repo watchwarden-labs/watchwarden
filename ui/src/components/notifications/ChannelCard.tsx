@@ -132,6 +132,7 @@ export function ChannelCard({ channel, onEdit, compact }: ChannelCardProps) {
               onCheckedChange={(checked) =>
                 updateChannel.mutate({ id: channel.id, enabled: checked })
               }
+              aria-label={`${channel.enabled ? 'Disable' : 'Enable'} ${channel.name}`}
             />
           </div>
 
@@ -154,6 +155,7 @@ export function ChannelCard({ channel, onEdit, compact }: ChannelCardProps) {
               className="h-7 text-xs"
               onClick={handleTest}
               disabled={testState === 'loading'}
+              aria-label={`Test ${channel.name}`}
             >
               {testState === 'loading' ? (
                 <Loader2 size={12} className="animate-spin" />
@@ -165,7 +167,13 @@ export function ChannelCard({ channel, onEdit, compact }: ChannelCardProps) {
                 <Send size={12} />
               )}
             </Button>
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onEdit}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={onEdit}
+              aria-label={`Edit ${channel.name}`}
+            >
               <Pencil size={12} />
             </Button>
             <AlertDialog>
@@ -257,7 +265,13 @@ export function ChannelCard({ channel, onEdit, compact }: ChannelCardProps) {
               )}
               {testState === 'cooldown' ? 'Wait...' : 'Test'}
             </Button>
-            <Button variant="ghost" size="sm" className="h-7" onClick={onEdit}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7"
+              onClick={onEdit}
+              aria-label={`Edit ${channel.name}`}
+            >
               <Pencil size={12} />
             </Button>
             <AlertDialog>
@@ -303,6 +317,7 @@ export function ChannelCard({ channel, onEdit, compact }: ChannelCardProps) {
               onCheckedChange={(checked) =>
                 updateChannel.mutate({ id: channel.id, enabled: checked })
               }
+              aria-label={`${channel.enabled ? 'Disable' : 'Enable'} ${channel.name}`}
             />
           </div>
         </div>

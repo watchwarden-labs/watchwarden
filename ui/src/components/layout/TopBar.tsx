@@ -4,27 +4,26 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/store/useStore';
 
-export function TopBar() {
+interface TopBarProps {
+  /** App-shell-owned small-screen nav trigger, rendered before the desktop collapse toggle. */
+  mobileNavTrigger?: React.ReactNode;
+}
+
+export function TopBar({ mobileNavTrigger }: TopBarProps) {
   const wsConnected = useStore((s) => s.wsConnected);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
-  const setMobileSidebarOpen = useStore((s) => s.setMobileSidebarOpen);
   const setAuthToken = useStore((s) => s.setAuthToken);
   const theme = useStore((s) => s.theme);
   const toggleTheme = useStore((s) => s.toggleTheme);
 
   return (
     <header className="bg-card border-b border-border px-4 sm:px-6 py-3 flex items-center justify-between">
-      {/* Mobile: open drawer. Desktop: toggle collapse */}
+      {mobileNavTrigger}
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => {
-          if (window.innerWidth < 768) {
-            setMobileSidebarOpen(true);
-          } else {
-            toggleSidebar();
-          }
-        }}
+        className="hidden md:inline-flex"
+        onClick={toggleSidebar}
         aria-label="Toggle sidebar"
       >
         <Menu size={18} />

@@ -68,6 +68,7 @@ export function CronPicker({ value, onChange }: CronPickerProps) {
             defaultValue={value}
             onChange={(e) => handleRawInput(e.target.value)}
             placeholder="e.g. 0 */6 * * *"
+            aria-label="Cron expression"
             className="font-mono"
           />
           {error && <p className="text-destructive text-sm mt-1">{error}</p>}

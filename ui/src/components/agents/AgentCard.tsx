@@ -10,11 +10,12 @@ import { useStore } from '@/store/useStore';
 interface AgentCardProps {
   agent: Agent;
   checking?: boolean;
+  updating?: boolean;
   onCheck?: () => void;
   onUpdate?: () => void;
 }
 
-export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps) {
+export function AgentCard({ agent, checking, updating, onCheck, onUpdate }: AgentCardProps) {
   const containerCount = agent.containers?.length ?? 0;
   const updateCount = agent.containers?.filter((c) => c.has_update)?.length ?? 0;
   const unhealthyCount =
@@ -25,7 +26,7 @@ export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps
   const agentProgress = Object.entries(allProgress).filter(([key]) =>
     key.startsWith(`${agent.id}:`),
   );
-  const isUpdating = agentProgress.length > 0;
+  const isUpdating = agentProgress.length > 0 || !!updating;
 
   const overlayActive = checking || isUpdating;
   const overlayLabel = checking ? 'Checking...' : 'Updating...';
@@ -130,7 +131,7 @@ export function AgentCard({ agent, checking, onCheck, onUpdate }: AgentCardProps
             }}
             disabled={isUpdating}
           >
-            <ArrowUpCircle size={14} />
+            <ArrowUpCircle size={14} data-icon="inline-start" />
             Update All
           </Button>
         </div>

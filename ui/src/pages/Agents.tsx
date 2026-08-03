@@ -26,6 +26,7 @@ export function Agents() {
   const setAgentChecking = useStore((s) => s.setAgentChecking);
   const viewMode = useStore((s) => s.agentViewMode);
   const setViewMode = useStore((s) => s.setAgentViewMode);
+  const [pendingUpdateIds, setPendingUpdateIds] = useState<Set<string>>(new Set());
 
   const filtered =
     filter === 'All' ? agents : agents.filter((a) => a.status === filter.toLowerCase());
@@ -36,6 +37,24 @@ export function Agents() {
     checkAgent.mutate(agentId, {
       onError: () => setAgentChecking(agentId, false),
     });
+  };
+
+  // Covers the round-trip between clicking "Update" and the first WS UPDATE_PROGRESS
+  // event: without this, the trigger has no pending feedback until the agent responds.
+  const handleUpdate = (agentId: string) => {
+    setPendingUpdateIds((prev) => new Set(prev).add(agentId));
+    updateAgent.mutate(
+      { id: agentId },
+      {
+        onSettled: () =>
+          setPendingUpdateIds((prev) => {
+            const next = new Set(prev);
+            next.delete(agentId);
+            return next;
+          }),
+        onError: () => addToast({ type: 'error', message: 'Update failed' }),
+      },
+    );
   };
 
   const handleDelete = (e: React.MouseEvent, agentId: string, agentName: string) => {
@@ -58,7 +77,7 @@ export function Agents() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Agents</h1>
         <Button onClick={() => setRegisterOpen(true)}>
-          <Plus size={16} /> Add Agent
+          <Plus size={16} data-icon="inline-start" /> Add Agent
         </Button>
       </div>
 
@@ -118,19 +137,13 @@ export function Agents() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((agent) => (
             <div key={agent.id} className="relative">
-              <Link to={`/agents/${agent.id}`}>
+              <Link to={`/agents/${agent.id}`} aria-label={`View details for ${agent.name}`}>
                 <AgentCard
                   agent={agent}
                   checking={checkingAgents.has(agent.id)}
+                  updating={pendingUpdateIds.has(agent.id)}
                   onCheck={() => handleCheck(agent.id)}
-                  onUpdate={() =>
-                    updateAgent.mutate(
-                      { id: agent.id },
-                      {
-                        onError: () => addToast({ type: 'error', message: 'Update failed' }),
-                      },
-                    )
-                  }
+                  onUpdate={() => handleUpdate(agent.id)}
                 />
               </Link>
               {agent.status === 'offline' && (
@@ -165,15 +178,9 @@ export function Agents() {
                   key={agent.id}
                   agent={agent}
                   checking={checkingAgents.has(agent.id)}
+                  updating={pendingUpdateIds.has(agent.id)}
                   onCheck={() => handleCheck(agent.id)}
-                  onUpdate={() =>
-                    updateAgent.mutate(
-                      { id: agent.id },
-                      {
-                        onError: () => addToast({ type: 'error', message: 'Update failed' }),
-                      },
-                    )
-                  }
+                  onUpdate={() => handleUpdate(agent.id)}
                   onDelete={
                     agent.status === 'offline'
                       ? (e) => handleDelete(e, agent.id, agent.name)

@@ -119,8 +119,9 @@ export function RegistryModal({ open, onOpenChange, editRegistry }: RegistryModa
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label>Auth Type</Label>
+            <Label htmlFor="registry-auth-type">Auth Type</Label>
             <select
+              id="registry-auth-type"
               value={authType}
               onChange={(e) => setAuthType(e.target.value as AuthType)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -134,8 +135,9 @@ export function RegistryModal({ open, onOpenChange, editRegistry }: RegistryModa
             {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
           </div>
           <div className="space-y-1.5">
-            <Label>Registry URL</Label>
+            <Label htmlFor="registry-url">Registry URL</Label>
             <Input
+              id="registry-url"
               value={registry}
               onChange={(e) => setRegistry(e.target.value)}
               placeholder={
@@ -163,8 +165,12 @@ export function RegistryModal({ open, onOpenChange, editRegistry }: RegistryModa
             )}
           </div>
           <div className="space-y-1.5">
-            <Label>{authType === 'acr' ? 'Client ID' : 'Username'}</Label>
+            <Label htmlFor="registry-username">
+              {authType === 'acr' ? 'Client ID' : 'Username'}
+            </Label>
             <Input
+              id="registry-username"
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={authType === 'gcr' || authType === 'ecr'}
@@ -178,7 +184,7 @@ export function RegistryModal({ open, onOpenChange, editRegistry }: RegistryModa
             />
           </div>
           <div className="space-y-1.5">
-            <Label>
+            <Label htmlFor="registry-secret">
               {authType === 'gcr'
                 ? 'Service Account JSON Key'
                 : authType === 'acr'
@@ -190,6 +196,7 @@ export function RegistryModal({ open, onOpenChange, editRegistry }: RegistryModa
             <div className="flex gap-2">
               {authType === 'gcr' ? (
                 <textarea
+                  id="registry-secret"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder={
@@ -201,6 +208,7 @@ export function RegistryModal({ open, onOpenChange, editRegistry }: RegistryModa
               ) : (
                 <>
                   <Input
+                    id="registry-secret"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

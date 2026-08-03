@@ -79,7 +79,11 @@ export function AboutTab() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-2 text-muted-foreground text-sm"
+            >
               <Loader2 size={14} className="animate-spin" /> Loading...
             </div>
           ) : (
@@ -157,6 +161,7 @@ export function AboutTab() {
               onCheckedChange={handleDebugToggle}
               disabled={updateLogging.isPending}
               className="shrink-0"
+              aria-label="Enable debug logging"
             />
           </div>
           {isDebug && debugUntil && (
@@ -178,6 +183,7 @@ export function AboutTab() {
               onCheckedChange={handleFileLoggingToggle}
               disabled={updateLogging.isPending}
               className="shrink-0"
+              aria-label="Include controller logs in diagnostics"
             />
           </div>
           <p className="text-xs text-muted-foreground">
@@ -211,23 +217,28 @@ export function AboutTab() {
           <div className="flex flex-col sm:flex-row gap-3">
             <Button onClick={handleDownload} disabled={downloading}>
               {downloading ? (
-                <Loader2 size={14} className="animate-spin mr-1" />
+                <Loader2 size={14} data-icon="inline-start" className="animate-spin" />
               ) : (
-                <Download size={14} className="mr-1" />
+                <Download size={14} data-icon="inline-start" />
               )}
               Download diagnostics bundle
             </Button>
-            <a
-              href="https://github.com/watchwarden-labs/watchwarden/issues/new?template=bug-report.yml"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Button
+              variant="outline"
+              render={
+                // biome-ignore lint/a11y/useAnchorContent: content comes from Button's children via Base UI's render-prop composition
+                <a
+                  href="https://github.com/watchwarden-labs/watchwarden/issues/new?template=bug-report.yml"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Report a bug (opens in a new tab)"
+                />
+              }
             >
-              <Button variant="outline">
-                <Bug size={14} className="mr-1" />
-                Report a bug
-                <ExternalLink size={12} className="ml-1 opacity-50" />
-              </Button>
-            </a>
+              <Bug size={14} data-icon="inline-start" />
+              Report a bug
+              <ExternalLink size={12} data-icon="inline-end" className="opacity-50" />
+            </Button>
           </div>
         </CardContent>
       </Card>

@@ -7,11 +7,14 @@ import { useStore } from '@/store/useStore';
 export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const setAuthToken = useStore((s) => s.setAuthToken);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!password || submitting) return;
     setError('');
+    setSubmitting(true);
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -27,6 +30,8 @@ export function Login() {
       setAuthToken('cookie');
     } catch {
       setError('Connection failed');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -41,14 +46,24 @@ export function Login() {
           <form onSubmit={handleLogin} className="space-y-4">
             <Input
               type="password"
+              aria-label="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
+              autoComplete="current-password"
               autoFocus
+              required
+              minLength={1}
+              aria-invalid={!!error}
+              aria-describedby={error ? 'login-error' : undefined}
             />
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full">
-              Login
+            {error && (
+              <p id="login-error" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            <Button type="submit" className="w-full" disabled={!password || submitting}>
+              {submitting ? 'Logging in...' : 'Login'}
             </Button>
           </form>
         </CardContent>

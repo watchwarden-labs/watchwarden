@@ -35,6 +35,7 @@ export function HistoryPage() {
 
       <div className="flex flex-col sm:flex-row gap-3">
         <Input
+          aria-label="Filter by agent ID"
           placeholder="Filter by agent ID..."
           value={agentFilter}
           onChange={(e) => {
@@ -44,6 +45,7 @@ export function HistoryPage() {
           className="max-w-xs"
         />
         <select
+          aria-label="Filter by status"
           value={statusFilter}
           onChange={(e) => {
             setStatusFilter(e.target.value);
