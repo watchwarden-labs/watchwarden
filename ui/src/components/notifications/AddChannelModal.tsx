@@ -248,7 +248,7 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{editChannel ? 'Edit' : 'Add'} Notification Channel</DialogTitle>
           <DialogDescription>
@@ -263,403 +263,422 @@ export function AddChannelModal({ open, onOpenChange, editChannel }: AddChannelM
           </DialogDescription>
         </DialogHeader>
 
-        {/* Step 1: Type */}
-        {step === 1 && (
-          <div className="grid grid-cols-3 gap-3 py-2">
-            {TYPES.map((t) => (
-              <Card
-                key={t.value}
-                className={`cursor-pointer transition-all ${type === t.value ? 'border-primary shadow-glow-accent' : 'hover:border-muted-foreground/30'}`}
-                onClick={() => setType(t.value)}
-              >
-                <CardContent className="pt-4 text-center space-y-2">
-                  <t.icon
-                    size={24}
-                    className={
-                      type === t.value ? 'text-primary mx-auto' : 'text-muted-foreground mx-auto'
-                    }
-                  />
-                  <p className="text-sm font-medium">{t.label}</p>
-                  <p className="text-xs text-muted-foreground">{t.desc}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Step 2: Config */}
-        {step === 2 && (
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="channel-name">Name</Label>
-              <Input
-                id="channel-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Team Updates"
-              />
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Step 1: Type */}
+          {step === 1 && (
+            <div className="grid grid-cols-3 gap-3 py-2">
+              {TYPES.map((t) => (
+                <Card
+                  key={t.value}
+                  className={`cursor-pointer transition-all ${type === t.value ? 'border-primary shadow-glow-accent' : 'hover:border-muted-foreground/30'}`}
+                  onClick={() => setType(t.value)}
+                >
+                  <CardContent className="pt-4 text-center space-y-2">
+                    <t.icon
+                      size={24}
+                      className={
+                        type === t.value ? 'text-primary mx-auto' : 'text-muted-foreground mx-auto'
+                      }
+                    />
+                    <p className="text-sm font-medium">{t.label}</p>
+                    <p className="text-xs text-muted-foreground">{t.desc}</p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
+          )}
 
-            {type === 'telegram' && (
-              <>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="channel-bot-token">Bot Token</Label>
-                    <a
-                      href="https://core.telegram.org/bots#botfather"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-primary flex items-center gap-1"
-                    >
-                      How to get <ExternalLink size={10} />
-                    </a>
-                  </div>
-                  <Input
-                    id="channel-bot-token"
-                    value={config.botToken ?? ''}
-                    onChange={(e) => setConfigField('botToken', e.target.value)}
-                    placeholder="123456:ABC-DEF..."
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="channel-chat-id">Chat ID</Label>
-                    <a
-                      href="https://t.me/userinfobot"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-primary flex items-center gap-1"
-                    >
-                      How to get <ExternalLink size={10} />
-                    </a>
-                  </div>
-                  <Input
-                    id="channel-chat-id"
-                    value={config.chatId ?? ''}
-                    onChange={(e) => setConfigField('chatId', e.target.value)}
-                    placeholder="-1001234567890"
-                  />
-                </div>
-              </>
-            )}
-
-            {type === 'slack' && (
+          {/* Step 2: Config */}
+          {step === 2 && (
+            <div className="space-y-4 py-2">
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="channel-slack-webhook-url">Webhook URL</Label>
-                  <a
-                    href="https://api.slack.com/messaging/webhooks"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-primary flex items-center gap-1"
-                  >
-                    Slack docs <ExternalLink size={10} />
-                  </a>
-                </div>
+                <Label htmlFor="channel-name">Name</Label>
                 <Input
-                  id="channel-slack-webhook-url"
-                  value={config.webhookUrl ?? ''}
-                  onChange={(e) => setConfigField('webhookUrl', e.target.value)}
-                  placeholder="https://hooks.slack.com/services/..."
+                  id="channel-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Team Updates"
                 />
               </div>
-            )}
 
-            {type === 'webhook' && (
-              <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="channel-webhook-url">URL</Label>
-                  <Input
-                    id="channel-webhook-url"
-                    value={config.url ?? ''}
-                    onChange={(e) => setConfigField('url', e.target.value)}
-                    placeholder="https://example.com/webhook"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label id="channel-webhook-headers-label">Headers</Label>
-                  {headers.map((h, i) => (
-                    <div key={`header-${h.key || i}`} className="flex gap-2">
-                      <Input
-                        aria-label="Header key"
-                        placeholder="Key"
-                        value={h.key}
-                        onChange={(e) => {
-                          const n = [...headers];
-                          n[i] = { ...h, key: e.target.value };
-                          setHeaders(n);
-                        }}
-                      />
-                      <Input
-                        aria-label="Header value"
-                        placeholder="Value"
-                        value={h.value}
-                        onChange={(e) => {
-                          const n = [...headers];
-                          n[i] = { ...h, value: e.target.value };
-                          setHeaders(n);
-                        }}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setHeaders(headers.filter((_, j) => j !== i))}
-                        aria-label="Remove header"
+              {type === 'telegram' && (
+                <>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="channel-bot-token">Bot Token</Label>
+                      <a
+                        href="https://core.telegram.org/bots#botfather"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary flex items-center gap-1"
                       >
-                        <X size={14} />
-                      </Button>
+                        How to get <ExternalLink size={10} />
+                      </a>
                     </div>
-                  ))}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setHeaders([...headers, { key: '', value: '' }])}
-                  >
-                    <Plus size={14} data-icon="inline-start" /> Add header
-                  </Button>
-                </div>
-              </>
-            )}
+                    <Input
+                      id="channel-bot-token"
+                      value={config.botToken ?? ''}
+                      onChange={(e) => setConfigField('botToken', e.target.value)}
+                      placeholder="123456:ABC-DEF..."
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="channel-chat-id">Chat ID</Label>
+                      <a
+                        href="https://t.me/userinfobot"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary flex items-center gap-1"
+                      >
+                        How to get <ExternalLink size={10} />
+                      </a>
+                    </div>
+                    <Input
+                      id="channel-chat-id"
+                      value={config.chatId ?? ''}
+                      onChange={(e) => setConfigField('chatId', e.target.value)}
+                      placeholder="-1001234567890"
+                    />
+                  </div>
+                </>
+              )}
 
-            {type === 'ntfy' && (
-              <>
+              {type === 'slack' && (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="channel-ntfy-server">Server</Label>
+                    <Label htmlFor="channel-slack-webhook-url">Webhook URL</Label>
                     <a
-                      href="https://ntfy.sh"
+                      href="https://api.slack.com/messaging/webhooks"
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs text-primary flex items-center gap-1"
                     >
-                      ntfy.sh <ExternalLink size={10} />
+                      Slack docs <ExternalLink size={10} />
                     </a>
                   </div>
                   <Input
-                    id="channel-ntfy-server"
-                    value={config.server ?? 'https://ntfy.sh'}
-                    onChange={(e) => setConfigField('server', e.target.value)}
-                    placeholder="https://ntfy.sh"
+                    id="channel-slack-webhook-url"
+                    value={config.webhookUrl ?? ''}
+                    onChange={(e) => setConfigField('webhookUrl', e.target.value)}
+                    placeholder="https://hooks.slack.com/services/..."
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="channel-ntfy-topic">Topic</Label>
-                  <Input
-                    id="channel-ntfy-topic"
-                    value={config.topic ?? ''}
-                    onChange={(e) => setConfigField('topic', e.target.value)}
-                    placeholder="watchwarden"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="channel-ntfy-priority">Priority (optional)</Label>
-                  <Input
-                    id="channel-ntfy-priority"
-                    value={config.priority ?? ''}
-                    onChange={(e) => setConfigField('priority', e.target.value)}
-                    placeholder="default, low, high, urgent"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="channel-ntfy-token">Access Token (optional)</Label>
-                  <Input
-                    id="channel-ntfy-token"
-                    value={config.token ?? ''}
-                    onChange={(e) => setConfigField('token', e.target.value)}
-                    placeholder="tk_..."
-                    type="password"
-                    autoComplete="new-password"
-                  />
-                </div>
-              </>
-            )}
+              )}
 
-            {type === 'email' && (
-              <>
-                <div className="flex gap-2">
-                  <div className="space-y-1.5 flex-1">
-                    <Label htmlFor="channel-email-host">SMTP Host</Label>
+              {type === 'webhook' && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="channel-webhook-url">URL</Label>
                     <Input
-                      id="channel-email-host"
-                      value={config.host ?? ''}
-                      onChange={(e) => setConfigField('host', e.target.value)}
-                      placeholder="smtp.example.com"
+                      id="channel-webhook-url"
+                      value={config.url ?? ''}
+                      onChange={(e) => setConfigField('url', e.target.value)}
+                      placeholder="https://example.com/webhook"
                     />
                   </div>
-                  <div className="space-y-1.5 w-24">
-                    <Label htmlFor="channel-email-port">Port</Label>
-                    <Input
-                      id="channel-email-port"
-                      value={config.port ?? ''}
-                      onChange={(e) => setConfigField('port', e.target.value)}
-                      placeholder="587"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="channel-email-user">Username (optional)</Label>
-                  <Input
-                    id="channel-email-user"
-                    value={config.user ?? ''}
-                    onChange={(e) => setConfigField('user', e.target.value)}
-                    placeholder="smtp-user"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="channel-email-password">Password (optional)</Label>
-                  <Input
-                    id="channel-email-password"
-                    value={config.password ?? ''}
-                    onChange={(e) => setConfigField('password', e.target.value)}
-                    type="password"
-                    autoComplete="new-password"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="channel-email-from">From Address</Label>
-                  <Input
-                    id="channel-email-from"
-                    value={config.from ?? ''}
-                    onChange={(e) => setConfigField('from', e.target.value)}
-                    placeholder="watchwarden@example.com"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="channel-email-to">To Address(es)</Label>
-                  <Input
-                    id="channel-email-to"
-                    value={config.to ?? ''}
-                    onChange={(e) => setConfigField('to', e.target.value)}
-                    placeholder="you@example.com, team@example.com"
-                  />
-                </div>
-                {/* biome-ignore lint/a11y/noLabelWithoutControl: label wraps Checkbox */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={config.secure === 'true'}
-                    onCheckedChange={(checked) =>
-                      setConfigField('secure', checked ? 'true' : 'false')
-                    }
-                  />
-                  <span className="text-sm">Use TLS (usually port 465)</span>
-                </label>
-              </>
-            )}
-
-            {/* Advanced: Template & Link Template */}
-            <button
-              type="button"
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors pt-2"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-            >
-              {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              Advanced
-            </button>
-            {showAdvanced && (
-              <div className="space-y-3 pl-1 border-l-2 border-secondary ml-1">
-                <div className="space-y-1.5 pl-3">
-                  <Label htmlFor="channel-custom-template">Custom Template</Label>
-                  <textarea
-                    id="channel-custom-template"
-                    className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    value={customTemplate}
-                    onChange={(e) => setCustomTemplate(e.target.value)}
-                    placeholder={
-                      'Available: {{eventType}}, {{agentName}}, {{containers}}, {{count}}'
-                    }
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Use {'{{variable}}'} placeholders. Leave empty for default formatting.
-                  </p>
-                </div>
-                <div className="space-y-1.5 pl-3">
-                  <Label htmlFor="channel-link-template">Link Template</Label>
-                  <div className="flex flex-wrap gap-1.5 mb-1.5">
-                    {[
-                      { label: 'None', value: '' },
-                      { label: 'Auto', value: 'auto' },
-                      {
-                        label: 'Docker Hub',
-                        value: 'https://hub.docker.com/r/{{repository}}/tags?name={{tag}}',
-                      },
-                      {
-                        label: 'GHCR',
-                        value: 'https://github.com/{{owner}}/{{name}}/pkgs/container/{{name}}',
-                      },
-                      {
-                        label: 'Quay.io',
-                        value: 'https://quay.io/repository/{{repository}}?tab=tags',
-                      },
-                    ].map((opt) => (
-                      <button
-                        key={opt.label}
-                        type="button"
-                        className={`px-2 py-0.5 rounded text-xs border transition-colors ${
-                          linkTemplate === opt.value
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-secondary hover:border-muted-foreground/30'
-                        }`}
-                        onClick={() => setLinkTemplate(opt.value)}
-                      >
-                        {opt.label}
-                      </button>
+                  <div className="space-y-1.5">
+                    <Label id="channel-webhook-headers-label">Headers</Label>
+                    {headers.map((h, i) => (
+                      <div key={`header-${h.key || i}`} className="flex gap-2">
+                        <Input
+                          aria-label="Header key"
+                          placeholder="Key"
+                          value={h.key}
+                          onChange={(e) => {
+                            const n = [...headers];
+                            n[i] = { ...h, key: e.target.value };
+                            setHeaders(n);
+                          }}
+                        />
+                        <Input
+                          aria-label="Header value"
+                          placeholder="Value"
+                          value={h.value}
+                          onChange={(e) => {
+                            const n = [...headers];
+                            n[i] = { ...h, value: e.target.value };
+                            setHeaders(n);
+                          }}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setHeaders(headers.filter((_, j) => j !== i))}
+                          aria-label="Remove header"
+                        >
+                          <X size={14} />
+                        </Button>
+                      </div>
                     ))}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setHeaders([...headers, { key: '', value: '' }])}
+                    >
+                      <Plus size={14} data-icon="inline-start" /> Add header
+                    </Button>
                   </div>
-                  <Input
-                    id="channel-link-template"
-                    value={linkTemplate}
-                    onChange={(e) => setLinkTemplate(e.target.value)}
-                    placeholder="Custom: https://example.com/{{repository}}/{{tag}}"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Appends image links to notifications. Available: {'{{registry}}'},{' '}
-                    {'{{repository}}'}, {'{{tag}}'}, {'{{owner}}'}, {'{{name}}'}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+                </>
+              )}
 
-        {/* Step 3: Events */}
-        {step === 3 && (
-          <div className="space-y-4 py-2">
-            <p className="text-sm text-muted-foreground">Notify me when:</p>
-            {EVENTS.map((e) => (
-              // biome-ignore lint/a11y/noLabelWithoutControl: label wraps Checkbox
-              <label
-                key={e.value}
-                className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary"
+              {type === 'ntfy' && (
+                <>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="channel-ntfy-server">Server</Label>
+                      <a
+                        href="https://ntfy.sh"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary flex items-center gap-1"
+                      >
+                        ntfy.sh <ExternalLink size={10} />
+                      </a>
+                    </div>
+                    <Input
+                      id="channel-ntfy-server"
+                      value={config.server ?? 'https://ntfy.sh'}
+                      onChange={(e) => setConfigField('server', e.target.value)}
+                      placeholder="https://ntfy.sh"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="channel-ntfy-topic">Topic</Label>
+                    <Input
+                      id="channel-ntfy-topic"
+                      value={config.topic ?? ''}
+                      onChange={(e) => setConfigField('topic', e.target.value)}
+                      placeholder="watchwarden"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="channel-ntfy-priority">Priority (optional)</Label>
+                    <Input
+                      id="channel-ntfy-priority"
+                      value={config.priority ?? ''}
+                      onChange={(e) => setConfigField('priority', e.target.value)}
+                      placeholder="default, low, high, urgent"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="channel-ntfy-token">Access Token (optional)</Label>
+                    <Input
+                      id="channel-ntfy-token"
+                      value={config.token ?? ''}
+                      onChange={(e) => setConfigField('token', e.target.value)}
+                      placeholder="tk_..."
+                      type="password"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </>
+              )}
+
+              {type === 'email' && (
+                <>
+                  <div className="flex gap-2">
+                    <div className="space-y-1.5 flex-1">
+                      <Label htmlFor="channel-email-host">SMTP Host</Label>
+                      <Input
+                        id="channel-email-host"
+                        value={config.host ?? ''}
+                        onChange={(e) => setConfigField('host', e.target.value)}
+                        placeholder="smtp.example.com"
+                      />
+                    </div>
+                    <div className="space-y-1.5 w-24">
+                      <Label htmlFor="channel-email-port">Port</Label>
+                      <Input
+                        id="channel-email-port"
+                        value={config.port ?? ''}
+                        onChange={(e) => setConfigField('port', e.target.value)}
+                        placeholder="587"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="channel-email-user">Username (optional)</Label>
+                    <Input
+                      id="channel-email-user"
+                      value={config.user ?? ''}
+                      onChange={(e) => setConfigField('user', e.target.value)}
+                      placeholder="smtp-user"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="channel-email-password">Password (optional)</Label>
+                    <Input
+                      id="channel-email-password"
+                      value={config.password ?? ''}
+                      onChange={(e) => setConfigField('password', e.target.value)}
+                      type="password"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="channel-email-from">From Address</Label>
+                    <Input
+                      id="channel-email-from"
+                      value={config.from ?? ''}
+                      onChange={(e) => setConfigField('from', e.target.value)}
+                      placeholder="watchwarden@example.com"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="channel-email-to">To Address(es)</Label>
+                    <Input
+                      id="channel-email-to"
+                      value={config.to ?? ''}
+                      onChange={(e) => setConfigField('to', e.target.value)}
+                      placeholder="you@example.com, team@example.com"
+                    />
+                  </div>
+                  {/* biome-ignore lint/a11y/noLabelWithoutControl: label wraps Checkbox */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={config.secure === 'true'}
+                      onCheckedChange={(checked) =>
+                        setConfigField('secure', checked ? 'true' : 'false')
+                      }
+                    />
+                    <span className="text-sm">Use TLS (usually port 465)</span>
+                  </label>
+                  <div className="space-y-1">
+                    {/* biome-ignore lint/a11y/noLabelWithoutControl: label wraps Checkbox */}
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={config.allowInsecureTLS === 'true'}
+                        onCheckedChange={(checked) =>
+                          setConfigField('allowInsecureTLS', checked ? 'true' : 'false')
+                        }
+                      />
+                      <span className="text-sm text-warning">
+                        Allow invalid/self-signed certificates (insecure)
+                      </span>
+                    </label>
+                    <p className="text-xs text-muted-foreground pl-6">
+                      Skips TLS certificate validation. Only use for trusted internal servers.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Advanced: Template & Link Template */}
+              <button
+                type="button"
+                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors pt-2"
+                onClick={() => setShowAdvanced(!showAdvanced)}
               >
-                <Checkbox
-                  checked={events.includes(e.value)}
-                  onCheckedChange={() => toggleEvent(e.value)}
-                  className="mt-0.5"
-                />
-                <div>
-                  <p className="text-sm font-medium">{e.label}</p>
-                  <p className="text-xs text-muted-foreground">{e.desc}</p>
+                {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Advanced
+              </button>
+              {showAdvanced && (
+                <div className="space-y-3 pl-1 border-l-2 border-secondary ml-1">
+                  <div className="space-y-1.5 pl-3">
+                    <Label htmlFor="channel-custom-template">Custom Template</Label>
+                    <textarea
+                      id="channel-custom-template"
+                      className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={customTemplate}
+                      onChange={(e) => setCustomTemplate(e.target.value)}
+                      placeholder={
+                        'Available: {{eventType}}, {{agentName}}, {{containers}}, {{count}}'
+                      }
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use {'{{variable}}'} placeholders. Leave empty for default formatting.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5 pl-3">
+                    <Label htmlFor="channel-link-template">Link Template</Label>
+                    <div className="flex flex-wrap gap-1.5 mb-1.5">
+                      {[
+                        { label: 'None', value: '' },
+                        { label: 'Auto', value: 'auto' },
+                        {
+                          label: 'Docker Hub',
+                          value: 'https://hub.docker.com/r/{{repository}}/tags?name={{tag}}',
+                        },
+                        {
+                          label: 'GHCR',
+                          value: 'https://github.com/{{owner}}/{{name}}/pkgs/container/{{name}}',
+                        },
+                        {
+                          label: 'Quay.io',
+                          value: 'https://quay.io/repository/{{repository}}?tab=tags',
+                        },
+                      ].map((opt) => (
+                        <button
+                          key={opt.label}
+                          type="button"
+                          className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                            linkTemplate === opt.value
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-secondary hover:border-muted-foreground/30'
+                          }`}
+                          onClick={() => setLinkTemplate(opt.value)}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <Input
+                      id="channel-link-template"
+                      value={linkTemplate}
+                      onChange={(e) => setLinkTemplate(e.target.value)}
+                      placeholder="Custom: https://example.com/{{repository}}/{{tag}}"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Appends image links to notifications. Available: {'{{registry}}'},{' '}
+                      {'{{repository}}'}, {'{{tag}}'}, {'{{owner}}'}, {'{{name}}'}
+                    </p>
+                  </div>
                 </div>
-              </label>
-            ))}
+              )}
+            </div>
+          )}
 
-            {saveState === 'success' && (
-              <Alert className="border-success">
-                <Check size={16} className="text-success" />
-                <AlertDescription className="text-success">
-                  Channel created and test sent successfully!
-                </AlertDescription>
-              </Alert>
-            )}
-            {saveState === 'error' && (
-              <Alert variant="destructive">
-                <X size={16} />
-                <AlertDescription>{errorMsg || 'Failed to save channel'}</AlertDescription>
-              </Alert>
-            )}
-          </div>
-        )}
+          {/* Step 3: Events */}
+          {step === 3 && (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">Notify me when:</p>
+              {EVENTS.map((e) => (
+                // biome-ignore lint/a11y/noLabelWithoutControl: label wraps Checkbox
+                <label
+                  key={e.value}
+                  className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary"
+                >
+                  <Checkbox
+                    checked={events.includes(e.value)}
+                    onCheckedChange={() => toggleEvent(e.value)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <p className="text-sm font-medium">{e.label}</p>
+                    <p className="text-xs text-muted-foreground">{e.desc}</p>
+                  </div>
+                </label>
+              ))}
+
+              {saveState === 'success' && (
+                <Alert className="border-success">
+                  <Check size={16} className="text-success" />
+                  <AlertDescription className="text-success">
+                    Channel created and test sent successfully!
+                  </AlertDescription>
+                </Alert>
+              )}
+              {saveState === 'error' && (
+                <Alert variant="destructive">
+                  <X size={16} />
+                  <AlertDescription>{errorMsg || 'Failed to save channel'}</AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
+        </div>
 
         <DialogFooter>
           {step > 1 && (
