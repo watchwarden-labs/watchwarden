@@ -117,7 +117,6 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/watchwarden-${{ matrix.service }}:pr-${{ needs.check-permissions.outputs.pr_number }}-beta
             ghcr.io/${{ github.repository_owner }}/watchwarden-${{ matrix.service }}:sha-${{ needs.check-permissions.outputs.pr_sha }}
           cache-from: type=gha,scope=${{ matrix.service }}-pr
-          cache-to: type=gha,scope=${{ matrix.service }}-pr,mode=min
 
   comment:
     name: Post PR Comment
