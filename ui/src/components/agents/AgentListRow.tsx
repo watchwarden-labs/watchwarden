@@ -1,6 +1,6 @@
 import { formatDistanceToNow } from 'date-fns';
 import { Clock, Loader2, RefreshCw, Trash2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import type { Agent } from '@/api/hooks/useAgents';
 import { StatusDot } from '@/components/common/StatusDot';
 import { Badge } from '@/components/ui/badge';
