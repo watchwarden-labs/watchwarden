@@ -1,7 +1,7 @@
 import { formatDistanceToNow } from 'date-fns';
 import { Box, Info, Loader2, RefreshCw, RotateCw, Scissors, Shield, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import {
   useAgent,
   useCheckAgent,

@@ -1,6 +1,6 @@
 import { ArrowUpCircle, Hexagon, LayoutGrid, List, Loader2, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { useAgents, useCheckAgent, useCheckAllAgents, useUpdateAgent } from '@/api/hooks/useAgents';
 import { useHistory } from '@/api/hooks/useHistory';
 import { useConfig } from '@/api/hooks/useSettings';
