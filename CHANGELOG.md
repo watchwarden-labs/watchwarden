@@ -1,3 +1,16 @@
+## v0.4.1
+
+Released: 2026-08-10
+
+### Bug Fixes
+- fix(notifications): scrollable channel modal and email TLS cert bypass (1707259)
+
+### Other Changes
+- chore(deps): resolve all open Dependabot alerts (14ae7b9)
+- ci(pr-beta): stop writing to GHA cache to fix persistent build failures (f35bdb4)
+- ci(pr-beta): isolate matrix failures and reduce GHA cache pressure (32abc04)
+- ci(pr-beta): isolate matrix failures and reduce GHA cache pressure (c800ee0)
+
 ## v0.4.0
 
 Released: 2026-08-03
