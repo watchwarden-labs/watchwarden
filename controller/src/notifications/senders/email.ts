@@ -22,6 +22,7 @@ export async function sendEmail(
     password?: string;
     from: string;
     to: string;
+    allowInsecureTLS?: string;
   },
   event: NotificationEvent,
   options?: FormatOptions,
@@ -32,6 +33,7 @@ export async function sendEmail(
     port: Number(config.port),
     secure: config.secure === 'true',
     auth: config.user ? { user: config.user, pass: config.password } : undefined,
+    ...(config.allowInsecureTLS === 'true' ? { tls: { rejectUnauthorized: false } } : {}),
   });
   await transporter.sendMail({
     from: config.from,

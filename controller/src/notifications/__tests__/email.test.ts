@@ -81,6 +81,34 @@ describe('email sender', () => {
     expect(config.auth).toEqual({ user: 'smtpuser', pass: 'smtppass' });
   });
 
+  it('sets tls.rejectUnauthorized false when allowInsecureTLS is enabled', async () => {
+    await sendEmail(
+      {
+        host: 'smtp.example.com',
+        port: '587',
+        allowInsecureTLS: 'true',
+        from: 'a@example.com',
+        to: 'b@example.com',
+      },
+      successEvent,
+    );
+
+    const [config] = createTransport.mock.calls[0] as unknown as [
+      { tls?: { rejectUnauthorized: boolean } },
+    ];
+    expect(config.tls).toEqual({ rejectUnauthorized: false });
+  });
+
+  it('omits tls option when allowInsecureTLS is not enabled', async () => {
+    await sendEmail(
+      { host: 'smtp.example.com', port: '587', from: 'a@example.com', to: 'b@example.com' },
+      successEvent,
+    );
+
+    const [config] = createTransport.mock.calls[0] as unknown as [{ tls?: unknown }];
+    expect(config.tls).toBeUndefined();
+  });
+
   it('propagates errors from sendMail', async () => {
     sendMail.mockRejectedValue(new Error('SMTP connection refused'));
 
