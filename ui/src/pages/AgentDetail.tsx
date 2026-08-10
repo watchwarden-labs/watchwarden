@@ -2,6 +2,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Box, Info, Loader2, RefreshCw, RotateCw, Scissors, Shield, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { apiErrorMessage } from '@/api/client';
 import {
   useAgent,
   useCheckAgent,
@@ -167,9 +168,9 @@ export function AgentDetail() {
                         type: 'info',
                         message: 'Checking for updates...',
                       }),
-                    onError: () => {
+                    onError: (err) => {
                       setAgentChecking(agent.id, false);
-                      addToast({ type: 'error', message: 'Check failed' });
+                      addToast({ type: 'error', message: apiErrorMessage(err, 'Check failed') });
                     },
                   });
                 }}

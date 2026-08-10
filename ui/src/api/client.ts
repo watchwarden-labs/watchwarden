@@ -17,6 +17,15 @@ export class ApiError extends Error {
   }
 }
 
+/** Extracts the server's `{ error: string }` reason from a failed apiRequest, falling back otherwise. */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    const reason = (err.body as { error?: string } | undefined)?.error;
+    if (reason) return reason;
+  }
+  return fallback;
+}
+
 export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   // Always include credentials so the httpOnly cookie is forwarded.
   // Also send Authorization: Bearer as fallback for API clients that stored the token.
