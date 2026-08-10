@@ -85,6 +85,14 @@ export async function deleteAgent(id: string): Promise<void> {
   await sql`DELETE FROM agents WHERE id = ${id}`;
 }
 
+export async function updateAgentToken(
+  id: string,
+  tokenHash: string,
+  tokenPrefix: string,
+): Promise<void> {
+  await sql`UPDATE agents SET token_hash = ${tokenHash}, token_prefix = ${tokenPrefix} WHERE id = ${id}`;
+}
+
 // --- Containers ---
 
 export async function upsertContainers(
