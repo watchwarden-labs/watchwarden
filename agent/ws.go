@@ -138,6 +138,8 @@ func (w *WSClient) ConnectLoop(ctx context.Context) {
 			if time.Since(connectedAt) >= stableConnectionThreshold {
 				backoff = 1 * time.Second // Reset only after a genuinely stable connection
 			}
+		} else {
+			log.Printf("[ws] connect failed: %v", err)
 		}
 
 		// Full-jitter: sleep = random_between(0, backoff) — RC-05.
@@ -268,6 +270,10 @@ func (w *WSClient) readWriteLoop(ctx context.Context) {
 
 		_, data, err := conn.ReadMessage()
 		if err != nil {
+			// err.Error() already includes the close code/reason for a
+			// *websocket.CloseError (e.g. "websocket: close 4001: Invalid token"),
+			// which is otherwise invisible from the agent's own logs.
+			log.Printf("[ws] connection closed: %v", err)
 			return
 		}
 

@@ -30,6 +30,10 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
   } | null>(null);
   const [copied, setCopied] = useState<'token' | 'compose' | null>(null);
   const [includeSnapshots, setIncludeSnapshots] = useState(false);
+  // Defaults to the hostname the browser used to reach the UI, but that's often
+  // not resolvable from a remote agent's network (short name, VPN-only name, a
+  // reverse-proxy alias, etc.) — let the admin override it before copying.
+  const [controllerHost, setControllerHost] = useState(() => window.location.hostname);
   const registerAgent = useRegisterAgent();
   const addToast = useStore((s) => s.addToast);
 
@@ -70,12 +74,13 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
     setResult(null);
     setCopied(null);
     setIncludeSnapshots(false);
+    setControllerHost(window.location.hostname);
     onOpenChange(false);
   };
 
   const controllerWsUrl = (() => {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${window.location.hostname}:3000`;
+    return `${proto}//${controllerHost}:3000`;
   })();
 
   const composeSnippet = result
@@ -187,6 +192,21 @@ export function RegisterAgentModal({ open, onOpenChange }: RegisterAgentModalPro
                       </>
                     )}
                   </Button>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="controller-host" className="text-xs text-muted-foreground">
+                    Controller Address
+                  </Label>
+                  <Input
+                    id="controller-host"
+                    value={controllerHost}
+                    onChange={(e) => setControllerHost(e.target.value)}
+                    className="h-8 font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Must be reachable from the agent's host — a short hostname often isn't; use the
+                    FQDN or IP if the agent runs on a different network.
+                  </p>
                 </div>
                 <pre className="bg-background p-3 rounded text-xs font-mono text-foreground overflow-x-auto select-all">
                   {composeSnippet}
