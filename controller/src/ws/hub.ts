@@ -557,6 +557,7 @@ export class AgentHub {
                     },
                     r.containerId,
                     r.newDigest,
+                    isRollback,
                   );
                 } else {
                   await insertUpdateLog({
@@ -630,6 +631,23 @@ export class AgentHub {
                   });
                 } catch (err) {
                   log.error('hub', `Failed to dispatch auto-rollback notification: ${err}`);
+                }
+              }
+
+              // A rollback intentionally moves to an older/arbitrary tag — it's not
+              // "the latest," so the has_update/latest_digest values written above are
+              // only a best-effort interim state. Trigger a real registry check right
+              // away so the authoritative CHECK_RESULT path (updateContainerDigests)
+              // corrects them immediately instead of waiting for the next scheduled
+              // check — otherwise the container can show "up to date" indefinitely
+              // even though a newer version still exists.
+              if (isRollback) {
+                const rollbackSuccesses = results.filter((r) => r.success);
+                if (rollbackSuccesses.length > 0) {
+                  this.sendToAgent(agentId, {
+                    type: 'CHECK',
+                    payload: { containerIds: rollbackSuccesses.map((r) => r.containerId) },
+                  });
                 }
               }
 

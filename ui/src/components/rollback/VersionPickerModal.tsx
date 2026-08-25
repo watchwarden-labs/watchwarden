@@ -84,12 +84,16 @@ export function VersionPickerModal({
     return () => clearTimeout(timer);
   }, [search, versions]);
 
-  // Load initial tags from versions response
+  // Load initial tags from versions response. Also re-runs when the modal
+  // reopens (`open` flips back to true) — the close handler below clears
+  // `allTags`, and without `open` as a dependency this effect wouldn't
+  // re-fire from cached (still-valid) query data, leaving the list stuck
+  // empty until "Show more" forced a fresh fetch.
   useEffect(() => {
-    if (versions?.registry?.tags && !debouncedSearch && !hasSearched) {
+    if (open && versions?.registry?.tags && !debouncedSearch && !hasSearched) {
       setAllTags(versions.registry.tags);
     }
-  }, [versions, debouncedSearch, hasSearched]);
+  }, [open, versions, debouncedSearch, hasSearched]);
 
   // Search/pagination query
   const needsSearchQuery = (debouncedSearch !== '' || registryPage > 1) && open;
@@ -387,7 +391,7 @@ export function VersionPickerModal({
                     {loadingSearch && <Loader2 size={14} className="animate-spin" />}
                     {loadingSearch
                       ? 'Loading...'
-                      : `Show more (${filteredTags.length - visibleTags.length})`}
+                      : `Show more (${Math.max(0, (total ?? filteredTags.length) - visibleTags.length)})`}
                   </Button>
                   <span className="text-xs text-muted-foreground">
                     Showing {visibleTags.length} of {total ?? filteredTags.length} tags

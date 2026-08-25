@@ -982,7 +982,7 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 
 	// 4. Recreate with target image
 	u.emitProgress(originalID, snapshot.Name, "starting", "")
-	_, err = u.docker.RecreateContainer(ctx, snapshot, targetImage)
+	newID, err := u.docker.RecreateContainer(ctx, snapshot, targetImage)
 	if err != nil {
 		// Recovery: try to recreate with the original image so the container isn't left dead
 		log.Printf("[rollback-to-image] Create with %s failed: %v — attempting recovery with original image", targetImage, err)
@@ -1006,15 +1006,16 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 	}
 
 	return &UpdateResult{
-		ContainerID:   originalID,
-		ContainerName: snapshot.Name,
-		Success:       true,
-		OldDigest:     snapshot.ImageDigest,
-		NewDigest:     newDigest,
-		OldImage:      snapshot.ImageRef,
-		NewImage:      targetImage,
-		DurationMs:    time.Since(start).Milliseconds(),
-		IsRollback:    true,
+		ContainerID:         newID,
+		OriginalContainerID: originalID,
+		ContainerName:       snapshot.Name,
+		Success:             true,
+		OldDigest:           snapshot.ImageDigest,
+		NewDigest:           newDigest,
+		OldImage:            snapshot.ImageRef,
+		NewImage:            targetImage,
+		DurationMs:          time.Since(start).Milliseconds(),
+		IsRollback:          true,
 	}, nil
 }
 

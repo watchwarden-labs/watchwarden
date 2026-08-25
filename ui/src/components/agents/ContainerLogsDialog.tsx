@@ -1,5 +1,5 @@
 import { Loader2, RefreshCw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useContainerLogs } from '@/api/hooks/useAgents';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +22,23 @@ interface ContainerLogsDialogProps {
 const TAIL_OPTIONS = [100, 500, 1000, 5000];
 const AUTO_REFRESH_INTERVAL = 5000;
 
+// Many containerized processes (e.g. the Portainer agent) colorize their own
+// stdout with ANSI escape codes. Docker passes those through raw, and we have
+// no terminal to interpret them, so strip them rather than showing garbage
+// escape sequences in a plain <pre> block. Built via String.fromCharCode to
+// keep the source file free of literal control bytes.
+const ESC = String.fromCharCode(0x1b);
+const CSI_TERMINATOR = String.fromCharCode(0x07);
+const ANSI_PATTERN = new RegExp(
+  `${ESC}\\[[[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?${CSI_TERMINATOR})` +
+    `|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))`,
+  'g',
+);
+
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_PATTERN, '');
+}
+
 export function ContainerLogsDialog({
   open,
   onOpenChange,
@@ -40,6 +57,8 @@ export function ContainerLogsDialog({
     open,
   );
 
+  const cleanLogs = useMemo(() => (data?.logs ? stripAnsi(data.logs) : ''), [data?.logs]);
+
   // Auto-refresh
   useEffect(() => {
     if (!open || !autoRefresh) return;
@@ -51,10 +70,10 @@ export function ContainerLogsDialog({
 
   // Auto-scroll to bottom when logs update
   useEffect(() => {
-    if (preRef.current && data?.logs) {
+    if (preRef.current && cleanLogs) {
       preRef.current.scrollTop = preRef.current.scrollHeight;
     }
-  }, [data?.logs]);
+  }, [cleanLogs]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -137,8 +156,8 @@ export function ContainerLogsDialog({
               Failed to fetch logs:{' '}
               {(error as { body?: { error?: string } })?.body?.error ?? 'Unknown error'}
             </span>
-          ) : data?.logs ? (
-            data.logs
+          ) : cleanLogs ? (
+            cleanLogs
           ) : (
             <span className="text-muted-foreground">No logs available</span>
           )}
