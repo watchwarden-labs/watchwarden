@@ -1,3 +1,14 @@
+## v0.4.2
+
+Released: 2026-08-25
+
+### Features
+- feat(agents): add non-destructive agent token regeneration (8b74180)
+
+### Bug Fixes
+- fix(agents): log connection failures, fix stale local-agent token, make controller address editable (#78) (b32c472)
+- fix(agents): stop reconnect loop from masking WS auth failures (#78) (47e781b)
+
 ## v0.4.1
 
 Released: 2026-08-10
