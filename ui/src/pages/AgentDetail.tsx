@@ -1,7 +1,18 @@
 import { formatDistanceToNow } from 'date-fns';
-import { Box, Info, Loader2, RefreshCw, RotateCw, Scissors, Shield, Trash2 } from 'lucide-react';
+import {
+  Box,
+  Info,
+  KeyRound,
+  Loader2,
+  RefreshCw,
+  RotateCw,
+  Scissors,
+  Shield,
+  Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { apiErrorMessage } from '@/api/client';
 import {
   useAgent,
   useCheckAgent,
@@ -13,6 +24,7 @@ import {
 } from '@/api/hooks/useAgents';
 import { useUpdatePolicy, useUpdatePolicyMutation } from '@/api/hooks/usePolicies';
 import { ContainerRow } from '@/components/agents/ContainerRow';
+import { RegenerateTokenModal } from '@/components/agents/RegenerateTokenModal';
 import { CronPicker } from '@/components/common/CronPicker';
 import { Pagination } from '@/components/common/Pagination';
 import { StatusDot } from '@/components/common/StatusDot';
@@ -52,6 +64,7 @@ export function AgentDetail() {
   const isChecking = agent ? checkingAgents.has(agent.id) : false;
   const [pruneKeep, setPruneKeep] = useState(1);
   const [pruneConfirmOpen, setPruneConfirmOpen] = useState(false);
+  const [regenerateTokenOpen, setRegenerateTokenOpen] = useState(false);
   const [showStopped, setShowStopped] = useState(
     () => localStorage.getItem('showStopped') === 'true',
   );
@@ -116,12 +129,24 @@ export function AgentDetail() {
             )}
           </div>
         </div>
-        {agent.status === 'offline' && (
-          <Button variant="destructive" size="sm" onClick={handleDelete}>
-            <Trash2 size={14} data-icon="inline-start" /> Remove Agent
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setRegenerateTokenOpen(true)}>
+            <KeyRound size={14} data-icon="inline-start" /> Regenerate Token
           </Button>
-        )}
+          {agent.status === 'offline' && (
+            <Button variant="destructive" size="sm" onClick={handleDelete}>
+              <Trash2 size={14} data-icon="inline-start" /> Remove Agent
+            </Button>
+          )}
+        </div>
       </div>
+
+      <RegenerateTokenModal
+        agentId={agent.id}
+        agentName={agent.name}
+        open={regenerateTokenOpen}
+        onOpenChange={setRegenerateTokenOpen}
+      />
 
       <Tabs defaultValue="containers">
         <TabsList>
@@ -167,9 +192,9 @@ export function AgentDetail() {
                         type: 'info',
                         message: 'Checking for updates...',
                       }),
-                    onError: () => {
+                    onError: (err) => {
                       setAgentChecking(agent.id, false);
-                      addToast({ type: 'error', message: 'Check failed' });
+                      addToast({ type: 'error', message: apiErrorMessage(err, 'Check failed') });
                     },
                   });
                 }}

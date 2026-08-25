@@ -182,6 +182,10 @@ export class AgentHub {
 
           if (!authenticated) {
             if (message.type !== 'REGISTER') {
+              log.warn(
+                'hub',
+                `Rejected WS connection: first message was "${message.type}", expected REGISTER`,
+              );
               socket.close(4002, 'First message must be REGISTER');
               return;
             }
@@ -195,6 +199,10 @@ export class AgentHub {
             }
 
             if (!result) {
+              log.warn(
+                'hub',
+                `Rejected agent REGISTER: invalid token (agentName=${payload.agentName ?? 'unknown'}, hostname=${payload.hostname ?? 'unknown'})`,
+              );
               socket.close(4001, 'Invalid token');
               return;
             }
@@ -202,7 +210,7 @@ export class AgentHub {
             agentId = result.id;
             authenticated = true;
             clearTimeout(authTimeout);
-            log.debug('hub', `Agent registered: ${payload.agentName ?? agentId}`, {
+            log.info('hub', `Agent registered: ${payload.agentName ?? agentId}`, {
               version: payload.version,
               containers: payload.containers?.length,
             });

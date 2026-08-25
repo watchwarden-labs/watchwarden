@@ -1,6 +1,7 @@
 import { Hexagon, LayoutGrid, List, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { apiErrorMessage } from '@/api/client';
 import { useAgents, useCheckAgent, useDeleteAgent, useUpdateAgent } from '@/api/hooks/useAgents';
 import { AgentCard } from '@/components/agents/AgentCard';
 import { AgentListRow } from '@/components/agents/AgentListRow';
@@ -35,7 +36,10 @@ export function Agents() {
     if (checkingAgents.has(agentId)) return;
     setAgentChecking(agentId, true);
     checkAgent.mutate(agentId, {
-      onError: () => setAgentChecking(agentId, false),
+      onError: (err) => {
+        setAgentChecking(agentId, false);
+        addToast({ type: 'error', message: apiErrorMessage(err, 'Check failed') });
+      },
     });
   };
 

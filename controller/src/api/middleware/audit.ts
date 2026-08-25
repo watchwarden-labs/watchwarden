@@ -14,6 +14,10 @@ const AUDIT_ROUTES: Record<string, { action: string; targetType: string }> = {
     targetType: 'agent',
   },
   'DELETE /api/agents/:id': { action: 'agent.delete', targetType: 'agent' },
+  'POST /api/agents/:id/regenerate-token': {
+    action: 'agent.regenerate_token',
+    targetType: 'agent',
+  },
   'POST /api/agents/:id/check': { action: 'agent.check', targetType: 'agent' },
   'POST /api/agents/:id/update': {
     action: 'container.update',

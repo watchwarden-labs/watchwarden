@@ -16,6 +16,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { apiErrorMessage } from '@/api/client';
 import {
   type Container,
   useCheckContainer,
@@ -291,10 +292,7 @@ export function ContainerRow({ agentId, container, onUpdate }: ContainerRowProps
         onSuccess: () => addToast({ type: 'info', message: `Checking ${container.name}...` }),
         onError: (err) => {
           setPendingAction(null);
-          addToast({
-            type: 'error',
-            message: `Check failed: ${err instanceof Error ? err.message : String(err)}`,
-          });
+          addToast({ type: 'error', message: apiErrorMessage(err, 'Check failed') });
         },
       },
     );

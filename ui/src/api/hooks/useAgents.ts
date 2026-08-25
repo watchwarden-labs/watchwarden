@@ -32,6 +32,15 @@ export function useRegisterAgent() {
   });
 }
 
+export function useRegenerateAgentToken() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiRequest<{ agentId: string; token: string }>(`/agents/${id}/regenerate-token`, {
+        method: 'POST',
+      }),
+  });
+}
+
 export function useDeleteAgent() {
   const queryClient = useQueryClient();
   return useMutation({

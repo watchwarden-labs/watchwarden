@@ -109,6 +109,14 @@ func (w *WSClient) ConnectionCtx() context.Context {
 	return context.Background()
 }
 
+// stableConnectionThreshold is how long a connection must stay up before we
+// treat it as healthy and reset the reconnect backoff. dial() only proves the
+// WS transport handshake succeeded — a controller that rejects REGISTER (e.g.
+// invalid AGENT_TOKEN) closes the socket within milliseconds, which otherwise
+// looks identical to a successful connection and would reset backoff to 1s on
+// every cycle, hammering the controller instead of backing off.
+const stableConnectionThreshold = 5 * time.Second
+
 // ConnectLoop runs the connection loop with reconnection logic.
 func (w *WSClient) ConnectLoop(ctx context.Context) {
 	backoff := 1 * time.Second
@@ -120,13 +128,18 @@ func (w *WSClient) ConnectLoop(ctx context.Context) {
 		default:
 		}
 
+		connectedAt := time.Now()
 		err := w.dial(ctx)
 		if err == nil {
-			backoff = 1 * time.Second // Reset on success
 			w.setConnected(true)
 			w.register()
 			w.readWriteLoop(ctx)
 			w.setConnected(false)
+			if time.Since(connectedAt) >= stableConnectionThreshold {
+				backoff = 1 * time.Second // Reset only after a genuinely stable connection
+			}
+		} else {
+			log.Printf("[ws] connect failed: %v", err)
 		}
 
 		// Full-jitter: sleep = random_between(0, backoff) — RC-05.
@@ -257,6 +270,10 @@ func (w *WSClient) readWriteLoop(ctx context.Context) {
 
 		_, data, err := conn.ReadMessage()
 		if err != nil {
+			// err.Error() already includes the close code/reason for a
+			// *websocket.CloseError (e.g. "websocket: close 4001: Invalid token"),
+			// which is otherwise invisible from the agent's own logs.
+			log.Printf("[ws] connection closed: %v", err)
 			return
 		}
 

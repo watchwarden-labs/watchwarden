@@ -144,6 +144,36 @@ describe('agents API', () => {
     expect(getRes.statusCode).toBe(404);
   });
 
+  it('POST /api/agents/:id/regenerate-token returns 200 with a new token', async () => {
+    const regRes = await app.inject({
+      method: 'POST',
+      url: '/api/agents/register',
+      headers: authHeaders(),
+      payload: { name: 'Regen Agent', hostname: 'server-5' },
+    });
+    const { agentId, token: originalToken } = JSON.parse(regRes.body);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/regenerate-token`,
+      headers: authHeaders(),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.agentId).toBe(agentId);
+    expect(typeof body.token).toBe('string');
+    expect(body.token).not.toBe(originalToken);
+  });
+
+  it('POST /api/agents/:unknown/regenerate-token returns 404', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/nonexistent-id/regenerate-token',
+      headers: authHeaders(),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
   it('PUT /api/agents/:id/config updates schedule and auto_update', async () => {
     const regRes = await app.inject({
       method: 'POST',

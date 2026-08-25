@@ -20,7 +20,7 @@ import metricsRoutes from './api/routes/metrics.js';
 import notificationRoutes from './api/routes/notifications.js';
 import registriesRoutes from './api/routes/registries.js';
 import { closeSql } from './db/client.js';
-import { getAgent, getConfig, insertAgent, setConfig } from './db/queries.js';
+import { getAgent, getConfig, insertAgent, setConfig, updateAgentToken } from './db/queries.js';
 import { runMigrations } from './db/schema.js';
 import { initCrypto, resetKey } from './lib/crypto.js';
 import { clearPendingTimers } from './notifications/session-batcher.js';
@@ -91,17 +91,24 @@ async function start() {
   const localAgentToken = process.env.LOCAL_AGENT_TOKEN;
   if (localAgentToken) {
     const existingAgent = await getAgent('local-agent');
+    // VIOLATION 7: Store the auto-registered agent token as a SHA-256 hash in the database.
+    const tokenHash = createHash('sha256').update(localAgentToken).digest('hex');
+    const tokenPrefix = localAgentToken.slice(0, 8);
     if (!existingAgent) {
-      // VIOLATION 7: Store the auto-registered agent token as a SHA-256 hash in the database.
-      const tokenHash = createHash('sha256').update(localAgentToken).digest('hex');
       await insertAgent({
         id: 'local-agent',
         name: 'local',
         hostname: 'local',
         token_hash: tokenHash,
-        token_prefix: localAgentToken.slice(0, 8),
+        token_prefix: tokenPrefix,
       });
       console.log('Auto-registered local agent');
+    } else if (existingAgent.token_hash !== tokenHash) {
+      // LOCAL_AGENT_TOKEN was rotated since the row was first created — resync
+      // it every boot instead of leaving the bundled local agent permanently
+      // rejected with a stale hash.
+      await updateAgentToken('local-agent', tokenHash, tokenPrefix);
+      console.log('Resynced local agent token to current LOCAL_AGENT_TOKEN');
     }
   }
 

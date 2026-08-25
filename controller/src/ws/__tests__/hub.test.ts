@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fastifyWebsocket from '@fastify/websocket';
 import bcrypt from 'bcryptjs';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -11,6 +12,7 @@ import {
   insertAgent,
   listAgents,
   setConfig,
+  updateAgentToken,
 } from '../../db/queries.js';
 import { AgentHub } from '../hub.js';
 
@@ -129,6 +131,46 @@ describe('AgentHub', () => {
 
     const { code } = await closePromise;
     expect(code).toBe(4001);
+  });
+
+  it('regenerating an agent token rejects the old token and accepts the new one', async () => {
+    const newRawToken = 'regenerated-token-abc123';
+    const newTokenHash = createHash('sha256').update(newRawToken).digest('hex');
+    await updateAgentToken('hub-agent-1', newTokenHash, newRawToken.slice(0, 8));
+
+    // Old token no longer authenticates.
+    const oldWs = connectAgent();
+    await waitForOpen(oldWs);
+    const oldClosePromise = waitForClose(oldWs);
+    oldWs.send(
+      JSON.stringify({
+        type: 'REGISTER',
+        payload: { token: agentToken, hostname: 'server-1', containers: [] },
+      }),
+    );
+    const { code } = await oldClosePromise;
+    expect(code).toBe(4001);
+
+    // New token authenticates and brings the agent online.
+    const newWs = connectAgent();
+    await waitForOpen(newWs);
+    newWs.send(
+      JSON.stringify({
+        type: 'REGISTER',
+        payload: { token: newRawToken, hostname: 'server-1', containers: [] },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 200));
+
+    const agent = await getAgent('hub-agent-1');
+    expect(agent?.status).toBe('online');
+
+    newWs.close();
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Restore the original bcrypt-hashed token for subsequent tests in this file.
+    const restoredHash = await bcrypt.hash(agentToken, 10);
+    await updateAgentToken('hub-agent-1', restoredHash, agentToken.slice(0, 8));
   });
 
   it('agent sends non-REGISTER first message closes socket', async () => {

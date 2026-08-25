@@ -12,6 +12,7 @@ import {
   insertAgent,
   listAgents,
   updateAgentConfig,
+  updateAgentToken,
   updateContainerOrchestration,
   updateContainerPolicy,
 } from '../../db/queries.js';
@@ -92,6 +93,34 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
     await deleteAgent(request.params.id);
     return reply.code(204).send();
   });
+
+  // Issue a new token for an existing agent without deleting it — recovers a
+  // lost/stale/rotated AGENT_TOKEN without cascading away the agent's container
+  // history, update log, and policies (which DELETE /api/agents/:id would).
+  // The old token stops authenticating new connections immediately; an
+  // already-connected agent keeps its current session until it next reconnects.
+  fastify.post<{ Params: { id: string } }>(
+    '/api/agents/:id/regenerate-token',
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
+      const agent = await getAgent(request.params.id);
+      if (!agent) {
+        return reply.code(404).send({ error: 'Agent not found' });
+      }
+      const rawToken = randomBytes(32).toString('hex');
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      const tokenPrefix = rawToken.slice(0, 8);
+      await updateAgentToken(request.params.id, tokenHash, tokenPrefix);
+      return reply.code(200).send({ agentId: agent.id, token: rawToken });
+    },
+  );
 
   // Check all online agents — batches notifications into a single dispatch.
   // MUST be registered before /:id/check to avoid Fastify matching "check-all" as an :id param.
