@@ -628,6 +628,52 @@ describe('queries', () => {
       expect(containers[0]?.has_update).toBe(0);
     });
 
+    it('insertUpdateLogAndDigests(isRollback=true) preserves latest_digest and recomputes has_update (issue #80)', async () => {
+      await insertAgent({
+        id: 'rollback-agent',
+        name: 'Rollback Agent',
+        hostname: 'srv',
+        token_hash: '$2a$10$hash',
+      });
+
+      await upsertContainers('rollback-agent', [
+        {
+          id: 'rollback-c1',
+          docker_id: 'docker-rollback-1',
+          name: 'nginx',
+          image: 'nginx:latest',
+          current_digest: 'sha256:current',
+          status: 'running',
+        },
+      ]);
+
+      // Simulate a real registry check having found a newer version available.
+      await updateContainerDigests('rollback-c1', 'sha256:current', 'sha256:newest', true);
+
+      // Roll back to an older digest — this must NOT overwrite latest_digest
+      // with the rollback target, and must recompute has_update against the
+      // real (still-newer) latest_digest instead of forcing it false.
+      await insertUpdateLogAndDigests(
+        {
+          agent_id: 'rollback-agent',
+          container_id: 'rollback-c1',
+          container_name: 'nginx',
+          old_digest: 'sha256:current',
+          new_digest: 'sha256:old',
+          status: 'rolled_back',
+          duration_ms: 500,
+        },
+        'rollback-c1',
+        'sha256:old',
+        true,
+      );
+
+      const containers = await getContainersByAgent('rollback-agent');
+      expect(containers[0]?.current_digest).toBe('sha256:old');
+      expect(containers[0]?.latest_digest).toBe('sha256:newest');
+      expect(containers[0]?.has_update).toBe(1);
+    });
+
     it('updateNotificationChannel updates all fields atomically (DB-03)', async () => {
       await insertNotificationChannel({
         id: 'ch-atomic',

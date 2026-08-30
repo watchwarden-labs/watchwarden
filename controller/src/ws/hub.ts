@@ -151,6 +151,14 @@ export class AgentHub {
     let authenticated = false;
     let agentId: string | null = null;
     const bucket = new TokenBucket();
+    // RACE-01: before authentication, agentId is null so messages can't be
+    // chained onto the per-agent queue below — without this, a REGISTER
+    // immediately followed by another message (e.g. HEALTH_STATUS) can have
+    // both dispatched via `void process()` before the first call's awaits
+    // resolve and set `authenticated`, causing the second message to be
+    // wrongly rejected as "first message must be REGISTER". Serialize
+    // pre-auth message processing on its own promise chain instead.
+    let preAuthQueue: Promise<void> = Promise.resolve();
 
     socket.on('error', (err) => {
       log.warn('hub', `WS error for agent ${agentId ?? 'unknown'}: ${err.message}`);
@@ -199,9 +207,13 @@ export class AgentHub {
             }
 
             if (!result) {
+              const localAgentHint =
+                payload.agentName === 'local'
+                  ? ' — this is the bundled local agent; if LOCAL_AGENT_TOKEN was rotated, restart it with `docker compose up -d` to pick up the current token (self-updates preserve the old baked-in value)'
+                  : '';
               log.warn(
                 'hub',
-                `Rejected agent REGISTER: invalid token (agentName=${payload.agentName ?? 'unknown'}, hostname=${payload.hostname ?? 'unknown'})`,
+                `Rejected agent REGISTER: invalid token (agentName=${payload.agentName ?? 'unknown'}, hostname=${payload.hostname ?? 'unknown'})${localAgentHint}`,
               );
               socket.close(4001, 'Invalid token');
               return;
@@ -557,6 +569,7 @@ export class AgentHub {
                     },
                     r.containerId,
                     r.newDigest,
+                    isRollback,
                   );
                 } else {
                   await insertUpdateLog({
@@ -630,6 +643,23 @@ export class AgentHub {
                   });
                 } catch (err) {
                   log.error('hub', `Failed to dispatch auto-rollback notification: ${err}`);
+                }
+              }
+
+              // A rollback intentionally moves to an older/arbitrary tag — it's not
+              // "the latest," so the has_update/latest_digest values written above are
+              // only a best-effort interim state. Trigger a real registry check right
+              // away so the authoritative CHECK_RESULT path (updateContainerDigests)
+              // corrects them immediately instead of waiting for the next scheduled
+              // check — otherwise the container can show "up to date" indefinitely
+              // even though a newer version still exists.
+              if (isRollback) {
+                const rollbackSuccesses = results.filter((r) => r.success);
+                if (rollbackSuccesses.length > 0) {
+                  this.sendToAgent(agentId, {
+                    type: 'CHECK',
+                    payload: { containerIds: rollbackSuccesses.map((r) => r.containerId) },
+                  });
                 }
               }
 
@@ -791,7 +821,9 @@ export class AgentHub {
         });
         this.agentQueues.set(agentId, next);
       } else {
-        void process();
+        preAuthQueue = preAuthQueue.then(process).catch((err) => {
+          log.error('hub', `Message handler failed: ${err}`);
+        });
       }
     });
 

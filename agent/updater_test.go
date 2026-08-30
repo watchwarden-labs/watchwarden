@@ -443,6 +443,31 @@ func TestRollbackToImage_LockBeforeInspect(t *testing.T) {
 	assert.GreaterOrEqual(t, inspectCount, 2, "should inspect both outside and inside the lock")
 }
 
+// Issue #80 — RollbackToImage must report the recreated container's new ID,
+// not the stale pre-rollback ID, so the controller updates the correct
+// container row's current_digest/has_update instead of a container that no
+// longer exists.
+func TestRollbackToImage_ReportsNewContainerID(t *testing.T) {
+	mock, updater := newTestSetup()
+
+	updater.mu.Lock()
+	updater.snapshots["test-container-123"] = &ContainerSnapshot{
+		Name:        "nginx",
+		ImageRef:    "nginx:latest",
+		ImageDigest: "sha256:olddigest",
+		Config:      mock.inspectResult.Config,
+		HostConfig:  mock.inspectResult.HostConfig,
+		Networks:    mock.inspectResult.NetworkSettings.Networks,
+	}
+	updater.mu.Unlock()
+
+	result, err := updater.RollbackToImage(context.Background(), "test-container-123", "nginx:1.25", "test-container-123")
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, "new-container-id", result.ContainerID, "should report the recreated container's ID")
+	assert.Equal(t, "test-container-123", result.OriginalContainerID, "should preserve the pre-rollback ID for progress tracking")
+}
+
 // Finding 1.1 — Concurrent RollbackToImage and UpdateContainer serialize on same container
 func TestRollbackToImage_ConcurrentWithUpdate(t *testing.T) {
 	mock, updater := newTestSetup()

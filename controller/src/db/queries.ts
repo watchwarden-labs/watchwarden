@@ -235,11 +235,21 @@ export async function insertUpdateLog(entry: NewUpdateLog): Promise<number> {
 /**
  * DB-02: Atomically insert the update log entry AND update the container digests
  * in a single transaction so audit log and container state never diverge.
+ *
+ * `isRollback` distinguishes a forward update (we're now on what we believe is
+ * latest, so latest_digest = newDigest and has_update = false is correct) from
+ * a rollback (we intentionally moved to an older/arbitrary tag — it is not
+ * "latest," so latest_digest is left untouched and has_update is recomputed
+ * against it instead of being forced false). The caller also triggers a fresh
+ * registry check immediately after a rollback so this interim value gets
+ * corrected by the authoritative check path without waiting for the next
+ * scheduled check.
  */
 export async function insertUpdateLogAndDigests(
   entry: NewUpdateLog,
   containerId: string,
   newDigest: string,
+  isRollback = false,
 ): Promise<number> {
   let logId = 0;
   await sql.begin(async (txBase) => {
@@ -253,11 +263,20 @@ export async function insertUpdateLogAndDigests(
       RETURNING id
     `;
     logId = Number(row?.id ?? 0);
-    await tx`
-      UPDATE containers SET current_digest = ${newDigest}, latest_digest = ${newDigest},
-        has_update = false, last_checked = ${Date.now()}
-      WHERE id = ${containerId} OR docker_id = ${containerId}
-    `;
+    if (isRollback) {
+      await tx`
+        UPDATE containers SET current_digest = ${newDigest},
+          has_update = (latest_digest IS NOT NULL AND latest_digest != ${newDigest}),
+          last_checked = ${Date.now()}
+        WHERE id = ${containerId} OR docker_id = ${containerId}
+      `;
+    } else {
+      await tx`
+        UPDATE containers SET current_digest = ${newDigest}, latest_digest = ${newDigest},
+          has_update = false, last_checked = ${Date.now()}
+        WHERE id = ${containerId} OR docker_id = ${containerId}
+      `;
+    }
   });
   return logId;
 }
