@@ -303,8 +303,8 @@ export function VersionPickerModal({
                   <Alert>
                     <Globe size={14} />
                     <AlertDescription className="text-xs">
-                      Could not fetch registry tags. Check credentials in Settings &rarr;
-                      Registries.
+                      Could not fetch additional tags from the registry. You can still roll back to
+                      a version shown in Local History.
                     </AlertDescription>
                   </Alert>
                 )}

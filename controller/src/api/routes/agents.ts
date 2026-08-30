@@ -16,6 +16,8 @@ import {
   updateContainerOrchestration,
   updateContainerPolicy,
 } from '../../db/queries.js';
+import { log } from '../../lib/logger.js';
+import { extractTag } from '../../lib/semver.js';
 import { expectCheckResults } from '../../notifications/session-batcher.js';
 import type { AgentHub } from '../../ws/hub.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -277,27 +279,44 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
       (c) => c.docker_id === containerId || c.id === containerId,
     );
 
-    // Local history from update_log — deduplicate by digest, skip entries with no digest
+    // Local history from update_log. Each row records a transition from an old
+    // image/digest to a new one — both sides are independently rollback-able
+    // versions, so emit one entry per side rather than collapsing to just one.
     const history = await getHistory({ limit: 50 });
+    const relevantEntries = history.data.filter(
+      (e) =>
+        e.agent_id === agentId &&
+        (e.container_id === containerId || e.container_name === container?.name),
+    );
+
     const seenDigests = new Set<string>();
-    const localVersions = history.data
-      .filter(
-        (e) =>
-          e.agent_id === agentId &&
-          (e.container_id === containerId || e.container_name === container?.name),
-      )
-      .map((e) => {
-        const rawDigest = e.new_digest ?? e.old_digest;
+    const localVersions = relevantEntries
+      .flatMap((e) => [
+        {
+          imageRef: e.old_image,
+          rawDigest: e.old_digest,
+          status: e.status,
+          updatedAt: e.created_at,
+        },
+        {
+          imageRef: e.new_image,
+          rawDigest: e.new_digest,
+          status: e.status,
+          updatedAt: e.created_at,
+        },
+      ])
+      .map(({ imageRef, rawDigest, status, updatedAt }) => {
         // Extract bare sha256 digest from full image ref
         const digest = rawDigest?.includes('@')
           ? rawDigest.slice(rawDigest.indexOf('@') + 1)
           : rawDigest;
         const shortDigest = digest ? digest.replace('sha256:', '').slice(0, 12) : null;
+        const tag = (imageRef ? extractTag(imageRef) : '') || shortDigest;
         return {
           digest,
-          tag: shortDigest,
-          status: e.status,
-          updatedAt: e.created_at,
+          tag,
+          status,
+          updatedAt,
           isCurrent: digest
             ? digest === container?.current_digest || rawDigest === container?.current_digest
             : false,
@@ -306,7 +325,7 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
       .filter((v) => {
         // Skip entries with no digest — they can't be used for rollback
         if (!v.digest) return false;
-        // Deduplicate by digest — keep only the most recent entry per digest
+        // Deduplicate by digest — keep only the first (most recent) occurrence
         if (seenDigests.has(v.digest)) return false;
         seenDigests.add(v.digest);
         return true;
@@ -322,8 +341,13 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
           limit: Math.min(limitStr ? Number.parseInt(limitStr, 10) : 20, 200),
           search: search || undefined,
         });
-      } catch {
-        // Registry fetch failed — return null, UI shows fallback
+      } catch (err) {
+        // Registry fetch failed — return null, UI shows fallback. Log the real
+        // reason so it doesn't get misdiagnosed as a credentials problem.
+        log.warn(
+          'agents',
+          `Failed to fetch registry tags for ${container.image}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
