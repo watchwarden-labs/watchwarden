@@ -63,7 +63,8 @@ export function semverMatchesLevel(current: string, candidate: string, level: st
  * "sha256:abc..."          -> "" (digest — not a tag)
  */
 export function extractTag(imageRef: string): string {
-  return extractExplicitTag(imageRef) ?? (isDigestOnly(imageRef) ? '' : 'latest');
+  if (!imageRef || isDigestOnly(imageRef)) return '';
+  return extractExplicitTag(imageRef) ?? 'latest';
 }
 
 /**
@@ -76,17 +77,19 @@ export function extractTag(imageRef: string): string {
  * "postgres"                       -> null
  * "portainer/agent@sha256:abc..."  -> null
  * "localhost:5000/app"             -> null (":5000" is a port, not a tag)
+ * "localhost:5000/app:v2"          -> "v2"
  */
 export function extractExplicitTag(imageRef: string): string | null {
   if (!imageRef || isDigestOnly(imageRef)) return null;
   // Strip digest portion (image@sha256:...)
   const withoutDigest = imageRef.split('@')[0] ?? imageRef;
+  // A tag can never contain "/", so only a colon after the last path separator
+  // can be the tag delimiter; a colon before it belongs to a registry host:port.
+  const lastSlash = withoutDigest.lastIndexOf('/');
   const colonIdx = withoutDigest.lastIndexOf(':');
-  if (colonIdx === -1) return null;
+  if (colonIdx === -1 || colonIdx < lastSlash) return null;
   const tag = withoutDigest.slice(colonIdx + 1);
-  // If what follows the colon looks like a port (pure integer), it's part of the host
-  if (tag === '' || /^\d+$/.test(tag)) return null;
-  return tag;
+  return tag === '' ? null : tag;
 }
 
 function isDigestOnly(imageRef: string): boolean {

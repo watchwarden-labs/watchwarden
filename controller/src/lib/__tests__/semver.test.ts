@@ -6,6 +6,8 @@ describe('extractTag', () => {
     expect(extractTag('postgres:15.1')).toBe('15.1');
     expect(extractTag('ghcr.io/org/app:1.2.3')).toBe('1.2.3');
     expect(extractTag('localhost:5000/app:v2')).toBe('v2');
+    // A purely numeric tag is still a tag — it must not be mistaken for a port.
+    expect(extractTag('postgres:16')).toBe('16');
   });
 
   it('implies latest for an untagged name (update-check semantics)', () => {
@@ -33,7 +35,15 @@ describe('extractExplicitTag', () => {
 
   it('never invents latest', () => {
     expect(extractExplicitTag('postgres')).toBeNull();
+    expect(extractExplicitTag('ghcr.io/org/app')).toBeNull();
+    expect(extractExplicitTag('postgres:')).toBeNull();
+  });
+
+  it('does not mistake a registry port for a tag', () => {
     expect(extractExplicitTag('localhost:5000/app')).toBeNull();
+    expect(extractExplicitTag('registry.example.com:443/team/app')).toBeNull();
+    expect(extractExplicitTag('localhost:5000/app:v2')).toBe('v2');
+    expect(extractExplicitTag('postgres:16')).toBe('16');
   });
 
   it('returns null for digest-pinned refs without a tag (issue #80 rollback labels)', () => {
