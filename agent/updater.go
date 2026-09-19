@@ -970,6 +970,16 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 		}, err
 	}
 
+	// 2b. A digest-pinned target ("repo@sha256:...") is exact but ugly: the new
+	// container would carry that 80-char ref as its image name, and the
+	// controller's history would have no tag to show for it. If the local image
+	// store already knows a tag for this exact digest (typical for a rollback —
+	// the previous image is still present), recreate from the tag instead.
+	createImage := u.resolveTagForDigestRef(ctx, targetImage)
+	if createImage != targetImage {
+		log.Printf("[rollback-to-image] %s resolves to local tag %s — using it for the new container", targetImage, createImage)
+	}
+
 	// 3. Stop + remove current
 	u.emitProgress(originalID, snapshot.Name, "stopping", "")
 	timeout := 30
@@ -982,10 +992,10 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 
 	// 4. Recreate with target image
 	u.emitProgress(originalID, snapshot.Name, "starting", "")
-	_, err = u.docker.RecreateContainer(ctx, snapshot, targetImage)
+	newID, err := u.docker.RecreateContainer(ctx, snapshot, createImage)
 	if err != nil {
 		// Recovery: try to recreate with the original image so the container isn't left dead
-		log.Printf("[rollback-to-image] Create with %s failed: %v — attempting recovery with original image", targetImage, err)
+		log.Printf("[rollback-to-image] Create with %s failed: %v — attempting recovery with original image", createImage, err)
 		_, recoveryErr := u.docker.RecreateContainer(ctx, snapshot, snapshot.ImageRef)
 		errMsg := fmt.Sprintf("rollback to %s failed: %v", targetImage, err)
 		if recoveryErr != nil {
@@ -1006,16 +1016,58 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 	}
 
 	return &UpdateResult{
-		ContainerID:   originalID,
-		ContainerName: snapshot.Name,
-		Success:       true,
-		OldDigest:     snapshot.ImageDigest,
-		NewDigest:     newDigest,
-		OldImage:      snapshot.ImageRef,
-		NewImage:      targetImage,
-		DurationMs:    time.Since(start).Milliseconds(),
-		IsRollback:    true,
+		ContainerID:         newID,
+		OriginalContainerID: originalID,
+		ContainerName:       snapshot.Name,
+		Success:             true,
+		OldDigest:           snapshot.ImageDigest,
+		NewDigest:           newDigest,
+		OldImage:            snapshot.ImageRef,
+		NewImage:            createImage,
+		DurationMs:          time.Since(start).Milliseconds(),
+		IsRollback:          true,
 	}, nil
+}
+
+// resolveTagForDigestRef maps a digest-pinned reference ("repo@sha256:...") to
+// a tagged reference for the same repository ("repo:1.2.3") when the local
+// image store has one for that exact image. Anything that is not digest-pinned,
+// or has no matching local tag, is returned unchanged. A specific version tag
+// is preferred over "latest" when the image carries both, since "latest" may
+// be re-pointed by the registry at any time while the version tag is stable.
+func (u *Updater) resolveTagForDigestRef(ctx context.Context, ref string) string {
+	at := strings.Index(ref, "@sha256:")
+	if at == -1 {
+		return ref
+	}
+	repo := ref[:at]
+
+	inspect, err := u.docker.cli.ImageInspect(ctx, ref)
+	if err != nil {
+		return ref
+	}
+
+	latestTag := ""
+	for _, rt := range inspect.RepoTags {
+		if rt == "<none>:<none>" {
+			continue
+		}
+		// Match on repository, not just prefix: "repo:tag" must be exactly repo + ":" + tag,
+		// so "myrepo-fork:1.0" doesn't match "myrepo".
+		colon := strings.LastIndex(rt, ":")
+		if colon == -1 || rt[:colon] != repo {
+			continue
+		}
+		if rt[colon+1:] == "latest" {
+			latestTag = rt
+			continue
+		}
+		return rt
+	}
+	if latestTag != "" {
+		return latestTag
+	}
+	return ref
 }
 
 // BlueGreenUpdate performs a zero-downtime update:

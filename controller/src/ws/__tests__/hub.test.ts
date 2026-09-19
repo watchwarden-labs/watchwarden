@@ -185,6 +185,44 @@ describe('AgentHub', () => {
     expect(code).toBe(4002);
   });
 
+  it('REGISTER immediately followed by HEALTH_STATUS on the same connection does not close the socket', async () => {
+    // RACE-01 regression: sending a second message right after REGISTER, with
+    // no await in between, used to race the async REGISTER handler and get
+    // wrongly rejected as "first message must be REGISTER" (4002) because
+    // `authenticated` hadn't been set yet when the second message dispatched.
+    const ws = connectAgent();
+    await waitForOpen(ws);
+
+    let closedEarly = false;
+    ws.once('close', (code) => {
+      if (code === 4002) closedEarly = true;
+    });
+
+    ws.send(
+      JSON.stringify({
+        type: 'REGISTER',
+        payload: { token: agentToken, hostname: 'server-1', containers: [] },
+      }),
+    );
+    ws.send(
+      JSON.stringify({
+        type: 'HEALTH_STATUS',
+        payload: { containerId: 'race-01-container', containerName: 'nginx', status: 'healthy' },
+      }),
+    );
+
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(closedEarly).toBe(false);
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+
+    const agent = await getAgent('hub-agent-1');
+    expect(agent?.status).toBe('online');
+
+    ws.close();
+    await new Promise((r) => setTimeout(r, 100));
+  });
+
   it('registered agent HEARTBEAT updates last_seen', async () => {
     const ws = connectAgent();
     await waitForOpen(ws);

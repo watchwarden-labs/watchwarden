@@ -20,7 +20,14 @@ import metricsRoutes from './api/routes/metrics.js';
 import notificationRoutes from './api/routes/notifications.js';
 import registriesRoutes from './api/routes/registries.js';
 import { closeSql } from './db/client.js';
-import { getAgent, getConfig, insertAgent, setConfig, updateAgentToken } from './db/queries.js';
+import {
+  getAgent,
+  getConfig,
+  insertAgent,
+  markAllAgentsOffline,
+  setConfig,
+  updateAgentToken,
+} from './db/queries.js';
 import { runMigrations } from './db/schema.js';
 import { initCrypto, resetKey } from './lib/crypto.js';
 import { clearPendingTimers } from './notifications/session-batcher.js';
@@ -110,6 +117,16 @@ async function start() {
       await updateAgentToken('local-agent', tokenHash, tokenPrefix);
       console.log('Resynced local agent token to current LOCAL_AGENT_TOKEN');
     }
+  }
+
+  // 5b. Reset stale agent status. No agent can be connected before the WS
+  // server starts listening below, so anything still marked 'online' is a
+  // leftover from the previous controller process. Without this, an agent
+  // that never reconnects after a controller restart stays 'online' forever —
+  // the heartbeat sweep only covers connections it has actually seen.
+  const resetCount = await markAllAgentsOffline();
+  if (resetCount > 0) {
+    console.log(`Reset ${resetCount} stale agent status(es) to offline at startup`);
   }
 
   // 5. Create Fastify

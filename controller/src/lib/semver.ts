@@ -63,14 +63,35 @@ export function semverMatchesLevel(current: string, candidate: string, level: st
  * "sha256:abc..."          -> "" (digest — not a tag)
  */
 export function extractTag(imageRef: string): string {
-  if (!imageRef) return '';
-  if (imageRef.startsWith('sha256:')) return '';
+  if (!imageRef || isDigestOnly(imageRef)) return '';
+  return extractExplicitTag(imageRef) ?? 'latest';
+}
+
+/**
+ * Like extractTag, but only returns a tag that is actually written in the
+ * reference — never the implied "latest" default. Use this when the tag will
+ * be shown to a user as the name of a specific version: a digest-pinned ref
+ * such as "portainer/agent@sha256:..." carries no tag at all, and labelling it
+ * "latest" is simply wrong (the digest may well be an older release).
+ * "postgres:15.1"                  -> "15.1"
+ * "postgres"                       -> null
+ * "portainer/agent@sha256:abc..."  -> null
+ * "localhost:5000/app"             -> null (":5000" is a port, not a tag)
+ * "localhost:5000/app:v2"          -> "v2"
+ */
+export function extractExplicitTag(imageRef: string): string | null {
+  if (!imageRef || isDigestOnly(imageRef)) return null;
   // Strip digest portion (image@sha256:...)
   const withoutDigest = imageRef.split('@')[0] ?? imageRef;
+  // A tag can never contain "/", so only a colon after the last path separator
+  // can be the tag delimiter; a colon before it belongs to a registry host:port.
+  const lastSlash = withoutDigest.lastIndexOf('/');
   const colonIdx = withoutDigest.lastIndexOf(':');
-  if (colonIdx === -1) return 'latest';
+  if (colonIdx === -1 || colonIdx < lastSlash) return null;
   const tag = withoutDigest.slice(colonIdx + 1);
-  // If what follows the colon looks like a port (pure integer), it's part of the host
-  if (/^\d+$/.test(tag)) return 'latest';
-  return tag;
+  return tag === '' ? null : tag;
+}
+
+function isDigestOnly(imageRef: string): boolean {
+  return imageRef.startsWith('sha256:');
 }
