@@ -51,6 +51,20 @@ export async function updateAgentStatus(
   await sql`UPDATE agents SET status = ${status}, last_seen = ${lastSeen} WHERE id = ${id}`;
 }
 
+/**
+ * Marks every agent that is not already offline as offline. Called once at
+ * controller boot: agent status is only ever flipped to 'offline' by the live
+ * WS close handler or the in-memory heartbeat sweep, so an agent that was
+ * 'online' when the controller went down — and never reconnected afterward —
+ * would otherwise stay 'online' in the DB forever. last_seen is left untouched
+ * so the UI still shows when the agent was genuinely last heard from.
+ * Returns the number of agents that were reset.
+ */
+export async function markAllAgentsOffline(): Promise<number> {
+  const result = await sql`UPDATE agents SET status = 'offline' WHERE status <> 'offline'`;
+  return result.count;
+}
+
 export async function updateAgentConfig(id: string, config: AgentConfigUpdate): Promise<void> {
   if (config.schedule_override !== undefined) {
     await sql`UPDATE agents SET schedule_override = ${config.schedule_override} WHERE id = ${id}`;

@@ -17,7 +17,7 @@ import {
   updateContainerPolicy,
 } from '../../db/queries.js';
 import { log } from '../../lib/logger.js';
-import { extractTag } from '../../lib/semver.js';
+import { extractExplicitTag } from '../../lib/semver.js';
 import { expectCheckResults } from '../../notifications/session-batcher.js';
 import type { AgentHub } from '../../ws/hub.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -310,8 +310,11 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
         const digest = rawDigest?.includes('@')
           ? rawDigest.slice(rawDigest.indexOf('@') + 1)
           : rawDigest;
-        const shortDigest = digest ? digest.replace('sha256:', '').slice(0, 12) : null;
-        const tag = (imageRef ? extractTag(imageRef) : '') || shortDigest;
+        // Only surface a tag the ref actually carries. Rollbacks recreate
+        // containers from digest-pinned refs ("repo@sha256:..."), which have no
+        // tag — inventing "latest" for those mislabels older releases.
+        // With no tag the UI shows the digest alone.
+        const tag = imageRef ? extractExplicitTag(imageRef) : null;
         return {
           digest,
           tag,
