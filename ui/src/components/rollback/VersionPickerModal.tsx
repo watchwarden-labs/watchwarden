@@ -30,6 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { movingTags, shortDigest } from '@/lib/digest';
 import { useStore } from '@/store/useStore';
 
 interface VersionPickerModalProps {
@@ -136,7 +137,12 @@ export function VersionPickerModal({
       {
         agentId,
         containerId: container.docker_id,
-        ...(selected?.tag ? { targetTag: selected.tag } : {}),
+        // Local History tags are historical labels ("latest" last month may be
+        // a different image today), so only a registry pick sends its tag.
+        // With a digest, the agent pulls by digest and then applies the tag.
+        ...(selected?.tag && (selected.type === 'registry' || !selected.digest)
+          ? { targetTag: selected.tag }
+          : {}),
         ...(selected?.digest ? { targetDigest: selected.digest } : {}),
       },
       {
@@ -152,8 +158,8 @@ export function VersionPickerModal({
     );
   };
 
-  const truncateDigest = (d: string | null) =>
-    d ? (d.length > 16 ? `${d.slice(0, 16)}...` : d) : '—';
+  const truncateDigest = (d: string | null | undefined) => shortDigest(d);
+  const ambiguousTags = useMemo(() => movingTags(versions?.local ?? []), [versions?.local]);
 
   // Reset state when modal closes
   useEffect(() => {
@@ -214,6 +220,9 @@ export function VersionPickerModal({
               {versions?.local.map((v, idx) => {
                 const entryKey = `local-${idx}`;
                 const isSelected = selected?.key === entryKey;
+                // A moving tag ("latest") labelled several different images over
+                // time, so the digest identifies the entry and the tag is only a hint.
+                const isMovingTag = !!v.tag && ambiguousTags.has(v.tag);
                 return (
                   <button
                     type="button"
@@ -224,9 +233,10 @@ export function VersionPickerModal({
                         type: 'local',
                         digest: v.digest ?? undefined,
                         tag: v.tag ?? undefined,
-                        label: v.tag
-                          ? `${v.tag} (${truncateDigest(v.digest)})`
-                          : truncateDigest(v.digest),
+                        label:
+                          v.tag && !isMovingTag
+                            ? `${v.tag} (${truncateDigest(v.digest)})`
+                            : truncateDigest(v.digest),
                         key: entryKey,
                       })
                     }
@@ -244,15 +254,33 @@ export function VersionPickerModal({
                         className={`w-3 h-3 rounded-full border-2 ${isSelected ? 'border-primary bg-primary' : 'border-muted-foreground'}`}
                       />
                       <div className="flex items-center gap-2">
-                        {v.tag && <span className="text-sm font-medium">{v.tag}</span>}
+                        {v.tag && !isMovingTag && (
+                          <span className="text-sm font-medium">{v.tag}</span>
+                        )}
                         {v.digest && (
                           <code className="text-xs text-muted-foreground" title={v.digest}>
                             {truncateDigest(v.digest)}
                           </code>
                         )}
-                        {v.status && v.status !== 'success' && (
+                        {v.tag && isMovingTag && (
+                          <span
+                            className="text-xs text-muted-foreground"
+                            title={`"${v.tag}" pointed at this image when it was recorded; it may point elsewhere now`}
+                          >
+                            was {v.tag}
+                          </span>
+                        )}
+                        {v.status === 'rolled_back' && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] border-primary/30 text-primary"
+                          >
+                            rollback
+                          </Badge>
+                        )}
+                        {v.status === 'failed' && (
                           <Badge variant="destructive" className="text-[10px]">
-                            {v.status}
+                            failed
                           </Badge>
                         )}
                       </div>

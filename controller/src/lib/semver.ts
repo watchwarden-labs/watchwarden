@@ -92,6 +92,22 @@ export function extractExplicitTag(imageRef: string): string | null {
   return tag === '' ? null : tag;
 }
 
+/**
+ * Returns the repository part of an image reference, without tag or digest.
+ * "postgres:15.1"                    -> "postgres"
+ * "portainer/agent@sha256:abc..."    -> "portainer/agent"
+ * "localhost:5000/app:v2"            -> "localhost:5000/app" (keeps the registry port)
+ * "sha256:abc..." / ""               -> ""
+ */
+export function extractRepository(imageRef: string): string {
+  if (!imageRef || isDigestOnly(imageRef)) return '';
+  const withoutDigest = imageRef.split('@')[0] ?? imageRef;
+  const lastSlash = withoutDigest.lastIndexOf('/');
+  const colonIdx = withoutDigest.lastIndexOf(':');
+  // Only a colon after the last "/" delimits a tag; one before it is a host:port.
+  return colonIdx > lastSlash ? withoutDigest.slice(0, colonIdx) : withoutDigest;
+}
+
 function isDigestOnly(imageRef: string): boolean {
   return imageRef.startsWith('sha256:');
 }

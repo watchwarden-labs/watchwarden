@@ -580,7 +580,10 @@ export class AgentHub {
                     new_digest: r.newDigest,
                     old_image: r.oldImage ?? null,
                     new_image: r.newImage ?? null,
-                    status: isRollback ? 'rolled_back' : 'failed',
+                    // A failed rollback is a failure: recording it as
+                    // 'rolled_back' made it indistinguishable from a
+                    // successful one in history, metrics and the UI.
+                    status: 'failed',
                     error: r.error,
                     duration_ms: r.durationMs,
                     diff,

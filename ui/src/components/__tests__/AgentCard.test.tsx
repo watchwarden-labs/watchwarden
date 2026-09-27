@@ -163,4 +163,38 @@ describe('AgentCard', () => {
     render(<AgentCard agent={agentWithMixed} />);
     expect(screen.getByText('2 unhealthy')).toBeInTheDocument();
   });
+
+  // Issue #80 round 4 — the Remove button for offline agents used to be an
+  // absolutely positioned overlay that covered the header's update badge.
+  describe('offline agent', () => {
+    const offlineAgent = { ...mockAgent, status: 'offline' as const };
+
+    it('renders Remove in the button row and calls onRemove', () => {
+      const onRemove = vi.fn();
+      render(<AgentCard agent={offlineAgent} onRemove={onRemove} />);
+      const remove = screen.getByRole('button', { name: /remove/i });
+      const checkButton = screen.getByRole('button', { name: /check/i });
+      expect(remove.parentElement).toBe(checkButton.parentElement);
+      fireEvent.click(remove);
+      expect(onRemove).toHaveBeenCalledOnce();
+    });
+
+    it('keeps the update badge visible alongside Remove', () => {
+      render(<AgentCard agent={offlineAgent} onRemove={vi.fn()} />);
+      expect(screen.getByTestId('update-badge')).toBeInTheDocument();
+    });
+
+    it('disables Check and Update All while offline', () => {
+      const onCheck = vi.fn();
+      const onUpdate = vi.fn();
+      render(<AgentCard agent={offlineAgent} onCheck={onCheck} onUpdate={onUpdate} />);
+      expect(screen.getByRole('button', { name: /check/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /update all/i })).toBeDisabled();
+    });
+
+    it('does not render Remove for an online agent', () => {
+      render(<AgentCard agent={mockAgent} onRemove={vi.fn()} />);
+      expect(screen.queryByRole('button', { name: /remove/i })).not.toBeInTheDocument();
+    });
+  });
 });

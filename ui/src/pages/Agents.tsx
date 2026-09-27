@@ -61,9 +61,9 @@ export function Agents() {
     );
   };
 
-  const handleDelete = (e: React.MouseEvent, agentId: string, agentName: string) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDelete = (e: React.MouseEvent | null, agentId: string, agentName: string) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     if (confirm(`Remove agent "${agentName}"? This will delete all history for this agent.`)) {
       deleteAgent.mutate(agentId, {
         onSuccess: () =>
@@ -148,18 +148,9 @@ export function Agents() {
                   updating={pendingUpdateIds.has(agent.id)}
                   onCheck={() => handleCheck(agent.id)}
                   onUpdate={() => handleUpdate(agent.id)}
+                  onRemove={() => handleDelete(null, agent.id, agent.name)}
                 />
               </Link>
-              {agent.status === 'offline' && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2 h-7 text-xs"
-                  onClick={(e) => handleDelete(e, agent.id, agent.name)}
-                >
-                  Remove
-                </Button>
-              )}
             </div>
           ))}
         </div>

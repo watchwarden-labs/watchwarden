@@ -4,7 +4,8 @@ import { apiRequest } from '../client';
 export interface LocalVersion {
   digest: string | null;
   tag: string | null;
-  status: string;
+  /** How this version was reached; null for a version that was only replaced. */
+  status: 'success' | 'failed' | 'rolled_back' | null;
   updatedAt: number;
   isCurrent: boolean;
 }

@@ -1,4 +1,4 @@
-import { ArrowUpCircle, Clock, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowUpCircle, Clock, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import type { Agent } from '@/api/hooks/useAgents';
 import { StatusDot } from '@/components/common/StatusDot';
 import { Badge } from '@/components/ui/badge';
@@ -13,9 +13,19 @@ interface AgentCardProps {
   updating?: boolean;
   onCheck?: () => void;
   onUpdate?: () => void;
+  /** Shown only for offline agents. */
+  onRemove?: () => void;
 }
 
-export function AgentCard({ agent, checking, updating, onCheck, onUpdate }: AgentCardProps) {
+export function AgentCard({
+  agent,
+  checking,
+  updating,
+  onCheck,
+  onUpdate,
+  onRemove,
+}: AgentCardProps) {
+  const isOffline = agent.status === 'offline';
   const containerCount = agent.containers?.length ?? 0;
   const updateCount = agent.containers?.filter((c) => c.has_update)?.length ?? 0;
   const unhealthyCount =
@@ -117,7 +127,8 @@ export function AgentCard({ agent, checking, updating, onCheck, onUpdate }: Agen
               e.stopPropagation();
               onCheck?.();
             }}
-            disabled={checking || isUpdating}
+            disabled={checking || isUpdating || isOffline}
+            title={isOffline ? 'Agent is offline' : undefined}
           >
             <RefreshCw size={14} className={checking ? 'animate-spin' : ''} />
             {checking ? 'Checking...' : 'Check'}
@@ -129,11 +140,29 @@ export function AgentCard({ agent, checking, updating, onCheck, onUpdate }: Agen
               e.stopPropagation();
               onUpdate?.();
             }}
-            disabled={isUpdating}
+            disabled={isUpdating || isOffline}
+            title={isOffline ? 'Agent is offline' : undefined}
           >
             <ArrowUpCircle size={14} data-icon="inline-start" />
             Update All
           </Button>
+          {/* Lives in the button row, not as an overlay: an absolutely positioned
+              Remove button sat on top of the header's update badge. */}
+          {isOffline && onRemove && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="ml-auto"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRemove();
+              }}
+            >
+              <Trash2 size={14} data-icon="inline-start" />
+              Remove
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

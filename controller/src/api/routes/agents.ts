@@ -17,10 +17,17 @@ import {
   updateContainerPolicy,
 } from '../../db/queries.js';
 import { log } from '../../lib/logger.js';
-import { extractExplicitTag } from '../../lib/semver.js';
+import { extractExplicitTag, extractRepository } from '../../lib/semver.js';
 import { expectCheckResults } from '../../notifications/session-batcher.js';
+import type { UpdateLog } from '../../types.js';
 import type { AgentHub } from '../../ws/hub.js';
 import { requireAuth } from '../middleware/auth.js';
+
+/** "repo@sha256:abc" or "sha256:abc" -> "sha256:abc"; null/empty -> null. */
+function bareDigest(d: string | null | undefined): string | null {
+  if (!d) return null;
+  return d.includes('@') ? d.slice(d.indexOf('@') + 1) : d;
+}
 
 const agentsRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
@@ -240,10 +247,15 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Build target image reference
     let targetImage: string | undefined;
+    // Forwarded only alongside a digest: the agent pulls by digest (exact
+    // version) and then tags the image locally, so the container isn't left
+    // running under an untagged "repo@sha256:..." name.
+    let agentTargetTag: string | undefined;
     if (targetTag || targetDigest) {
       if (container) {
-        const baseImage = container.image.split(':')[0]?.split('@')[0] ?? container.image;
+        const baseImage = extractRepository(container.image) || container.image;
         if (targetDigest) {
+          if (targetTag) agentTargetTag = targetTag;
           // Strip image prefix if digest contains full ref (e.g. "registry/repo@sha256:...")
           const bareDigest = targetDigest.includes('@')
             ? targetDigest.slice(targetDigest.indexOf('@') + 1)
@@ -263,6 +275,7 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
         containerId,
         containerName: container?.name,
         targetImage,
+        ...(agentTargetTag ? { targetTag: agentTargetTag } : {}),
       },
     });
     return reply.code(202).send({ message: 'Rollback initiated' });
@@ -290,18 +303,23 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
     );
 
     const seenDigests = new Set<string>();
+    // The row's status (success / failed / rolled_back) describes how the *new*
+    // version came about, so it is attached to that side only. The old side is
+    // simply the version that was replaced; tagging it "rolled_back" too made
+    // every entry in the list look like a rollback. The new side comes first so
+    // the most recent state leads the list.
     const localVersions = relevantEntries
       .flatMap((e) => [
         {
-          imageRef: e.old_image,
-          rawDigest: e.old_digest,
-          status: e.status,
+          imageRef: e.new_image,
+          rawDigest: e.new_digest,
+          status: e.status as UpdateLog['status'] | null,
           updatedAt: e.created_at,
         },
         {
-          imageRef: e.new_image,
-          rawDigest: e.new_digest,
-          status: e.status,
+          imageRef: e.old_image,
+          rawDigest: e.old_digest,
+          status: null,
           updatedAt: e.created_at,
         },
       ])
@@ -320,9 +338,9 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
           tag,
           status,
           updatedAt,
-          isCurrent: digest
-            ? digest === container?.current_digest || rawDigest === container?.current_digest
-            : false,
+          // Compare bare digests: either side may be stored as "repo@sha256:..."
+          // or just "sha256:...", and the repo part can differ in spelling.
+          isCurrent: digest ? digest === bareDigest(container?.current_digest) : false,
         };
       })
       .filter((v) => {

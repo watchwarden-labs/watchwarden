@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { extractExplicitTag, extractTag } from '../semver.js';
+import { extractExplicitTag, extractRepository, extractTag } from '../semver.js';
+
+describe('extractRepository', () => {
+  it('strips the tag', () => {
+    expect(extractRepository('postgres:15.1')).toBe('postgres');
+    expect(extractRepository('ghcr.io/org/app:1.2.3')).toBe('ghcr.io/org/app');
+  });
+
+  it('strips a digest', () => {
+    expect(extractRepository('portainer/agent@sha256:abc')).toBe('portainer/agent');
+    expect(extractRepository('nginx:1.25@sha256:abc')).toBe('nginx');
+  });
+
+  it('keeps a registry port (the old split(":") returned just "localhost")', () => {
+    expect(extractRepository('localhost:5000/app:v2')).toBe('localhost:5000/app');
+    expect(extractRepository('localhost:5000/app')).toBe('localhost:5000/app');
+    expect(extractRepository('localhost:5000/app@sha256:abc')).toBe('localhost:5000/app');
+  });
+
+  it('returns empty for a bare digest or empty input', () => {
+    expect(extractRepository('sha256:abc')).toBe('');
+    expect(extractRepository('')).toBe('');
+  });
+});
 
 describe('extractTag', () => {
   it('returns the tag when present', () => {

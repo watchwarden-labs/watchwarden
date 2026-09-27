@@ -836,7 +836,7 @@ func (u *Updater) UpdateContainer(ctx context.Context, containerID string) (*Upd
 		Success:             true,
 		OldDigest:           snapshot.ImageDigest,
 		NewDigest:           newDigest,
-		OldImage:            snapshot.ImageRef,
+		OldImage:            u.resolveTagForDigestRef(ctx, snapshot.ImageRef),
 		NewImage:            imageRef,
 		DurationMs:          time.Since(start).Milliseconds(),
 	}, nil
@@ -883,8 +883,8 @@ func (u *Updater) RollbackContainer(ctx context.Context, containerID string) (*U
 		ContainerName:       snapshot.Name,
 		Success:             true,
 		OldDigest:           snapshot.ImageDigest,
-		OldImage:            snapshot.ImageRef,
-		NewImage:            snapshot.ImageRef,
+		OldImage:            u.resolveTagForDigestRef(ctx, snapshot.ImageRef),
+		NewImage:            u.resolveTagForDigestRef(ctx, snapshot.ImageRef),
 		DurationMs:          time.Since(start).Milliseconds(),
 		IsRollback:          true,
 	}, nil
@@ -893,6 +893,17 @@ func (u *Updater) RollbackContainer(ctx context.Context, containerID string) (*U
 // RollbackToImage rolls back a container to a specific image (tag or digest).
 // progressID is the original container ID the UI tracks (may differ from containerID after recreation).
 func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targetImage string, progressID string) (*UpdateResult, error) {
+	return u.RollbackToImageWithTag(ctx, containerID, targetImage, "", progressID)
+}
+
+// RollbackToImageWithTag is RollbackToImage with an optional tag hint for a
+// digest-pinned target. When targetImage is "repo@sha256:..." and targetTag is
+// set (the user picked a tag from the registry, whose digest the controller
+// resolved), the image is pulled by digest — so the exact version is pinned
+// even if the tag moves upstream in the meantime — and then tagged locally as
+// "repo:targetTag". Without this, a digest pull leaves the image untagged and
+// the recreated container runs under an 80-char "repo@sha256:..." name.
+func (u *Updater) RollbackToImageWithTag(ctx context.Context, containerID, targetImage, targetTag, progressID string) (*UpdateResult, error) {
 	start := time.Now()
 
 	// Resolve to canonical ID before locking — RC-01 + RC-02
@@ -975,7 +986,12 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 	// controller's history would have no tag to show for it. If the local image
 	// store already knows a tag for this exact digest (typical for a rollback —
 	// the previous image is still present), recreate from the tag instead.
-	createImage := u.resolveTagForDigestRef(ctx, targetImage)
+	var createImage string
+	if tagged, ok := u.tagDigestRef(ctx, targetImage, targetTag); ok {
+		createImage = tagged
+	} else {
+		createImage = u.resolveTagForDigestRef(ctx, targetImage)
+	}
 	if createImage != targetImage {
 		log.Printf("[rollback-to-image] %s resolves to local tag %s — using it for the new container", targetImage, createImage)
 	}
@@ -1022,11 +1038,27 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 		Success:             true,
 		OldDigest:           snapshot.ImageDigest,
 		NewDigest:           newDigest,
-		OldImage:            snapshot.ImageRef,
+		OldImage:            u.resolveTagForDigestRef(ctx, snapshot.ImageRef),
 		NewImage:            createImage,
 		DurationMs:          time.Since(start).Milliseconds(),
 		IsRollback:          true,
 	}, nil
+}
+
+// tagDigestRef tags a digest-pinned image ("repo@sha256:...") as "repo:tag".
+// Returns the new tagged reference and true on success; false when ref is not
+// digest-pinned, tag is empty/invalid, or the daemon refuses the tag.
+func (u *Updater) tagDigestRef(ctx context.Context, ref, tag string) (string, bool) {
+	at := strings.Index(ref, "@sha256:")
+	if at == -1 || tag == "" || strings.ContainsAny(tag, "/:@") {
+		return "", false
+	}
+	target := ref[:at] + ":" + tag
+	if _, err := u.docker.cli.ImageTag(ctx, client.ImageTagOptions{Source: ref, Target: target}); err != nil {
+		log.Printf("[rollback-to-image] tagging %s as %s failed: %v", ref, target, err)
+		return "", false
+	}
+	return target, true
 }
 
 // resolveTagForDigestRef maps a digest-pinned reference ("repo@sha256:...") to
@@ -1035,6 +1067,11 @@ func (u *Updater) RollbackToImage(ctx context.Context, containerID string, targe
 // or has no matching local tag, is returned unchanged. A specific version tag
 // is preferred over "latest" when the image carries both, since "latest" may
 // be re-pointed by the registry at any time while the version tag is stable.
+//
+// With the containerd image store (Docker 29 default), a digest reference and a
+// tag for the same content are separate image records, so inspecting the
+// digest ref may not report the tag. In that case, fall back to listing the
+// repository's images and matching on image ID.
 func (u *Updater) resolveTagForDigestRef(ctx context.Context, ref string) string {
 	at := strings.Index(ref, "@sha256:")
 	if at == -1 {
@@ -1046,9 +1083,36 @@ func (u *Updater) resolveTagForDigestRef(ctx context.Context, ref string) string
 	if err != nil {
 		return ref
 	}
+	if t := pickRepoTag(repo, inspect.RepoTags); t != "" {
+		return t
+	}
 
+	if inspect.ID == "" {
+		return ref
+	}
+	list, err := u.docker.cli.ImageList(ctx, client.ImageListOptions{
+		Filters: make(client.Filters).Add("reference", repo),
+	})
+	if err != nil {
+		return ref
+	}
+	var tags []string
+	for _, img := range list.Items {
+		if img.ID == inspect.ID {
+			tags = append(tags, img.RepoTags...)
+		}
+	}
+	if t := pickRepoTag(repo, tags); t != "" {
+		return t
+	}
+	return ref
+}
+
+// pickRepoTag returns the best "repo:tag" from tags for exactly repo: a
+// specific version tag if there is one, otherwise "latest", otherwise "".
+func pickRepoTag(repo string, tags []string) string {
 	latestTag := ""
-	for _, rt := range inspect.RepoTags {
+	for _, rt := range tags {
 		if rt == "<none>:<none>" {
 			continue
 		}
@@ -1064,10 +1128,7 @@ func (u *Updater) resolveTagForDigestRef(ctx context.Context, ref string) string
 		}
 		return rt
 	}
-	if latestTag != "" {
-		return latestTag
-	}
-	return ref
+	return latestTag
 }
 
 // BlueGreenUpdate performs a zero-downtime update:
