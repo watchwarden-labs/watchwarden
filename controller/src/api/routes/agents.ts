@@ -16,9 +16,18 @@ import {
   updateContainerOrchestration,
   updateContainerPolicy,
 } from '../../db/queries.js';
+import { log } from '../../lib/logger.js';
+import { extractExplicitTag, extractRepository } from '../../lib/semver.js';
 import { expectCheckResults } from '../../notifications/session-batcher.js';
+import type { UpdateLog } from '../../types.js';
 import type { AgentHub } from '../../ws/hub.js';
 import { requireAuth } from '../middleware/auth.js';
+
+/** "repo@sha256:abc" or "sha256:abc" -> "sha256:abc"; null/empty -> null. */
+function bareDigest(d: string | null | undefined): string | null {
+  if (!d) return null;
+  return d.includes('@') ? d.slice(d.indexOf('@') + 1) : d;
+}
 
 const agentsRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
@@ -238,10 +247,15 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Build target image reference
     let targetImage: string | undefined;
+    // Forwarded only alongside a digest: the agent pulls by digest (exact
+    // version) and then tags the image locally, so the container isn't left
+    // running under an untagged "repo@sha256:..." name.
+    let agentTargetTag: string | undefined;
     if (targetTag || targetDigest) {
       if (container) {
-        const baseImage = container.image.split(':')[0]?.split('@')[0] ?? container.image;
+        const baseImage = extractRepository(container.image) || container.image;
         if (targetDigest) {
+          if (targetTag) agentTargetTag = targetTag;
           // Strip image prefix if digest contains full ref (e.g. "registry/repo@sha256:...")
           const bareDigest = targetDigest.includes('@')
             ? targetDigest.slice(targetDigest.indexOf('@') + 1)
@@ -261,6 +275,7 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
         containerId,
         containerName: container?.name,
         targetImage,
+        ...(agentTargetTag ? { targetTag: agentTargetTag } : {}),
       },
     });
     return reply.code(202).send({ message: 'Rollback initiated' });
@@ -277,36 +292,61 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
       (c) => c.docker_id === containerId || c.id === containerId,
     );
 
-    // Local history from update_log — deduplicate by digest, skip entries with no digest
+    // Local history from update_log. Each row records a transition from an old
+    // image/digest to a new one — both sides are independently rollback-able
+    // versions, so emit one entry per side rather than collapsing to just one.
     const history = await getHistory({ limit: 50 });
+    const relevantEntries = history.data.filter(
+      (e) =>
+        e.agent_id === agentId &&
+        (e.container_id === containerId || e.container_name === container?.name),
+    );
+
     const seenDigests = new Set<string>();
-    const localVersions = history.data
-      .filter(
-        (e) =>
-          e.agent_id === agentId &&
-          (e.container_id === containerId || e.container_name === container?.name),
-      )
-      .map((e) => {
-        const rawDigest = e.new_digest ?? e.old_digest;
+    // The row's status (success / failed / rolled_back) describes how the *new*
+    // version came about, so it is attached to that side only. The old side is
+    // simply the version that was replaced; tagging it "rolled_back" too made
+    // every entry in the list look like a rollback. The new side comes first so
+    // the most recent state leads the list.
+    const localVersions = relevantEntries
+      .flatMap((e) => [
+        {
+          imageRef: e.new_image,
+          rawDigest: e.new_digest,
+          status: e.status as UpdateLog['status'] | null,
+          updatedAt: e.created_at,
+        },
+        {
+          imageRef: e.old_image,
+          rawDigest: e.old_digest,
+          status: null,
+          updatedAt: e.created_at,
+        },
+      ])
+      .map(({ imageRef, rawDigest, status, updatedAt }) => {
         // Extract bare sha256 digest from full image ref
         const digest = rawDigest?.includes('@')
           ? rawDigest.slice(rawDigest.indexOf('@') + 1)
           : rawDigest;
-        const shortDigest = digest ? digest.replace('sha256:', '').slice(0, 12) : null;
+        // Only surface a tag the ref actually carries. Rollbacks recreate
+        // containers from digest-pinned refs ("repo@sha256:..."), which have no
+        // tag — inventing "latest" for those mislabels older releases.
+        // With no tag the UI shows the digest alone.
+        const tag = imageRef ? extractExplicitTag(imageRef) : null;
         return {
           digest,
-          tag: shortDigest,
-          status: e.status,
-          updatedAt: e.created_at,
-          isCurrent: digest
-            ? digest === container?.current_digest || rawDigest === container?.current_digest
-            : false,
+          tag,
+          status,
+          updatedAt,
+          // Compare bare digests: either side may be stored as "repo@sha256:..."
+          // or just "sha256:...", and the repo part can differ in spelling.
+          isCurrent: digest ? digest === bareDigest(container?.current_digest) : false,
         };
       })
       .filter((v) => {
         // Skip entries with no digest — they can't be used for rollback
         if (!v.digest) return false;
-        // Deduplicate by digest — keep only the most recent entry per digest
+        // Deduplicate by digest — keep only the first (most recent) occurrence
         if (seenDigests.has(v.digest)) return false;
         seenDigests.add(v.digest);
         return true;
@@ -322,8 +362,13 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
           limit: Math.min(limitStr ? Number.parseInt(limitStr, 10) : 20, 200),
           search: search || undefined,
         });
-      } catch {
-        // Registry fetch failed — return null, UI shows fallback
+      } catch (err) {
+        // Registry fetch failed — return null, UI shows fallback. Log the real
+        // reason so it doesn't get misdiagnosed as a credentials problem.
+        log.warn(
+          'agents',
+          `Failed to fetch registry tags for ${container.image}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 

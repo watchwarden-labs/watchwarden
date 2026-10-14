@@ -16,6 +16,7 @@ import {
   insertUpdateLog,
   insertUpdateLogAndDigests,
   listAgents,
+  markAllAgentsOffline,
   setConfig,
   updateAgentConfig,
   updateAgentStatus,
@@ -81,6 +82,28 @@ describe('queries', () => {
       const agent = await getAgent('agent-1');
       expect(agent?.status).toBe('online');
       expect(agent?.last_seen).toBe(now);
+    });
+
+    it('markAllAgentsOffline resets online agents but keeps last_seen (issue #80 stale status)', async () => {
+      const lastSeen = Date.now() - 5_000;
+      await insertAgent(newAgent);
+      await insertAgent({ ...newAgent, id: 'agent-2', name: 'Agent 2', token_hash: '$2a$10$h2' });
+      await insertAgent({ ...newAgent, id: 'agent-3', name: 'Agent 3', token_hash: '$2a$10$h3' });
+      await updateAgentStatus('agent-1', 'online', lastSeen);
+      await updateAgentStatus('agent-2', 'updating', lastSeen);
+      // agent-3 stays offline from insert
+
+      const reset = await markAllAgentsOffline();
+      expect(reset).toBe(2);
+
+      for (const id of ['agent-1', 'agent-2', 'agent-3']) {
+        expect((await getAgent(id))?.status).toBe('offline');
+      }
+      // last_seen must survive so the UI can still show when the agent was last heard from.
+      expect((await getAgent('agent-1'))?.last_seen).toBe(lastSeen);
+
+      // Idempotent: a second call touches nothing.
+      expect(await markAllAgentsOffline()).toBe(0);
     });
 
     it('updateAgentConfig updates schedule_override and auto_update', async () => {
@@ -626,6 +649,52 @@ describe('queries', () => {
       expect(containers[0]?.current_digest).toBe('sha256:new');
       expect(containers[0]?.latest_digest).toBe('sha256:new');
       expect(containers[0]?.has_update).toBe(0);
+    });
+
+    it('insertUpdateLogAndDigests(isRollback=true) preserves latest_digest and recomputes has_update (issue #80)', async () => {
+      await insertAgent({
+        id: 'rollback-agent',
+        name: 'Rollback Agent',
+        hostname: 'srv',
+        token_hash: '$2a$10$hash',
+      });
+
+      await upsertContainers('rollback-agent', [
+        {
+          id: 'rollback-c1',
+          docker_id: 'docker-rollback-1',
+          name: 'nginx',
+          image: 'nginx:latest',
+          current_digest: 'sha256:current',
+          status: 'running',
+        },
+      ]);
+
+      // Simulate a real registry check having found a newer version available.
+      await updateContainerDigests('rollback-c1', 'sha256:current', 'sha256:newest', true);
+
+      // Roll back to an older digest — this must NOT overwrite latest_digest
+      // with the rollback target, and must recompute has_update against the
+      // real (still-newer) latest_digest instead of forcing it false.
+      await insertUpdateLogAndDigests(
+        {
+          agent_id: 'rollback-agent',
+          container_id: 'rollback-c1',
+          container_name: 'nginx',
+          old_digest: 'sha256:current',
+          new_digest: 'sha256:old',
+          status: 'rolled_back',
+          duration_ms: 500,
+        },
+        'rollback-c1',
+        'sha256:old',
+        true,
+      );
+
+      const containers = await getContainersByAgent('rollback-agent');
+      expect(containers[0]?.current_digest).toBe('sha256:old');
+      expect(containers[0]?.latest_digest).toBe('sha256:newest');
+      expect(containers[0]?.has_update).toBe(1);
     });
 
     it('updateNotificationChannel updates all fields atomically (DB-03)', async () => {

@@ -4,7 +4,13 @@ import bcrypt from 'bcryptjs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startPostgres, stopPostgres, truncateAll } from '../../__tests__/pg-setup.js';
-import { insertAgent, setConfig, updateAgentStatus, upsertContainers } from '../../db/queries.js';
+import {
+  insertAgent,
+  insertUpdateLog,
+  setConfig,
+  updateAgentStatus,
+  upsertContainers,
+} from '../../db/queries.js';
 import type { ContainerInfo } from '../../types.js';
 import { buildTestApp, getAuthToken, teardownTestApp } from './helpers.js';
 
@@ -561,6 +567,124 @@ describe('sendToAgent return value guards', () => {
       'unhealthy-agent-1',
       expect.objectContaining({ type: 'RESTART_UNHEALTHY' }),
     );
+  });
+
+  // --- Issue #80 round 4: rollback target + version history ---
+
+  describe('rollback target and version history', () => {
+    const DIGEST_A = 'sha256:79e1bc0e10ab296061cd3d5c2f5739371469ece1937483d37a4ff28750cbd711';
+    const DIGEST_B = 'sha256:d63bfe57a106070fa5c0e73de0758f33aea018ed3cb6c8610c6663a4ac3a82ba';
+    const DIGEST_C = 'sha256:0d5ee4eed53593326770ca46e080b97369c40696b9a01ec5d28c05f542a30a06';
+
+    beforeAll(async () => {
+      await insertAgent({
+        id: 'rb-agent-1',
+        name: 'Rollback Agent',
+        hostname: 'srv-rb',
+        token_hash: '$2a$10$hash-rb-agent-1',
+      });
+      await updateAgentStatus('rb-agent-1', 'online', Date.now());
+      await upsertContainers('rb-agent-1', [
+        {
+          id: 'rb-c-1',
+          docker_id: 'rb-docker-1',
+          name: 'portainer_agent',
+          // An unreachable registry makes the registry-tags lookup fail fast,
+          // so the versions route test never touches the network.
+          image: 'localhost:1/portainer/agent:latest',
+          current_digest: `localhost:1/portainer/agent@${DIGEST_C}`,
+          status: 'running',
+        },
+      ]);
+    });
+
+    it('registry pick: pins the digest, forwards the tag, keeps the registry port', async () => {
+      mockHub.sendToAgent.mockReturnValue(true);
+      mockHub.sendToAgent.mockClear();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/agents/rb-agent-1/rollback',
+        headers: authHeaders(),
+        payload: { containerId: 'rb-docker-1', targetTag: '2.33.8', targetDigest: DIGEST_C },
+      });
+
+      expect(res.statusCode).toBe(202);
+      expect(mockHub.sendToAgent).toHaveBeenCalledWith('rb-agent-1', {
+        type: 'ROLLBACK',
+        payload: {
+          containerId: 'rb-docker-1',
+          containerName: 'portainer_agent',
+          targetImage: `localhost:1/portainer/agent@${DIGEST_C}`,
+          targetTag: '2.33.8',
+        },
+      });
+    });
+
+    it('Local History pick: digest only, no tag forwarded', async () => {
+      mockHub.sendToAgent.mockClear();
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/agents/rb-agent-1/rollback',
+        headers: authHeaders(),
+        payload: { containerId: 'rb-docker-1', targetDigest: DIGEST_A },
+      });
+
+      const payload = mockHub.sendToAgent.mock.calls[0]?.[1]?.payload;
+      expect(payload.targetImage).toBe(`localhost:1/portainer/agent@${DIGEST_A}`);
+      expect(payload).not.toHaveProperty('targetTag');
+    });
+
+    it('versions: status belongs to the produced version, not the replaced one', async () => {
+      // Older update A -> B, then a rollback B -> C.
+      await insertUpdateLog({
+        agent_id: 'rb-agent-1',
+        container_id: 'rb-docker-1',
+        container_name: 'portainer_agent',
+        old_digest: `portainer/agent@${DIGEST_A}`,
+        new_digest: `portainer/agent@${DIGEST_B}`,
+        old_image: 'portainer/agent:2.39.7',
+        new_image: 'portainer/agent:latest',
+        status: 'success',
+        error: null,
+        duration_ms: 1000,
+      });
+      // created_at is stamped by the DB insert; space the rows so order is stable.
+      await new Promise((r) => setTimeout(r, 10));
+      await insertUpdateLog({
+        agent_id: 'rb-agent-1',
+        container_id: 'rb-docker-1',
+        container_name: 'portainer_agent',
+        old_digest: `portainer/agent@${DIGEST_B}`,
+        new_digest: `portainer/agent@${DIGEST_C}`,
+        old_image: 'portainer/agent:latest',
+        new_image: 'portainer/agent:2.33.8',
+        status: 'rolled_back',
+        error: null,
+        duration_ms: 1000,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/agents/rb-agent-1/containers/rb-docker-1/versions',
+        headers: authHeaders(),
+      });
+      expect(res.statusCode).toBe(200);
+      const local = JSON.parse(res.body).local as {
+        digest: string;
+        tag: string | null;
+        status: string | null;
+        isCurrent: boolean;
+      }[];
+
+      // Most recent first: the rollback's produced version leads the list.
+      expect(local.map((v) => v.digest)).toEqual([DIGEST_C, DIGEST_B, DIGEST_A]);
+      expect(local[0]).toMatchObject({ tag: '2.33.8', status: 'rolled_back', isCurrent: true });
+      // B was merely replaced by the rollback — it must not carry "rolled_back".
+      expect(local[1]).toMatchObject({ tag: 'latest', status: null });
+      expect(local[2]).toMatchObject({ tag: '2.39.7', status: null });
+    });
   });
 });
 

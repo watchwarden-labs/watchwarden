@@ -1,17 +1,24 @@
 FROM node:22-slim AS builder
 WORKDIR /app
 
-# Set up workspace structure for local package resolution
-COPY package.json ./
-COPY packages/types/package.json packages/types/tsconfig.json ./packages/types/
-COPY packages/types/src/ ./packages/types/src/
+# Workspace manifests + lockfile.
+# Every workspace listed in the root package.json must be present (even the
+# ones this image never builds) or npm's workspace resolution crashes with
+# "Cannot read properties of null (reading 'edgesOut')". The lockfile makes
+# the install reproducible instead of re-resolving from the registry on every
+# build, which is how a fresh upstream release broke image builds without any
+# change in this repo.
+COPY package.json package-lock.json ./
+COPY packages/types/package.json ./packages/types/
+COPY packages/sdk/package.json ./packages/sdk/
+COPY controller/package.json ./controller/
+COPY ui/package.json ./ui/
+RUN --mount=type=cache,target=/root/.npm npm ci -w controller -w @watchwarden/types
 
 # Build the types package
-RUN cd packages/types && npm install && npm run build
-
-# Install controller dependencies (workspace hoists to root node_modules)
-COPY controller/package*.json ./controller/
-RUN --mount=type=cache,target=/root/.npm npm install -w controller
+COPY packages/types/tsconfig.json ./packages/types/
+COPY packages/types/src/ ./packages/types/src/
+RUN npm run -w @watchwarden/types build
 
 # Build the controller
 COPY controller/tsconfig.json ./controller/

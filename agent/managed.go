@@ -328,6 +328,9 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 			ContainerID   string `json:"containerId"`
 			ContainerName string `json:"containerName"`
 			TargetImage   string `json:"targetImage"`
+			// TargetTag is set when the user picked a registry tag: the image is
+			// pulled by digest (TargetImage) and then tagged with it locally.
+			TargetTag string `json:"targetTag"`
 		}
 		if err := json.Unmarshal(payload, &cmd); err != nil {
 			log.Printf("[handler] ROLLBACK: invalid payload: %v", err)
@@ -349,7 +352,7 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		var result *UpdateResult
 		var rollbackErr error
 		if cmd.TargetImage != "" {
-			result, rollbackErr = updater.RollbackToImage(ctx, resolvedID, cmd.TargetImage, cmd.ContainerID)
+			result, rollbackErr = updater.RollbackToImageWithTag(ctx, resolvedID, cmd.TargetImage, cmd.TargetTag, cmd.ContainerID)
 		} else {
 			result, rollbackErr = updater.RollbackContainer(ctx, resolvedID)
 		}

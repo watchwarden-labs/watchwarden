@@ -9,6 +9,7 @@ import {
   disableRecoveryMode,
   enableRecoveryMode,
   getAgent,
+  getHistory,
   insertAgent,
   listAgents,
   setConfig,
@@ -183,6 +184,44 @@ describe('AgentHub', () => {
 
     const { code } = await closePromise;
     expect(code).toBe(4002);
+  });
+
+  it('REGISTER immediately followed by HEALTH_STATUS on the same connection does not close the socket', async () => {
+    // RACE-01 regression: sending a second message right after REGISTER, with
+    // no await in between, used to race the async REGISTER handler and get
+    // wrongly rejected as "first message must be REGISTER" (4002) because
+    // `authenticated` hadn't been set yet when the second message dispatched.
+    const ws = connectAgent();
+    await waitForOpen(ws);
+
+    let closedEarly = false;
+    ws.once('close', (code) => {
+      if (code === 4002) closedEarly = true;
+    });
+
+    ws.send(
+      JSON.stringify({
+        type: 'REGISTER',
+        payload: { token: agentToken, hostname: 'server-1', containers: [] },
+      }),
+    );
+    ws.send(
+      JSON.stringify({
+        type: 'HEALTH_STATUS',
+        payload: { containerId: 'race-01-container', containerName: 'nginx', status: 'healthy' },
+      }),
+    );
+
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(closedEarly).toBe(false);
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+
+    const agent = await getAgent('hub-agent-1');
+    expect(agent?.status).toBe('online');
+
+    ws.close();
+    await new Promise((r) => setTimeout(r, 100));
   });
 
   it('registered agent HEARTBEAT updates last_seen', async () => {
@@ -386,6 +425,57 @@ describe('AgentHub', () => {
 
     const ids = hub.getOnlineAgentIds();
     expect(ids).toContain('hub-agent-1');
+
+    ws.close();
+    await new Promise((r) => setTimeout(r, 100));
+  });
+
+  // Issue #80 round 4: a failed rollback used to be logged as 'rolled_back',
+  // making it indistinguishable from a successful one in history and metrics.
+  it('UPDATE_RESULT for a failed rollback is recorded as failed, a successful one as rolled_back', async () => {
+    const ws = connectAgent();
+    await waitForOpen(ws);
+    ws.send(
+      JSON.stringify({
+        type: 'REGISTER',
+        payload: { token: agentToken, hostname: 'server-1', containers: [] },
+      }),
+    );
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (hub.getOnlineAgentIds().includes('hub-agent-1')) break;
+    }
+
+    const send = (containerName: string, success: boolean) =>
+      ws.send(
+        JSON.stringify({
+          type: 'UPDATE_RESULT',
+          payload: {
+            containerId: `${containerName}-id`,
+            containerName,
+            success,
+            oldDigest: 'nginx@sha256:old',
+            newDigest: success ? 'nginx@sha256:new' : null,
+            error: success ? null : 'pull failed',
+            durationMs: 10,
+            isRollback: true,
+          },
+        }),
+      );
+    send('rb-failed', false);
+    send('rb-ok', true);
+
+    let rows: Awaited<ReturnType<typeof getHistory>>['data'] = [];
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      rows = (await getHistory({ limit: 50 })).data.filter((e) =>
+        ['rb-failed', 'rb-ok'].includes(e.container_name),
+      );
+      if (rows.length === 2) break;
+    }
+
+    expect(rows.find((e) => e.container_name === 'rb-failed')?.status).toBe('failed');
+    expect(rows.find((e) => e.container_name === 'rb-ok')?.status).toBe('rolled_back');
 
     ws.close();
     await new Promise((r) => setTimeout(r, 100));

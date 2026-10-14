@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -73,6 +74,8 @@ type mockDockerAPI struct {
 	stopFn             func(id string) error                                                              // dynamic stop per container
 	removeFn           func(id string) error                                                              // dynamic remove per container
 	imageInspectFn     func(imageID string) (image.InspectResponse, error)                                // dynamic image inspect
+	imageListFn        func(opts client.ImageListOptions) ([]image.Summary, error)                        // dynamic image list
+	imageTagErr        error                                                                              // error returned by ImageTag
 }
 
 func (m *mockDockerAPI) recordCall(call string) {
@@ -163,9 +166,18 @@ func (m *mockDockerAPI) ImageInspect(_ context.Context, imageID string, _ ...cli
 	return client.ImageInspectResult{InspectResponse: m.imageInspect}, nil
 }
 
-func (m *mockDockerAPI) ImageList(_ context.Context, _ client.ImageListOptions) (client.ImageListResult, error) {
+func (m *mockDockerAPI) ImageList(_ context.Context, opts client.ImageListOptions) (client.ImageListResult, error) {
 	m.recordCall("ImageList")
+	if m.imageListFn != nil {
+		items, err := m.imageListFn(opts)
+		return client.ImageListResult{Items: items}, err
+	}
 	return client.ImageListResult{}, nil
+}
+
+func (m *mockDockerAPI) ImageTag(_ context.Context, opts client.ImageTagOptions) (client.ImageTagResult, error) {
+	m.recordCall("ImageTag:" + opts.Source + "->" + opts.Target)
+	return client.ImageTagResult{}, m.imageTagErr
 }
 
 func (m *mockDockerAPI) ImageRemove(_ context.Context, id string, _ client.ImageRemoveOptions) (client.ImageRemoveResult, error) {
@@ -441,6 +453,226 @@ func TestRollbackToImage_LockBeforeInspect(t *testing.T) {
 		}
 	}
 	assert.GreaterOrEqual(t, inspectCount, 2, "should inspect both outside and inside the lock")
+}
+
+// Issue #80 — RollbackToImage must report the recreated container's new ID,
+// not the stale pre-rollback ID, so the controller updates the correct
+// container row's current_digest/has_update instead of a container that no
+// longer exists.
+func TestRollbackToImage_ReportsNewContainerID(t *testing.T) {
+	mock, updater := newTestSetup()
+
+	updater.mu.Lock()
+	updater.snapshots["test-container-123"] = &ContainerSnapshot{
+		Name:        "nginx",
+		ImageRef:    "nginx:latest",
+		ImageDigest: "sha256:olddigest",
+		Config:      mock.inspectResult.Config,
+		HostConfig:  mock.inspectResult.HostConfig,
+		Networks:    mock.inspectResult.NetworkSettings.Networks,
+	}
+	updater.mu.Unlock()
+
+	result, err := updater.RollbackToImage(context.Background(), "test-container-123", "nginx:1.25", "test-container-123")
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, "new-container-id", result.ContainerID, "should report the recreated container's ID")
+	assert.Equal(t, "test-container-123", result.OriginalContainerID, "should preserve the pre-rollback ID for progress tracking")
+}
+
+// Issue #80 follow-up — rolling back to a Local History entry sends a
+// digest-pinned target ("repo@sha256:..."). If the local image store already
+// has a tag for that exact image, the container must be recreated from the tag
+// so it doesn't end up with an 80-char digest ref as its image name, and the
+// reported NewImage must carry that tag so the controller's history can label it.
+func TestRollbackToImage_DigestTargetUsesLocalTag(t *testing.T) {
+	const digestRef = "portainer/agent@sha256:79e1bc0e10ab296061cd3d5c2f5739371469ece1937483d37a4ff28750cbd711"
+
+	t.Run("prefers a specific version tag over latest", func(t *testing.T) {
+		mock, updater := newTestSetup()
+		mock.imageInspectFn = func(imageID string) (image.InspectResponse, error) {
+			return image.InspectResponse{
+				RepoTags:    []string{"portainer/agent:latest", "portainer/agent:2.39.7"},
+				RepoDigests: []string{digestRef},
+			}, nil
+		}
+		seedRollbackSnapshot(updater, mock)
+
+		result, err := updater.RollbackToImage(context.Background(), "test-container-123", digestRef, "")
+		require.NoError(t, err)
+		assert.True(t, result.Success)
+		assert.Equal(t, "portainer/agent:2.39.7", result.NewImage)
+	})
+
+	t.Run("falls back to latest when it is the only tag", func(t *testing.T) {
+		mock, updater := newTestSetup()
+		mock.imageInspectFn = func(imageID string) (image.InspectResponse, error) {
+			return image.InspectResponse{
+				RepoTags:    []string{"portainer/agent:latest"},
+				RepoDigests: []string{digestRef},
+			}, nil
+		}
+		seedRollbackSnapshot(updater, mock)
+
+		result, err := updater.RollbackToImage(context.Background(), "test-container-123", digestRef, "")
+		require.NoError(t, err)
+		assert.Equal(t, "portainer/agent:latest", result.NewImage)
+	})
+
+	t.Run("ignores tags from other repositories", func(t *testing.T) {
+		mock, updater := newTestSetup()
+		mock.imageInspectFn = func(imageID string) (image.InspectResponse, error) {
+			return image.InspectResponse{
+				// Same image ID re-tagged under a different repo — not a valid substitute.
+				RepoTags:    []string{"portainer/agent-fork:2.39.7", "<none>:<none>"},
+				RepoDigests: []string{digestRef},
+			}, nil
+		}
+		seedRollbackSnapshot(updater, mock)
+
+		result, err := updater.RollbackToImage(context.Background(), "test-container-123", digestRef, "")
+		require.NoError(t, err)
+		assert.Equal(t, digestRef, result.NewImage, "should keep the digest ref when no tag matches the repo")
+	})
+
+	t.Run("keeps the digest ref when the image has no local tags", func(t *testing.T) {
+		mock, updater := newTestSetup()
+		mock.imageInspectFn = func(imageID string) (image.InspectResponse, error) {
+			return image.InspectResponse{RepoDigests: []string{digestRef}}, nil
+		}
+		seedRollbackSnapshot(updater, mock)
+
+		result, err := updater.RollbackToImage(context.Background(), "test-container-123", digestRef, "")
+		require.NoError(t, err)
+		assert.Equal(t, digestRef, result.NewImage)
+	})
+
+	t.Run("leaves a tagged target untouched", func(t *testing.T) {
+		mock, updater := newTestSetup()
+		mock.imageInspectFn = func(imageID string) (image.InspectResponse, error) {
+			return image.InspectResponse{RepoTags: []string{"nginx:1.25", "nginx:stable"}}, nil
+		}
+		seedRollbackSnapshot(updater, mock)
+
+		result, err := updater.RollbackToImage(context.Background(), "test-container-123", "nginx:1.25", "")
+		require.NoError(t, err)
+		assert.Equal(t, "nginx:1.25", result.NewImage)
+	})
+}
+
+// Issue #80 round 4 — rolling back to a tag picked from the Registry Tags tab
+// sends a digest-pinned target plus the tag. The agent must pull by digest and
+// then tag the image locally, so the container runs as "repo:2.33.8" instead
+// of "repo@sha256:...", even though that tag has never been pulled before.
+func TestRollbackToImageWithTag_TagsDigestPull(t *testing.T) {
+	const digestRef = "portainer/agent@sha256:0d5ee4eed53593326770ca46e080b97369c40696b9a01ec5d28c05f542a30a06"
+
+	t.Run("tags the pulled image and recreates from the tag", func(t *testing.T) {
+		mock, updater := newTestSetup()
+		mock.imageInspectFn = func(string) (image.InspectResponse, error) {
+			// Freshly pulled by digest: no local tag yet.
+			return image.InspectResponse{RepoDigests: []string{digestRef}}, nil
+		}
+		seedRollbackSnapshot(updater, mock)
+
+		result, err := updater.RollbackToImageWithTag(context.Background(), "test-container-123", digestRef, "2.33.8", "")
+		require.NoError(t, err)
+		assert.True(t, result.Success)
+		assert.Equal(t, "portainer/agent:2.33.8", result.NewImage)
+		assert.Contains(t, mock.getCalls(), "ImagePull:"+digestRef, "must pull by digest to pin the exact version")
+		assert.Contains(t, mock.getCalls(), "ImageTag:"+digestRef+"->portainer/agent:2.33.8")
+	})
+
+	t.Run("falls back to the digest ref when tagging fails", func(t *testing.T) {
+		mock, updater := newTestSetup()
+		mock.imageInspectFn = func(string) (image.InspectResponse, error) {
+			return image.InspectResponse{RepoDigests: []string{digestRef}}, nil
+		}
+		mock.imageTagErr = errors.New("tag refused")
+		seedRollbackSnapshot(updater, mock)
+
+		result, err := updater.RollbackToImageWithTag(context.Background(), "test-container-123", digestRef, "2.33.8", "")
+		require.NoError(t, err)
+		assert.True(t, result.Success)
+		assert.Equal(t, digestRef, result.NewImage)
+	})
+
+	t.Run("rejects a malformed tag without calling the daemon", func(t *testing.T) {
+		mock, updater := newTestSetup()
+		mock.imageInspectFn = func(string) (image.InspectResponse, error) {
+			return image.InspectResponse{RepoDigests: []string{digestRef}}, nil
+		}
+		seedRollbackSnapshot(updater, mock)
+
+		result, err := updater.RollbackToImageWithTag(context.Background(), "test-container-123", digestRef, "evil/../x:y", "")
+		require.NoError(t, err)
+		assert.Equal(t, digestRef, result.NewImage)
+		for _, c := range mock.getCalls() {
+			assert.NotContains(t, c, "ImageTag:")
+		}
+	})
+}
+
+// Issue #80 round 4 — with the containerd image store (Docker 29 default) a
+// digest ref and a tag for the same content are separate image records, so
+// inspecting the digest ref may report no tags. The agent must then find the
+// tag by listing the repository's images and matching on image ID.
+func TestResolveTagForDigestRef_ContainerdStoreFallback(t *testing.T) {
+	const digestRef = "portainer/agent@sha256:79e1bc0e10ab296061cd3d5c2f5739371469ece1937483d37a4ff28750cbd711"
+	const imageID = "sha256:79e1bc0e10ab296061cd3d5c2f5739371469ece1937483d37a4ff28750cbd711"
+
+	mock, updater := newTestSetup()
+	mock.imageInspectFn = func(string) (image.InspectResponse, error) {
+		return image.InspectResponse{ID: imageID, RepoTags: []string{digestRef}}, nil
+	}
+	var listedRef []string
+	mock.imageListFn = func(opts client.ImageListOptions) ([]image.Summary, error) {
+		for ref := range opts.Filters["reference"] {
+			listedRef = append(listedRef, ref)
+		}
+		return []image.Summary{
+			{ID: "sha256:d63bfe57a106", RepoTags: []string{"portainer/agent:latest"}},
+			{ID: imageID, RepoTags: []string{"portainer/agent:2.39.7"}},
+			{ID: imageID, RepoTags: []string{digestRef}},
+		}, nil
+	}
+
+	assert.Equal(t, "portainer/agent:2.39.7", updater.resolveTagForDigestRef(context.Background(), digestRef))
+	assert.Equal(t, []string{"portainer/agent"}, listedRef, "should list only the image's own repository")
+}
+
+// Issue #80 round 4 — reported OldImage is labelled too, so history rows for
+// containers that were running a digest ref still get a readable tag.
+func TestRollbackToImage_LabelsDigestOldImage(t *testing.T) {
+	const oldDigestRef = "portainer/agent@sha256:d63bfe57a106070fa5c0e73de0758f33aea018ed3cb6c8610c6663a4ac3a82ba"
+	mock, updater := newTestSetup()
+	mock.imageInspectFn = func(ref string) (image.InspectResponse, error) {
+		if ref == oldDigestRef {
+			return image.InspectResponse{RepoTags: []string{"portainer/agent:latest"}}, nil
+		}
+		return image.InspectResponse{RepoTags: []string{"portainer/agent:2.39.7"}}, nil
+	}
+	// RollbackToImage re-inspects the live container, so the running image ref
+	// comes from its Config.Image — a digest ref left by a pre-fix rollback.
+	mock.inspectResult.Config.Image = oldDigestRef
+	seedRollbackSnapshot(updater, mock)
+
+	result, err := updater.RollbackToImage(context.Background(), "test-container-123", "portainer/agent:2.39.7", "")
+	require.NoError(t, err)
+	assert.Equal(t, "portainer/agent:latest", result.OldImage)
+}
+
+func seedRollbackSnapshot(updater *Updater, mock *mockDockerAPI) {
+	updater.mu.Lock()
+	updater.snapshots["test-container-123"] = &ContainerSnapshot{
+		Name:        "nginx",
+		ImageRef:    "nginx:latest",
+		ImageDigest: "sha256:olddigest",
+		Config:      mock.inspectResult.Config,
+		HostConfig:  mock.inspectResult.HostConfig,
+		Networks:    mock.inspectResult.NetworkSettings.Networks,
+	}
+	updater.mu.Unlock()
 }
 
 // Finding 1.1 — Concurrent RollbackToImage and UpdateContainer serialize on same container
