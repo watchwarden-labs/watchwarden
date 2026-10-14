@@ -1,3 +1,15 @@
+## v0.4.3
+
+Released: 2026-10-14
+
+### Bug Fixes
+- fix: registry rollback tagging, history status and labels, offline agent card (#80) (c0066d4)
+- fix(docker): make controller and UI image builds reproducible and fix npm workspace crash (76d0117)
+- fix(controller): correct extractTag regressions caught by CI (0f4f3b9)
+- fix(controller,agent): reset stale agent status at boot, fix rollback tag labels and image names (3e1e6ff)
+- fix(controller,ui): fix Local History digests, registry-error message, and REGISTER race (0d8d126)
+- fix(ui,agent): fix ANSI logs, tag picker bugs, rollback state tracking (#80) (426a95e)
+
 ## v0.4.2
 
 Released: 2026-08-25
