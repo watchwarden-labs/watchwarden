@@ -1,4 +1,6 @@
+import type { PruneAgentOutcome, PruneRunSummary } from '@watchwarden/types';
 import { create } from 'zustand';
+import { pruneToast } from '@/lib/prune';
 
 export interface AgentRealtimeStatus {
   status: string;
@@ -10,6 +12,22 @@ export interface UpdateProgress {
   containerName: string;
   progress?: string;
   timestamp: number;
+}
+
+/** Live state of a prune in flight on one agent. */
+export interface PruneProgressState {
+  dryRun: boolean;
+  phase?: 'containers' | 'images';
+  done: number;
+  total: number;
+  current?: string;
+}
+
+/** Live view of a "prune all agents" run. */
+export interface PruneRunState extends PruneRunSummary {
+  /** Index and name of the agent being pruned right now. */
+  index: number;
+  currentAgent?: string;
 }
 
 export interface Toast {
@@ -39,6 +57,13 @@ interface WatchWardenState {
   updateProgress: Record<string, UpdateProgress>;
   setUpdateProgress: (key: string, progress: UpdateProgress) => void;
   clearUpdateProgress: (key: string) => void;
+
+  // Prune: progress per agent while running, completion stamps (to refetch previews),
+  // and the prune-all run.
+  pruneProgress: Record<string, PruneProgressState>;
+  pruneCompletedAt: Record<string, number>;
+  pruneRun: PruneRunState | null;
+  setPruneRun: (run: PruneRunSummary | null) => void;
 
   // Toasts
   toasts: Toast[];
@@ -121,6 +146,11 @@ export const useStore = create<WatchWardenState>((set, get) => ({
       const { [key]: _, ...rest } = state.updateProgress;
       return { updateProgress: rest };
     }),
+
+  pruneProgress: {},
+  pruneCompletedAt: {},
+  pruneRun: null,
+  setPruneRun: (run) => set({ pruneRun: run ? { ...run, index: run.results.length } : null }),
 
   toasts: [],
   addToast: (toast) => {
@@ -292,6 +322,80 @@ export const useStore = create<WatchWardenState>((set, get) => ({
           if (key.startsWith(`${agentId}:`)) delete progressBuffer[key];
         }
       }, 5000);
+    }
+
+    if (type === 'PRUNE_STARTED' && agentId) {
+      set((state) => ({
+        pruneProgress: {
+          ...state.pruneProgress,
+          [agentId]: { dryRun: event.dryRun === true, done: 0, total: 0 },
+        },
+      }));
+    }
+
+    if (type === 'PRUNE_PROGRESS' && agentId) {
+      set((state) => ({
+        pruneProgress: {
+          ...state.pruneProgress,
+          [agentId]: {
+            dryRun: state.pruneProgress[agentId]?.dryRun ?? false,
+            phase: event.phase as PruneProgressState['phase'],
+            done: Number(event.done) || 0,
+            total: Number(event.total) || 0,
+            current: typeof event.current === 'string' ? event.current : undefined,
+          },
+        },
+      }));
+    }
+
+    if (type === 'PRUNE_COMPLETE' && agentId) {
+      const { [agentId]: _done, ...rest } = get().pruneProgress;
+      set((state) => ({
+        pruneProgress: rest,
+        pruneCompletedAt: { ...state.pruneCompletedAt, [agentId]: Date.now() },
+      }));
+      // During prune-all the run summary reports each agent; skip the per-agent toast.
+      if (get().pruneRun?.status !== 'running') {
+        const outcome = event as unknown as PruneAgentOutcome & { dryRun?: boolean };
+        get().addToast(
+          pruneToast({ ...outcome, errors: outcome.errors ?? [] }, event.dryRun === true),
+        );
+      }
+      get().invalidateAgents?.();
+    }
+
+    if (type === 'PRUNE_RUN_PROGRESS') {
+      const run = get().pruneRun;
+      // The run may have been started from another tab: adopt it when the first event arrives.
+      set({
+        pruneRun: {
+          ...(run && run.runId === event.runId
+            ? run
+            : {
+                runId: event.runId as string,
+                dryRun: false,
+                status: 'running' as const,
+                startedAt: Date.now(),
+                results: [],
+                totals: {
+                  agents: Number(event.total) || 0,
+                  imagesRemoved: 0,
+                  containersRemoved: 0,
+                  spaceReclaimed: 0,
+                  failed: 0,
+                  skipped: 0,
+                },
+              }),
+          index: Number(event.index) || 0,
+          currentAgent: event.state === 'running' ? (event.agentName as string) : undefined,
+        },
+      });
+    }
+
+    if (type === 'PRUNE_RUN_COMPLETE') {
+      const summary = event as unknown as PruneRunSummary;
+      set({ pruneRun: { ...summary, index: summary.results.length, currentAgent: undefined } });
+      get().invalidateAgents?.();
     }
 
     if (type === 'CONTAINER_ACTION_RESULT') {

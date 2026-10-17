@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Container, Agent as SharedAgent } from '@watchwarden/types';
+import type {
+  Container,
+  PrunePreviewPayload,
+  PruneResultPayload,
+  PruneRunSummary,
+  Agent as SharedAgent,
+} from '@watchwarden/types';
 import { apiRequest } from '../client';
 
 export type Agent = Omit<SharedAgent, 'token_hash' | 'token_prefix'>;
@@ -102,28 +108,72 @@ export function useRollbackContainer() {
   });
 }
 
-export interface PruneResult {
-  imagesRemoved: number;
-  spaceReclaimed: number;
-  details: Array<{ image: string; size: number }>;
-  errors: string[];
+export type PruneResult = PruneResultPayload;
+
+export interface PruneOptions {
+  keepPrevious: number;
+  includeStopped: boolean;
+  dryRun?: boolean;
 }
 
 export function usePruneAgent() {
   return useMutation({
     mutationFn: ({
       id,
-      keepPrevious = 1,
+      keepPrevious,
+      includeStopped,
       dryRun = false,
-    }: {
-      id: string;
-      keepPrevious?: number;
-      dryRun?: boolean;
-    }) =>
+    }: PruneOptions & { id: string }) =>
       apiRequest<{ message: string }>(`/agents/${id}/prune`, {
         method: 'POST',
-        body: JSON.stringify({ keepPrevious, dryRun }),
+        body: JSON.stringify({ keepPrevious, includeStopped, dryRun }),
       }),
+  });
+}
+
+/** Disk-usage summary and prune candidates. Fetched on demand; refetched after each prune. */
+export function usePrunePreview(
+  id: string,
+  opts: { keepPrevious: number; includeStopped: boolean } | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['prune-preview', id, opts?.keepPrevious, opts?.includeStopped],
+    queryFn: async () => {
+      const qs = new URLSearchParams({
+        keepPrevious: String(opts?.keepPrevious),
+        includeStopped: String(opts?.includeStopped),
+      });
+      const preview = await apiRequest<PrunePreviewPayload>(
+        `/agents/${id}/prune/preview?${qs.toString()}`,
+      );
+      if (preview.error) throw new Error(preview.error);
+      return preview;
+    },
+    enabled: enabled && !!id && opts !== null,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+/** Starts a sequential prune of every online agent; progress arrives over WebSocket. */
+export function usePruneAll() {
+  return useMutation({
+    mutationFn: (opts: PruneOptions) =>
+      apiRequest<PruneRunSummary>('/prune', {
+        method: 'POST',
+        body: JSON.stringify(opts),
+      }),
+  });
+}
+
+/** The running (or last finished) prune-all run; used to restore state after a reload. */
+export function useCurrentPruneRun(enabled: boolean) {
+  return useQuery({
+    queryKey: ['prune-current'],
+    queryFn: () => apiRequest<{ run: PruneRunSummary | null }>('/prune/current'),
+    enabled,
+    staleTime: 0,
   });
 }
 

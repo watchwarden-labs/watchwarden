@@ -14,6 +14,14 @@ import (
 	"github.com/moby/moby/client"
 )
 
+// pruneCmd is the payload of PRUNE and PRUNE_PREVIEW.
+type pruneCmd struct {
+	RequestID      string `json:"requestId"`
+	KeepPrevious   int    `json:"keepPrevious"`
+	DryRun         bool   `json:"dryRun"`
+	IncludeStopped bool   `json:"includeStopped"`
+}
+
 // runManagedMode starts the agent in Controller-managed mode.
 // Connects via WebSocket, receives commands, and reports results.
 func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *DockerClient,
@@ -392,23 +400,64 @@ func runManagedMode(cfg *AgentConfig, credStore *CredStore, dockerClient *Docker
 		healthMonitor.StartMonitoring(req)
 	})
 
-	wsClient.OnMessage("PRUNE", func(payload json.RawMessage) {
-		var cmd struct {
-			KeepPrevious int  `json:"keepPrevious"`
-			DryRun       bool `json:"dryRun"`
-		}
-		cmd.KeepPrevious = 1
-		if err := json.Unmarshal(payload, &cmd); err != nil {
-			log.Printf("[handler] PRUNE: invalid payload: %v", err)
-			return
-		}
-		if cmd.KeepPrevious < 0 {
+	// Rollback targets are never pruned.
+	pruner.SetSnapshotSource(updater)
+
+	parsePruneCmd := func(payload json.RawMessage) (pruneCmd, error) {
+		cmd := pruneCmd{KeepPrevious: 1}
+		err := json.Unmarshal(payload, &cmd)
+		if cmd.KeepPrevious < 0 || cmd.KeepPrevious > maxKeepPrevious {
 			cmd.KeepPrevious = 1
 		}
+		return cmd, err
+	}
+
+	wsClient.OnMessage("PRUNE", func(payload json.RawMessage) {
+		cmd, err := parsePruneCmd(payload)
+		if err != nil {
+			log.Printf("[handler] PRUNE: invalid payload: %v", err)
+			wsClient.Send(Message{Type: "PRUNE_RESULT", Payload: PruneResult{
+				RequestID: cmd.RequestID, DryRun: cmd.DryRun, Details: []PrunedItem{},
+				Errors: []string{"invalid prune request: " + err.Error()},
+			}})
+			return
+		}
+		if !pruner.TryLock() {
+			wsClient.Send(Message{Type: "PRUNE_RESULT", Payload: PruneResult{
+				RequestID: cmd.RequestID, DryRun: cmd.DryRun, Details: []PrunedItem{},
+				Errors: []string{"another prune is already running on this agent"},
+			}})
+			return
+		}
+		defer pruner.Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		result := pruner.Prune(ctx, cmd.KeepPrevious, cmd.DryRun)
+		result := pruner.Prune(ctx, PruneOptions{
+			KeepPrevious:   cmd.KeepPrevious,
+			DryRun:         cmd.DryRun,
+			IncludeStopped: cmd.IncludeStopped,
+		}, func(p PruneProgress) {
+			wsClient.Send(Message{Type: "PRUNE_PROGRESS", Payload: map[string]interface{}{
+				"requestId": cmd.RequestID, "phase": p.Phase, "done": p.Done, "total": p.Total, "current": p.Current,
+			}})
+		})
+		result.RequestID = cmd.RequestID
 		wsClient.Send(Message{Type: "PRUNE_RESULT", Payload: result})
+	})
+
+	wsClient.OnMessage("PRUNE_PREVIEW", func(payload json.RawMessage) {
+		cmd, err := parsePruneCmd(payload)
+		if err != nil {
+			wsClient.Send(Message{Type: "PRUNE_PREVIEW_RESULT", Payload: PrunePreview{
+				RequestID: cmd.RequestID, Items: []PrunedItem{}, Error: "invalid preview request: " + err.Error(),
+			}})
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		preview := pruner.Preview(ctx, PruneOptions{KeepPrevious: cmd.KeepPrevious, IncludeStopped: cmd.IncludeStopped})
+		preview.RequestID = cmd.RequestID
+		wsClient.Send(Message{Type: "PRUNE_PREVIEW_RESULT", Payload: preview})
 	})
 
 	wsClient.OnMessage("SCAN", func(payload json.RawMessage) {

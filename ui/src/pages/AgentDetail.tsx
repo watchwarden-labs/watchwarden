@@ -1,15 +1,5 @@
 import { formatDistanceToNow } from 'date-fns';
-import {
-  Box,
-  Info,
-  KeyRound,
-  Loader2,
-  RefreshCw,
-  RotateCw,
-  Scissors,
-  Shield,
-  Trash2,
-} from 'lucide-react';
+import { Box, Info, KeyRound, Loader2, RefreshCw, RotateCw, Shield, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { apiErrorMessage } from '@/api/client';
@@ -17,7 +7,6 @@ import {
   useAgent,
   useCheckAgent,
   useDeleteAgent,
-  usePruneAgent,
   useRestartUnhealthy,
   useUpdateAgent,
   useUpdateAgentConfig,
@@ -28,17 +17,7 @@ import { RegenerateTokenModal } from '@/components/agents/RegenerateTokenModal';
 import { CronPicker } from '@/components/common/CronPicker';
 import { Pagination } from '@/components/common/Pagination';
 import { StatusDot } from '@/components/common/StatusDot';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { PruneCard } from '@/components/prune/PruneCard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -57,13 +36,10 @@ export function AgentDetail() {
   const restartUnhealthy = useRestartUnhealthy();
   const updateConfig = useUpdateAgentConfig();
   const deleteAgent = useDeleteAgent();
-  const pruneAgent = usePruneAgent();
   const addToast = useStore((s) => s.addToast);
   const checkingAgents = useStore((s) => s.checkingAgents);
   const setAgentChecking = useStore((s) => s.setAgentChecking);
   const isChecking = agent ? checkingAgents.has(agent.id) : false;
-  const [pruneKeep, setPruneKeep] = useState(1);
-  const [pruneConfirmOpen, setPruneConfirmOpen] = useState(false);
   const [regenerateTokenOpen, setRegenerateTokenOpen] = useState(false);
   const [showStopped, setShowStopped] = useState(
     () => localStorage.getItem('showStopped') === 'true',
@@ -407,105 +383,7 @@ export function AgentDetail() {
 
           <StabilityPolicyCard agentId={agent.id} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Scissors size={16} /> Image Pruning
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-xs text-muted-foreground">
-                Remove old images from this agent, keeping the specified number of previous versions
-                per container for rollback capability.
-              </p>
-              <div className="flex items-end gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="prune-keep" className="text-xs text-muted-foreground">
-                    Keep previous versions
-                  </Label>
-                  <Input
-                    id="prune-keep"
-                    type="number"
-                    min={0}
-                    max={10}
-                    value={pruneKeep}
-                    onChange={(e) => setPruneKeep(Number(e.target.value))}
-                    className="w-24"
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={agent.status !== 'online' || pruneAgent.isPending}
-                  onClick={() =>
-                    pruneAgent.mutate(
-                      { id: agent.id, keepPrevious: pruneKeep, dryRun: true },
-                      {
-                        onSuccess: () =>
-                          addToast({
-                            type: 'info',
-                            message: 'Dry-run prune initiated — check agent logs for details',
-                          }),
-                      },
-                    )
-                  }
-                >
-                  Dry Run
-                </Button>
-                <AlertDialog open={pruneConfirmOpen} onOpenChange={setPruneConfirmOpen}>
-                  <AlertDialogTrigger
-                    disabled={agent.status !== 'online' || pruneAgent.isPending}
-                    render={
-                      <Button
-                        size="sm"
-                        disabled={agent.status !== 'online' || pruneAgent.isPending}
-                      >
-                        <Scissors size={14} data-icon="inline-start" /> Prune Images
-                      </Button>
-                    }
-                  />
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Prune images on {agent.name}?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently remove old Docker images, keeping{' '}
-                        <strong>
-                          {pruneKeep} previous version
-                          {pruneKeep !== 1 ? 's' : ''}
-                        </strong>{' '}
-                        per container for rollback. Images currently in use will not be removed.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => {
-                          setPruneConfirmOpen(false);
-                          pruneAgent.mutate(
-                            { id: agent.id, keepPrevious: pruneKeep },
-                            {
-                              onSuccess: () =>
-                                addToast({
-                                  type: 'success',
-                                  message: 'Prune initiated — old images will be removed',
-                                }),
-                              onError: () =>
-                                addToast({
-                                  type: 'error',
-                                  message: 'Prune failed',
-                                }),
-                            },
-                          );
-                        }}
-                      >
-                        Prune Images
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            </CardContent>
-          </Card>
+          <PruneCard agentId={agent.id} agentName={agent.name} online={agent.status === 'online'} />
         </TabsContent>
       </Tabs>
     </div>

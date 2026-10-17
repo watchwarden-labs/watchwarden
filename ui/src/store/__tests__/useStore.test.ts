@@ -392,3 +392,126 @@ describe('useStore', () => {
     });
   });
 });
+
+describe('useStore prune events', () => {
+  beforeEach(() => {
+    useStore.setState({ pruneProgress: {}, pruneCompletedAt: {}, pruneRun: null, toasts: [] });
+  });
+
+  it('tracks progress for an agent and clears it on completion with a result toast', () => {
+    const { handleWSEvent } = useStore.getState();
+    handleWSEvent({ type: 'PRUNE_STARTED', agentId: 'a1', dryRun: false });
+    expect(useStore.getState().pruneProgress.a1).toMatchObject({ done: 0, total: 0 });
+
+    handleWSEvent({
+      type: 'PRUNE_PROGRESS',
+      agentId: 'a1',
+      phase: 'images',
+      done: 1,
+      total: 3,
+      current: 'app:1',
+    });
+    expect(useStore.getState().pruneProgress.a1).toMatchObject({
+      phase: 'images',
+      done: 1,
+      total: 3,
+    });
+
+    handleWSEvent({
+      type: 'PRUNE_COMPLETE',
+      agentId: 'a1',
+      agentName: 'web-1',
+      dryRun: false,
+      status: 'success',
+      imagesRemoved: 3,
+      containersRemoved: 0,
+      spaceReclaimed: 1024 ** 3,
+      errors: [],
+    });
+    const state = useStore.getState();
+    expect(state.pruneProgress.a1).toBeUndefined();
+    expect(state.pruneCompletedAt.a1).toBeGreaterThan(0);
+    expect(state.toasts.at(-1)).toMatchObject({
+      type: 'success',
+      message: 'Pruned web-1: removed 3 images, freed ~1.0 GB',
+    });
+  });
+
+  it('reports a failed prune as an error toast', () => {
+    useStore.getState().handleWSEvent({
+      type: 'PRUNE_COMPLETE',
+      agentId: 'a1',
+      agentName: 'web-1',
+      dryRun: false,
+      status: 'failed',
+      imagesRemoved: 0,
+      containersRemoved: 0,
+      spaceReclaimed: 0,
+      errors: [],
+      error: 'Agent disconnected',
+    });
+    expect(useStore.getState().toasts.at(-1)).toMatchObject({ type: 'error' });
+  });
+
+  it('suppresses per-agent toasts during a prune-all run and keeps the final summary', () => {
+    const { handleWSEvent } = useStore.getState();
+    handleWSEvent({
+      type: 'PRUNE_RUN_PROGRESS',
+      runId: 'r1',
+      index: 0,
+      total: 2,
+      agentName: 'web-1',
+      state: 'running',
+    });
+    expect(useStore.getState().pruneRun).toMatchObject({
+      runId: 'r1',
+      status: 'running',
+      currentAgent: 'web-1',
+    });
+
+    handleWSEvent({
+      type: 'PRUNE_COMPLETE',
+      agentId: 'a1',
+      agentName: 'web-1',
+      status: 'success',
+      imagesRemoved: 1,
+      containersRemoved: 0,
+      spaceReclaimed: 10,
+      errors: [],
+    });
+    expect(useStore.getState().toasts).toHaveLength(0);
+
+    const summary = {
+      type: 'PRUNE_RUN_COMPLETE',
+      runId: 'r1',
+      dryRun: false,
+      status: 'complete',
+      startedAt: 1,
+      results: [
+        {
+          agentId: 'a1',
+          agentName: 'web-1',
+          status: 'success',
+          imagesRemoved: 1,
+          containersRemoved: 0,
+          spaceReclaimed: 10,
+          errors: [],
+        },
+      ],
+      totals: {
+        agents: 2,
+        imagesRemoved: 1,
+        containersRemoved: 0,
+        spaceReclaimed: 10,
+        failed: 0,
+        skipped: 1,
+      },
+    };
+    handleWSEvent(summary);
+    expect(useStore.getState().pruneRun).toMatchObject({
+      status: 'complete',
+      currentAgent: undefined,
+    });
+    expect(useStore.getState().pruneRun?.totals.skipped).toBe(1);
+  });
+});

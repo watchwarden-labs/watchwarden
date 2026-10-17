@@ -75,6 +75,9 @@ type mockDockerAPI struct {
 	removeFn           func(id string) error                                                              // dynamic remove per container
 	imageInspectFn     func(imageID string) (image.InspectResponse, error)                                // dynamic image inspect
 	imageListFn        func(opts client.ImageListOptions) ([]image.Summary, error)                        // dynamic image list
+	imageRemoveFn      func(ref string) error
+	diskUsage          client.DiskUsageResult
+	diskUsageErr       error
 	imageTagErr        error                                                                              // error returned by ImageTag
 }
 
@@ -182,7 +185,15 @@ func (m *mockDockerAPI) ImageTag(_ context.Context, opts client.ImageTagOptions)
 
 func (m *mockDockerAPI) ImageRemove(_ context.Context, id string, _ client.ImageRemoveOptions) (client.ImageRemoveResult, error) {
 	m.recordCall("ImageRemove:" + id)
+	if m.imageRemoveFn != nil {
+		return client.ImageRemoveResult{}, m.imageRemoveFn(id)
+	}
 	return client.ImageRemoveResult{}, nil
+}
+
+func (m *mockDockerAPI) DiskUsage(_ context.Context, _ client.DiskUsageOptions) (client.DiskUsageResult, error) {
+	m.recordCall("DiskUsage")
+	return m.diskUsage, m.diskUsageErr
 }
 
 func (m *mockDockerAPI) NetworkConnect(_ context.Context, networkID string, opts client.NetworkConnectOptions) (client.NetworkConnectResult, error) {

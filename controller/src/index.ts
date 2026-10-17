@@ -18,6 +18,7 @@ import integrationRoutes from './api/routes/integrations.js';
 import metaRoutes from './api/routes/meta.js';
 import metricsRoutes from './api/routes/metrics.js';
 import notificationRoutes from './api/routes/notifications.js';
+import pruneRoutes from './api/routes/prune.js';
 import registriesRoutes from './api/routes/registries.js';
 import { closeSql } from './db/client.js';
 import {
@@ -33,6 +34,7 @@ import { initCrypto, resetKey } from './lib/crypto.js';
 import { clearPendingTimers } from './notifications/session-batcher.js';
 import { Scheduler } from './scheduler/engine.js';
 import { AgentHub } from './ws/hub.js';
+import { PruneService } from './ws/prune-service.js';
 import { UiBroadcaster } from './ws/ui-broadcaster.js';
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -183,6 +185,7 @@ async function start() {
   const hub = new AgentHub(broadcaster);
   app.decorate('hub', hub);
   app.decorate('broadcaster', broadcaster);
+  app.decorate('pruneService', new PruneService(hub, broadcaster));
 
   app.get('/ws/agent', { websocket: true }, (socket) => {
     hub.handleConnection(socket);
@@ -205,6 +208,7 @@ async function start() {
   // 8. REST API
   await app.register(authRoutes);
   await app.register(agentsRoutes);
+  await app.register(pruneRoutes);
   await app.register(configRoutes);
   await app.register(historyRoutes);
   await app.register(registriesRoutes);
