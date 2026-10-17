@@ -253,6 +253,26 @@ func (u *Updater) StartLockCleanup(ctx context.Context) {
 	}()
 }
 
+// RollbackRefs returns the image references/digests and container IDs/names that
+// saved snapshots depend on, so the pruner never deletes a rollback target.
+func (u *Updater) RollbackRefs() (imageRefs []string, containerKeys []string) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	for key, s := range u.snapshots {
+		containerKeys = append(containerKeys, key)
+		if s == nil {
+			continue
+		}
+		if s.ImageRef != "" {
+			imageRefs = append(imageRefs, s.ImageRef)
+		}
+		if s.ImageDigest != "" {
+			imageRefs = append(imageRefs, s.ImageDigest)
+		}
+	}
+	return imageRefs, containerKeys
+}
+
 // RecoverOrphans checks saved snapshots against all containers (running + stopped).
 // If a snapshot exists but no container with that name exists at all, attempt recreation.
 // DOCKER-04: uses All:true so stopped-but-not-removed containers are not falsely treated as missing.

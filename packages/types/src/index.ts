@@ -278,13 +278,79 @@ export interface MonitorHealthPayload {
 export interface PruneCommandPayload {
   keepPrevious?: number;
   dryRun?: boolean;
+  /** Also remove stopped (exited/created/dead) containers. Off by default. */
+  includeStopped?: boolean;
+  /** Correlates the agent's PRUNE_RESULT with the request. */
+  requestId?: string;
+}
+
+export interface PrunedItem {
+  /** Image reference/ID or container name. */
+  image: string;
+  size: number;
+  kind?: 'image' | 'container';
 }
 
 export interface PruneResultPayload {
+  requestId?: string;
+  dryRun?: boolean;
   imagesRemoved: number;
+  containersRemoved?: number;
+  /** Estimated bytes freed (layers shared with remaining images are not counted). */
   spaceReclaimed: number;
-  details: Array<{ image: string; size: number }>;
+  details: PrunedItem[];
   errors: string[];
+}
+
+export interface PrunePreviewPayload {
+  requestId?: string;
+  totalImages: number;
+  totalImageSize: number;
+  removableImages: number;
+  removableSize: number;
+  stoppedContainers: number;
+  stoppedSize: number;
+  includeStopped: boolean;
+  items: PrunedItem[];
+  error?: string;
+}
+
+export interface PruneProgressEvent {
+  agentId: string;
+  phase: 'containers' | 'images';
+  done: number;
+  total: number;
+  current: string;
+}
+
+/** Outcome of pruning one agent, as reported to the UI. */
+export interface PruneAgentOutcome {
+  agentId: string;
+  agentName: string;
+  status: 'success' | 'partial' | 'failed' | 'skipped';
+  imagesRemoved: number;
+  containersRemoved: number;
+  spaceReclaimed: number;
+  errors: string[];
+  /** Why the agent failed or was skipped. */
+  error?: string;
+}
+
+/** Summary of a "prune all agents" run. */
+export interface PruneRunSummary {
+  runId: string;
+  dryRun: boolean;
+  status: 'running' | 'complete';
+  startedAt: number;
+  results: PruneAgentOutcome[];
+  totals: {
+    agents: number;
+    imagesRemoved: number;
+    containersRemoved: number;
+    spaceReclaimed: number;
+    failed: number;
+    skipped: number;
+  };
 }
 
 export type ControllerToAgentMessage =

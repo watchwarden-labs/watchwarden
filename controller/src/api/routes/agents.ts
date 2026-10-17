@@ -378,27 +378,6 @@ const agentsRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  fastify.post<{
-    Params: { id: string };
-    Body: { keepPrevious?: number; dryRun?: boolean };
-  }>('/api/agents/:id/prune', async (request, reply) => {
-    const agent = await getAgent(request.params.id);
-    if (!agent) {
-      return reply.code(404).send({ error: 'Agent not found' });
-    }
-    if (agent.status !== 'online') {
-      return reply.code(409).send({ error: 'Agent is not online' });
-    }
-    hub.sendToAgent(request.params.id, {
-      type: 'PRUNE',
-      payload: {
-        keepPrevious: request.body?.keepPrevious ?? 1,
-        dryRun: request.body?.dryRun ?? false,
-      },
-    });
-    return reply.code(202).send({ message: 'Prune initiated' });
-  });
-
   fastify.put<{
     Params: { id: string };
     Body: { scheduleOverride?: string | null; autoUpdate?: boolean };

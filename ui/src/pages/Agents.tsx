@@ -6,6 +6,7 @@ import { useAgents, useCheckAgent, useDeleteAgent, useUpdateAgent } from '@/api/
 import { AgentCard } from '@/components/agents/AgentCard';
 import { AgentListRow } from '@/components/agents/AgentListRow';
 import { RegisterAgentModal } from '@/components/agents/RegisterAgentModal';
+import { PruneAllButton } from '@/components/prune/PruneAllDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -80,9 +81,12 @@ export function Agents() {
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Agents</h1>
-        <Button onClick={() => setRegisterOpen(true)}>
-          <Plus size={16} data-icon="inline-start" /> Add Agent
-        </Button>
+        <div className="flex items-center gap-2">
+          <PruneAllButton disabled={!agents.some((a) => a.status === 'online')} />
+          <Button onClick={() => setRegisterOpen(true)}>
+            <Plus size={16} data-icon="inline-start" /> Add Agent
+          </Button>
+        </div>
       </div>
 
       <RegisterAgentModal open={registerOpen} onOpenChange={setRegisterOpen} />

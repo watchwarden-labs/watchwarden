@@ -121,6 +121,8 @@ export class AgentHub {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private broadcaster: UiBroadcaster | null = null;
   private pendingRequests = new Map<string, PendingRequest>();
+  /** agentId -> requestId of the prune in flight, for agents that omit requestId in replies. */
+  private legacyPrunes = new Map<string, string>();
   // OBS-04: per-agent promise chain — serializes async message processing so
   // concurrent messages from the same agent don't interleave at await points.
   private agentQueues = new Map<string, Promise<void>>();
@@ -712,20 +714,35 @@ export class AgentHub {
             }
 
             case 'PRUNE_RESULT': {
+              // Resolves the PruneService request. Agents that predate requestId
+              // reply without one, so fall back to the in-flight prune for this agent.
+              const payload = message.payload as { requestId?: string };
+              const requestId = payload.requestId || this.legacyPrunes.get(agentId);
+              if (requestId) this.resolvePendingRequest(requestId, payload);
+              break;
+            }
+
+            case 'PRUNE_PROGRESS': {
               const payload = message.payload as {
-                imagesRemoved: number;
-                spaceReclaimed: number;
-                details: Array<{ image: string; size: number }>;
-                errors: string[];
+                phase: string;
+                done: number;
+                total: number;
+                current: string;
               };
               this.broadcaster?.broadcast({
-                type: 'PRUNE_COMPLETE',
+                type: 'PRUNE_PROGRESS',
                 agentId,
-                imagesRemoved: payload.imagesRemoved,
-                spaceReclaimed: payload.spaceReclaimed,
-                details: payload.details,
-                errors: payload.errors,
+                phase: payload.phase,
+                done: payload.done,
+                total: payload.total,
+                current: payload.current,
               });
+              break;
+            }
+
+            case 'PRUNE_PREVIEW_RESULT': {
+              const payload = message.payload as { requestId?: string };
+              if (payload.requestId) this.resolvePendingRequest(payload.requestId, payload);
               break;
             }
 
@@ -901,7 +918,7 @@ export class AgentHub {
     message: { type: string; payload: Record<string, unknown> },
     timeoutMs = 15000,
   ): Promise<unknown> {
-    const requestId = randomUUID();
+    const requestId = (message.payload.requestId as string | undefined) ?? randomUUID();
     message.payload.requestId = requestId;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -916,6 +933,12 @@ export class AgentHub {
         reject(new Error('Agent not connected'));
       }
     });
+  }
+
+  /** Track (or clear, with null) the prune in flight for an agent that may omit requestId. */
+  setLegacyPrune(agentId: string, requestId: string | null): void {
+    if (requestId) this.legacyPrunes.set(agentId, requestId);
+    else this.legacyPrunes.delete(agentId);
   }
 
   /** Resolve a pending request by its requestId. */

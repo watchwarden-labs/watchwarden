@@ -310,7 +310,7 @@ func (s *SoloRunner) applyUpdates(ctx context.Context, updates []CheckResult) {
 
 	// Prune if configured
 	if s.config.PruneAfterUpdate {
-		pruneResult := s.pruner.Prune(ctx, 1, false)
+		pruneResult := s.pruner.Prune(ctx, PruneOptions{KeepPrevious: 1}, nil)
 		log.Printf("[solo] Pruned %d images, reclaimed %d bytes", pruneResult.ImagesRemoved, pruneResult.SpaceReclaimed)
 	}
 
