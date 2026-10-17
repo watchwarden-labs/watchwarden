@@ -1,3 +1,10 @@
+## v0.4.4
+
+Released: 2026-10-17
+
+### Features
+- feat(prune): fix image pruning, add usage summary, progress, stopped containers and prune-all (#83) (1aa9e64)
+
 ## v0.4.3
 
 Released: 2026-10-17
