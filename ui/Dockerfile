@@ -1,4 +1,10 @@
-FROM node:22-alpine AS builder
+# The builder stage only produces static files (HTML/JS/CSS), which are identical
+# for every architecture, so it always runs on the CI machine's own platform
+# (--platform=$BUILDPLATFORM) instead of once per target. Running `npm ci` for
+# linux/arm64 under QEMU emulation crashed with "Illegal instruction" and then
+# hung until the 6-hour job limit, which stalled the v0.4.3 release. Only the
+# final nginx stage below is built per target architecture.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 WORKDIR /app
 
 # Workspace manifests + lockfile.
